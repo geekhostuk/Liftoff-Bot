@@ -1,6 +1,6 @@
 # Liftoff Competition
 
-Competition management platform for Liftoff FPV Simulator. Remotely control your lobby — change tracks, kick players, run playlists with scheduled rotations, and let pilots vote to skip. Includes a BepInEx game plugin, Node.js backend, live spectator view, and admin dashboard. Turn casual lobbies into league nights.
+Competition management platform for Liftoff FPV Simulator. Remotely control your lobby — change tracks, kick players, run playlists with scheduled rotations, and let pilots vote to skip or extend. Includes a BepInEx game plugin, Node.js backend, live spectator view, and admin dashboard. Turn casual lobbies into league nights.
 
 ---
 
@@ -46,18 +46,18 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Ideal for league nights, qualifying sessions, tournaments, and curated race events
 
 ### Vote to Skip
-- Players type `/skip` in game chat to start a skip vote (3-minute timer)
-- Additional players type `/skip` to add their vote
+- Players type `/next` in game chat to start a skip vote (3-minute timer)
+- Additional players type `/next` to add their vote
 - Configurable vote threshold — when enough players vote, the track advances automatically
 
 ### Vote to Extend
 - Players type `/extend` in game chat to start an extend vote (3-minute timer)
-- Uses the same vote threshold as `/skip`
+- Uses the same vote threshold as `/next`
 - When the vote passes, 5 minutes are added to the current track timer before it auto-advances
 
 ### Player Commands
 - `/info` — shows available player commands
-- `/skip` — vote to skip the current track
+- `/next` — vote to skip the current track
 - `/extend` — vote to extend the current track by 5 minutes
 
 ### Live Spectator View

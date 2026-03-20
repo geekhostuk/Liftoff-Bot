@@ -1,9 +1,9 @@
 /**
  * Skip-vote module.
  *
- * Manages the in-game /skip chat command that lets players collectively
- * vote to skip the current playlist track. The first /skip starts a vote;
- * subsequent /skip commands from other players count as additional votes.
+ * Manages the in-game /next chat command that lets players collectively
+ * vote to skip the current playlist track. The first /next starts a vote;
+ * subsequent /next commands from other players count as additional votes.
  *
  * Dependencies are injected via init() so this module stays decoupled
  * from the WebSocket transport layer.
@@ -70,7 +70,7 @@ function handleSkipVoteCommand(voterId) {
   skipVote.voters.add(voterId); // the initiator counts as a vote
 
   const { realPlayers, needed } = getSkipVoteInfo();
-  _sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>SKIP VOTE</color> <color=#FFFF00>Need</color> <color=#00BFFF>${needed}/${realPlayers}</color> <color=#FFFF00>— Type /skip</color> <color=#FF0000>(3m)</color>` });
+  _sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>SKIP VOTE</color> <color=#FFFF00>Need</color> <color=#00BFFF>${needed}/${realPlayers}</color> <color=#FFFF00>— Type /next</color> <color=#FF0000>(3m)</color>` });
 
   // Check immediately in case threshold already met
   checkSkipVoteThreshold();

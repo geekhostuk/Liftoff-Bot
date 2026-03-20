@@ -3,7 +3,7 @@
  *
  * Manages the in-game /extend chat command that lets players collectively
  * vote to add 5 minutes to the current track timer. Uses the same vote
- * threshold as /skip.
+ * threshold as /next.
  *
  * Dependencies are injected via init() so this module stays decoupled
  * from the WebSocket transport layer.
