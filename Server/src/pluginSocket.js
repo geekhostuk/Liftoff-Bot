@@ -317,9 +317,11 @@ function handlePluginEvent(jsonLine) {
     } else if (msg === '/extend') {
       extendVote.handleExtendVoteCommand(event.user_id || event.nick);
     } else if (msg === '/stay') {
-      if (event.actor != null) {
-        idleKick.handleStayCommand(event.actor);
-        sendCommand({ cmd: 'send_chat', message: '<color=#00FF00>STAY</color> <color=#FFFF00>Your idle timer has been reset.</color>' });
+      const saved = idleKick.handleStayCommand();
+      if (saved.length > 0) {
+        sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>STAY</color> <color=#FFFF00>${saved.join(', ')} idle timer has been reset.</color>` });
+      } else {
+        sendCommand({ cmd: 'send_chat', message: '<color=#FFFF00>No one is about to be kicked.</color>' });
       }
     }
   }

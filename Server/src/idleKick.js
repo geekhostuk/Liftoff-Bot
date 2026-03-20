@@ -16,7 +16,7 @@ const state = require('./state');
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;       // 5 minutes before warning
 const WARN_BEFORE_KICK_MS = 1 * 60 * 1000;   // 1 minute grace after warning
 const CHECK_INTERVAL_MS = 30 * 1000;          // sweep every 30 seconds
-const BOT_NICK = 'JMT-Bot';
+const BOT_NICK = 'JMT_Bot';
 
 // actor → epoch ms of last activity
 const _lastActivity = new Map();
@@ -87,8 +87,26 @@ function handlePlayerListSync(actors) {
   }
 }
 
-function handleStayCommand(actor) {
-  recordActivity(actor);
+/**
+ * Handle /stay command — resets the idle timer for all currently warned players.
+ * Returns an array of nicks that were saved, or empty if nobody was warned.
+ */
+function handleStayCommand() {
+  if (_warned.size === 0) return [];
+
+  const onlinePlayers = state.getOnlinePlayers();
+  const playerByActor = new Map();
+  for (const p of onlinePlayers) {
+    playerByActor.set(p.actor, p);
+  }
+
+  const saved = [];
+  for (const actor of [..._warned]) {
+    const player = playerByActor.get(actor);
+    if (player) saved.push(player.nick || 'Unknown');
+    recordActivity(actor); // resets timestamp and clears warned flag
+  }
+  return saved;
 }
 
 /**
