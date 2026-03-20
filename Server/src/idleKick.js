@@ -16,6 +16,7 @@ const state = require('./state');
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;       // 5 minutes before warning
 const WARN_BEFORE_KICK_MS = 1 * 60 * 1000;   // 1 minute grace after warning
 const CHECK_INTERVAL_MS = 30 * 1000;          // sweep every 30 seconds
+const MAX_LOBBY_SIZE = 8;                     // 7 players + bot — lobby is full at this count
 const BOT_NICK = 'JMT_Bot';
 
 // actor → epoch ms of last activity
@@ -144,6 +145,10 @@ function _runIdleCheck() {
   if (!_sendCommand) return;
 
   const onlinePlayers = state.getOnlinePlayers();
+
+  // Only kick when the lobby is full
+  if (onlinePlayers.length < MAX_LOBBY_SIZE) return;
+
   // Build actor → player lookup
   const playerByActor = new Map();
   for (const p of onlinePlayers) {
@@ -176,7 +181,7 @@ function _runIdleCheck() {
     if (idleMs >= IDLE_TIMEOUT_MS + WARN_BEFORE_KICK_MS && _warned.has(actor)) {
       _sendCommand({
         cmd: 'send_chat',
-        message: `<color=#FF0000>KICKED</color> <color=#FFFF00>${nick} was removed for inactivity.</color>`,
+        message: `<color=#FF0000>KICKED</color> <color=#FFFF00>${nick} was removed for being idle (lobby full).</color>`,
       });
       _sendCommandAwait({ cmd: 'kick_player', actor }).catch(() => {});
       _lastActivity.delete(actor);
@@ -188,7 +193,7 @@ function _runIdleCheck() {
     if (idleMs >= IDLE_TIMEOUT_MS && !_warned.has(actor)) {
       _sendCommand({
         cmd: 'send_chat',
-        message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, you will be kicked for being idle in 1 minute!</color>`,
+        message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, lobby is full! You will be kicked for being idle in 1 minute.</color>`,
       });
       // Send /stay hint as a separate message after a short delay
       setTimeout(() => {
