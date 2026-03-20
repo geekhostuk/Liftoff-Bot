@@ -60,8 +60,8 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - When the lobby is full (8 players), idle pilots inactive for 5 minutes receive an in-game warning
 - After 1 additional minute without activity, they are automatically kicked to free up a slot
 - Players can type `/stay` in chat to reset their idle timer (adds 5 more minutes)
-- JMT-Bot (the host) is always immune
-- Additional players can be whitelisted via admin API or `IDLE_KICK_WHITELIST` env var
+- JMT_Bot (the host) is always immune and hidden from the admin player list
+- Additional players can be whitelisted via admin API, admin dashboard, or `IDLE_KICK_WHITELIST` env var
 - Only active when a playlist is running — free lobbies are unaffected
 
 ### Player Commands
@@ -80,7 +80,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 ### Admin Dashboard
 - Browser-based control panel for event organisers
-- Player management with kick controls and idle kick whitelist
+- Player management with kick controls, per-player idle time display, and whitelist toggle
 - Track catalog browsing and selection
 - Playlist creation, management, and execution
 - Live chat monitoring
