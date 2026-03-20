@@ -51,26 +51,28 @@ function getState() {
   };
 }
 
-function startPlaylist(playlistId, intervalMs) {
+function startPlaylist(playlistId, intervalMs, startIndex = 0) {
   const playlist = db.getPlaylistById(playlistId);
   if (!playlist) throw new Error(`Playlist ${playlistId} not found`);
 
   const tracks = db.getPlaylistTracks(playlistId);
   if (tracks.length === 0) throw new Error('Playlist is empty — add tracks first');
 
+  const idx = Math.max(0, Math.min(startIndex, tracks.length - 1));
+
   stopPlaylist();
 
   state.running = true;
   state.playlistId = playlistId;
   state.playlistName = playlist.name;
-  state.currentIndex = 0;
+  state.currentIndex = idx;
   state.intervalMs = intervalMs;
   state.tracks = tracks;
 
   _applyCurrentTrack();
   _scheduleNext();
 
-  console.log(`[playlist] Started "${playlist.name}" (${tracks.length} tracks, interval=${intervalMs}ms)`);
+  console.log(`[playlist] Started "${playlist.name}" at track ${idx + 1}/${tracks.length} (interval=${intervalMs}ms)`);
   _broadcastState();
 }
 

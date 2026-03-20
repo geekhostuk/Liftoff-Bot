@@ -284,11 +284,12 @@ router.post('/playlists/tracks/:tid/move', (req, res) => {
   res.json({ ok: true });
 });
 
-/** POST /api/admin/playlists/:id/start  Body: { interval_ms } */
+/** POST /api/admin/playlists/:id/start  Body: { interval_ms, start_index } */
 router.post('/playlists/:id/start', strictLimiter, (req, res) => {
   const intervalMs = Math.max(5000, Number(req.body.interval_ms) || 15 * 60 * 1000);
+  const startIndex = Math.max(0, parseInt(req.body.start_index) || 0);
   try {
-    playlist.startPlaylist(Number(req.params.id), intervalMs);
+    playlist.startPlaylist(Number(req.params.id), intervalMs, startIndex);
     res.json(playlist.getState());
   } catch (err) {
     res.status(400).json({ error: err.message });

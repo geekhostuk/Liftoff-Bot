@@ -523,13 +523,15 @@ async function startPlaylist() {
   if (!selectedPlaylistId) return;
   const mins        = parseFloat(document.getElementById('interval-mins').value) || 15;
   const interval_ms = Math.round(mins * 60 * 1000);
+  const trackNum    = parseInt(document.getElementById('start-track-num').value) || 1;
+  const start_index = Math.max(0, trackNum - 1); // UI is 1-based, API is 0-based
   try {
-    runnerState = await apiFetch('POST', `/api/admin/playlists/${selectedPlaylistId}/start`, { interval_ms });
+    runnerState = await apiFetch('POST', `/api/admin/playlists/${selectedPlaylistId}/start`, { interval_ms, start_index });
     renderRunnerBar();
     renderPlaylistList();
     updateEditorButtons();
     await loadPlaylistTracks(selectedPlaylistId);
-    toast('Playlist started');
+    toast(`Playlist started at track ${runnerState.current_index + 1}`);
   } catch (err) { toast(err.message, 'err'); }
 }
 
