@@ -49,7 +49,16 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Players type `/skip` in game chat to start a skip vote (3-minute timer)
 - Additional players type `/skip` to add their vote
 - Configurable vote threshold — when enough players vote, the track advances automatically
-- `/info` command shows available player commands
+
+### Vote to Extend
+- Players type `/extend` in game chat to start an extend vote (3-minute timer)
+- Uses the same vote threshold as `/skip`
+- When the vote passes, 5 minutes are added to the current track timer before it auto-advances
+
+### Player Commands
+- `/info` — shows available player commands
+- `/skip` — vote to skip the current track
+- `/extend` — vote to extend the current track by 5 minutes
 
 ### Live Spectator View
 - Real-time race visualization in the browser

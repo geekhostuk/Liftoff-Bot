@@ -4,6 +4,7 @@ const state = require('./state');
 const E = require('./eventTypes');
 const broadcast = require('./broadcast');
 const skipVote = require('./skipVote');
+const extendVote = require('./extendVote');
 const { validateEvent } = require('./contracts');
 
 const PLUGIN_API_KEY = process.env.PLUGIN_API_KEY || '';
@@ -32,9 +33,12 @@ function setCurrentTrack(info) {
   // a burst of chat_message events with fresh timestamps — including old /skip and
   // /skip messages that would otherwise re-trigger the vote system.
   state.applyChatCooldown();
-  // Cancel any active skip vote — it no longer applies to the new track
+  // Cancel any active votes — they no longer apply to the new track
   if (skipVote.isActive()) {
     skipVote.cancelSkipVote();
+  }
+  if (extendVote.isActive()) {
+    extendVote.cancelExtendVote();
   }
 }
 
@@ -102,13 +106,17 @@ function handleCommandAck(event) {
 }
 
 function createPluginSocketServer(httpServer) {
-  // Initialise the skip-vote module with access to sendCommand
+  // Initialise the vote modules with access to sendCommand
   skipVote.init(sendCommand);
+  extendVote.init(sendCommand);
 
-  // Cancel any active skip vote when the playlist stops so orphaned votes
-  // don't cause "No playlist is running" on the next /skip attempt.
+  // Cancel any active votes when the playlist stops so orphaned votes
+  // don't cause "No playlist is running" on the next attempt.
   const playlist = require('./playlistRunner');
-  playlist.onStop(() => skipVote.cancelSkipVote());
+  playlist.onStop(() => {
+    skipVote.cancelSkipVote();
+    extendVote.cancelExtendVote();
+  });
 
   const wss = new WebSocketServer({ noServer: true });
 
@@ -283,12 +291,14 @@ function handlePluginEvent(jsonLine) {
     // Ignore all commands during the post-track-change cooldown window.
     if (!state.areChatCommandsAllowed()) return;
     if (msg === '/info') {
-      sendCommand({ cmd: 'send_chat', message: '<color=#00BFFF>COMMANDS</color> <color=#00FF00>/skip</color> <color=#FFFF00>(vote to skip track)</color>' });
+      sendCommand({ cmd: 'send_chat', message: '<color=#00BFFF>COMMANDS</color> <color=#00FF00>/skip</color> <color=#FFFF00>(vote to skip track)</color> <color=#00FF00>/extend</color> <color=#FFFF00>(vote to add 5 mins)</color>' });
     } else if (msg === '/skip') {
       // Use user_id (Steam ID) as the voter key — event.actor can be null if the
       // plugin couldn't resolve the Photon actor number, which causes all unresolved
       // players to collide on the same null key in the voters Set.
       skipVote.handleSkipVoteCommand(event.user_id || event.nick);
+    } else if (msg === '/extend') {
+      extendVote.handleExtendVoteCommand(event.user_id || event.nick);
     }
   }
 

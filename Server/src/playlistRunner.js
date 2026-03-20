@@ -114,6 +114,54 @@ function skipToNext() {
   _broadcastState();
 }
 
+function extendTimer(ms) {
+  if (!state.running || !state.nextChangeAt) return;
+  // Clear the current auto-advance timer and pre-timers
+  if (_timer) { clearTimeout(_timer); _timer = null; }
+  _clearPreTimers();
+
+  // Push nextChangeAt forward
+  state.nextChangeAt = new Date(state.nextChangeAt.getTime() + ms);
+  const remaining = state.nextChangeAt.getTime() - Date.now();
+
+  // Re-schedule pre-change messages relative to the new nextChangeAt
+  if (state.tracks.length > 0) {
+    let preTemplates = [];
+    try { preTemplates = db.getChatTemplatesByTrigger('track_change').filter(t => t.delay_ms < 0); } catch (_) {}
+
+    if (preTemplates.length > 0) {
+      const nextIndex = (state.currentIndex + 1) % state.tracks.length;
+      const nextTrack = state.tracks[nextIndex];
+      for (const tmpl of preTemplates) {
+        const fireAt = remaining + tmpl.delay_ms; // remaining + negative delay
+        if (fireAt <= 0) continue;
+        let message = tmpl.template;
+        const vars = { env: nextTrack.env, track: nextTrack.track, race: nextTrack.race,
+                       mins: Math.round(Math.abs(tmpl.delay_ms) / 60000) };
+        for (const [k, v] of Object.entries(vars)) message = message.replaceAll(`{${k}}`, v ?? '');
+        message = message.trim();
+        if (!message) continue;
+        _preTimers.push(setTimeout(() => sendCommand({ cmd: 'send_chat', message }), fireAt));
+      }
+    }
+  }
+
+  // Re-schedule the auto-advance timer with the new remaining time
+  _timer = setTimeout(() => {
+    state.currentIndex = (state.currentIndex + 1) % state.tracks.length;
+    try {
+      _applyCurrentTrack();
+    } catch (err) {
+      console.error('[playlist] Error applying track during auto-advance:', err.message);
+    }
+    _scheduleNext();
+    _broadcastState();
+  }, remaining);
+
+  console.log(`[playlist] Extended timer by ${ms / 1000}s — next change at ${state.nextChangeAt.toISOString()}`);
+  _broadcastState();
+}
+
 function skipToIndex(index) {
   if (!state.running || state.tracks.length === 0) return;
   if (index < 0 || index >= state.tracks.length) return;
@@ -184,4 +232,4 @@ function _broadcastState() {
   broadcast.broadcastAll({ event_type: 'playlist_state', ...getState() });
 }
 
-module.exports = { init, getState, startPlaylist, stopPlaylist, skipToNext, skipToIndex, onStop };
+module.exports = { init, getState, startPlaylist, stopPlaylist, skipToNext, skipToIndex, extendTimer, onStop };
