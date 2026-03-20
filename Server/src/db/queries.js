@@ -105,6 +105,101 @@ function getPilotActivity() {
   `).get();
 }
 
+/**
+ * All-time lap totals for a list of nicks.
+ * Returns { nick → { total_laps, best_lap_ms, races_entered } }
+ */
+function getAllTimeStatsByNick(nicks) {
+  if (!nicks || nicks.length === 0) return {};
+  const db = getDb();
+  const placeholders = nicks.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT
+      nick,
+      COUNT(*)               AS total_laps,
+      MIN(lap_ms)            AS best_lap_ms,
+      COUNT(DISTINCT race_id) AS races_entered
+    FROM laps
+    WHERE nick IN (${placeholders})
+    GROUP BY nick
+  `).all(...nicks);
+  const map = {};
+  for (const r of rows) map[r.nick] = r;
+  return map;
+}
+
+/**
+ * Browse laps with optional filters. Returns { laps, total }.
+ */
+function browseLaps({ env, track, nick, dateFrom, dateTo, limit = 50, offset = 0 } = {}) {
+  const db = getDb();
+  const conditions = [];
+  const params = [];
+
+  if (env) { conditions.push('r.env = ?'); params.push(env); }
+  if (track) { conditions.push('r.track = ?'); params.push(track); }
+  if (nick) { conditions.push('l.nick LIKE ?'); params.push(`%${nick}%`); }
+  if (dateFrom) { conditions.push('l.recorded_at >= ?'); params.push(dateFrom); }
+  if (dateTo) { conditions.push('l.recorded_at <= ?'); params.push(dateTo); }
+
+  const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+  const total = db.prepare(`
+    SELECT COUNT(*) AS cnt
+    FROM laps l
+    JOIN races r ON l.race_id = r.id
+    ${where}
+  `).get(...params).cnt;
+
+  const laps = db.prepare(`
+    SELECT
+      l.id, l.nick, l.lap_number, l.lap_ms, l.recorded_at, l.race_id,
+      r.env, r.track
+    FROM laps l
+    JOIN races r ON l.race_id = r.id
+    ${where}
+    ORDER BY l.recorded_at DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+
+  return { laps, total };
+}
+
+/**
+ * Distinct filter values for the data browser.
+ */
+function getFilterOptions() {
+  const db = getDb();
+  const envs = db.prepare(`
+    SELECT DISTINCT env FROM races WHERE env IS NOT NULL ORDER BY env
+  `).all().map(r => r.env);
+  const tracks = db.prepare(`
+    SELECT DISTINCT env, track FROM races
+    WHERE env IS NOT NULL AND track IS NOT NULL
+    ORDER BY env, track
+  `).all();
+  const pilots = db.prepare(`
+    SELECT nick, COUNT(*) AS total_laps
+    FROM laps
+    GROUP BY nick
+    ORDER BY total_laps DESC
+  `).all();
+  return { envs, tracks, pilots };
+}
+
+/**
+ * Summary stats for the stats page header.
+ */
+function getOverallStats() {
+  return getDb().prepare(`
+    SELECT
+      COUNT(*)                AS total_laps,
+      COUNT(DISTINCT nick)   AS total_pilots,
+      COUNT(DISTINCT race_id) AS total_races
+    FROM laps
+  `).get();
+}
+
 module.exports = {
   getRaces,
   getRaceById,
@@ -114,4 +209,8 @@ module.exports = {
   getPlayerStats,
   getLatestCatalog,
   getPilotActivity,
+  getAllTimeStatsByNick,
+  browseLaps,
+  getFilterOptions,
+  getOverallStats,
 };
