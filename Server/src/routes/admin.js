@@ -167,6 +167,50 @@ router.get('/status', (req, res) => {
   res.json({ plugin_connected: socket !== null && socket.readyState === 1 });
 });
 
+// ── Idle Kick Whitelist ──────────────────────────────────────────────────────
+
+const idleKick = require('../idleKick');
+
+/**
+ * GET /api/admin/idle-kick/status
+ * Returns idle times, warned actors, and whitelist for the admin dashboard.
+ */
+router.get('/idle-kick/status', (req, res) => {
+  res.json(idleKick.getIdleInfo());
+});
+
+/**
+ * GET /api/admin/idle-kick/whitelist
+ * Returns the current idle-kick whitelist.
+ */
+router.get('/idle-kick/whitelist', (req, res) => {
+  res.json({ whitelist: idleKick.getWhitelist() });
+});
+
+/**
+ * POST /api/admin/idle-kick/whitelist
+ * Add a nick to the idle-kick whitelist.
+ * Body: { nick }
+ */
+router.post('/idle-kick/whitelist', (req, res) => {
+  const { nick = '' } = req.body;
+  if (!nick.trim()) return res.status(400).json({ error: 'nick is required' });
+  idleKick.addToWhitelist(nick.trim());
+  res.json({ ok: true, whitelist: idleKick.getWhitelist() });
+});
+
+/**
+ * DELETE /api/admin/idle-kick/whitelist
+ * Remove a nick from the idle-kick whitelist.
+ * Body: { nick }
+ */
+router.delete('/idle-kick/whitelist', (req, res) => {
+  const { nick = '' } = req.body;
+  if (!nick.trim()) return res.status(400).json({ error: 'nick is required' });
+  idleKick.removeFromWhitelist(nick.trim());
+  res.json({ ok: true, whitelist: idleKick.getWhitelist() });
+});
+
 // ── Chat ────────────────────────────────────────────────────────────────────
 
 /**

@@ -5,6 +5,7 @@ const E = require('./eventTypes');
 const broadcast = require('./broadcast');
 const skipVote = require('./skipVote');
 const extendVote = require('./extendVote');
+const idleKick = require('./idleKick');
 const { validateEvent } = require('./contracts');
 
 const PLUGIN_API_KEY = process.env.PLUGIN_API_KEY || '';
@@ -109,6 +110,7 @@ function createPluginSocketServer(httpServer) {
   // Initialise the vote modules with access to sendCommand
   skipVote.init(sendCommand);
   extendVote.init(sendCommand);
+  idleKick.init(sendCommand, sendCommandAwait);
 
   // Cancel any active votes when the playlist stops so orphaned votes
   // don't cause "No playlist is running" on the next attempt.
@@ -116,6 +118,7 @@ function createPluginSocketServer(httpServer) {
   playlist.onStop(() => {
     skipVote.cancelSkipVote();
     extendVote.cancelExtendVote();
+    idleKick.resetAllTimers();
   });
 
   const wss = new WebSocketServer({ noServer: true });
@@ -278,6 +281,20 @@ function handlePluginEvent(jsonLine) {
     console.error(`[plugin-ws] DB error for event "${eventType}":`, err.message);
   }
 
+  // ── Idle-kick activity tracking ───────────────────────────────────────────
+  if (event.actor != null) {
+    if (eventType === E.LAP_RECORDED || eventType === E.CHECKPOINT ||
+        eventType === E.PILOT_COMPLETE || eventType === E.PILOT_RESET ||
+        eventType === E.CHAT_MESSAGE) {
+      idleKick.recordActivity(event.actor);
+    }
+  }
+  if (eventType === E.PLAYER_ENTERED) idleKick.handlePlayerEntered(event.actor);
+  if (eventType === E.PLAYER_LEFT) idleKick.handlePlayerLeft(event.actor);
+  if (eventType === E.PLAYER_LIST) {
+    idleKick.handlePlayerListSync((event.players || []).map(p => p.actor));
+  }
+
   // Handle command acknowledgments from the plugin
   if (eventType === E.COMMAND_ACK) {
     handleCommandAck(event);
@@ -291,7 +308,7 @@ function handlePluginEvent(jsonLine) {
     // Ignore all commands during the post-track-change cooldown window.
     if (!state.areChatCommandsAllowed()) return;
     if (msg === '/info') {
-      sendCommand({ cmd: 'send_chat', message: '<color=#00BFFF>COMMANDS</color> <color=#00FF00>/next</color> <color=#FFFF00>(vote to skip track)</color> <color=#00FF00>/extend</color> <color=#FFFF00>(vote to add 5 mins)</color>' });
+      sendCommand({ cmd: 'send_chat', message: '<color=#00BFFF>COMMANDS</color> <color=#00FF00>/next</color> <color=#FFFF00>(skip)</color> <color=#00FF00>/extend</color> <color=#FFFF00>(+5 mins)</color> <color=#00FF00>/stay</color> <color=#FFFF00>(reset idle timer)</color>' });
     } else if (msg === '/next') {
       // Use user_id (Steam ID) as the voter key — event.actor can be null if the
       // plugin couldn't resolve the Photon actor number, which causes all unresolved
@@ -299,6 +316,13 @@ function handlePluginEvent(jsonLine) {
       skipVote.handleSkipVoteCommand(event.user_id || event.nick);
     } else if (msg === '/extend') {
       extendVote.handleExtendVoteCommand(event.user_id || event.nick);
+    } else if (msg === '/stay') {
+      const saved = idleKick.handleStayCommand();
+      if (saved.length > 0) {
+        sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>STAY</color> <color=#FFFF00>${saved.join(', ')} idle timer has been reset.</color>` });
+      } else {
+        sendCommand({ cmd: 'send_chat', message: '<color=#FFFF00>No one is about to be kicked.</color>' });
+      }
     }
   }
 
