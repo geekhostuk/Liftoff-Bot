@@ -55,10 +55,20 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Uses the same vote threshold as `/next`
 - When the vote passes, 5 minutes are added to the current track timer before it auto-advances
 
+### Idle Kick
+
+- Pilots inactive for 10 minutes receive an in-game warning
+- After 1 additional minute without activity, they are automatically kicked
+- Players can type `/stay` in chat to reset their idle timer (adds 10 more minutes)
+- JMT-Bot (the host) is always immune
+- Additional players can be whitelisted via admin API or `IDLE_KICK_WHITELIST` env var
+- Only active when a playlist is running — free lobbies are unaffected
+
 ### Player Commands
 - `/info` — shows available player commands
 - `/next` — vote to skip the current track
 - `/extend` — vote to extend the current track by 5 minutes
+- `/stay` — reset your idle timer (prevents auto-kick)
 
 ### Live Spectator View
 - Real-time race visualization in the browser
@@ -70,7 +80,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 ### Admin Dashboard
 - Browser-based control panel for event organisers
-- Player management with kick controls
+- Player management with kick controls and idle kick whitelist
 - Track catalog browsing and selection
 - Playlist creation, management, and execution
 - Live chat monitoring
@@ -142,6 +152,7 @@ Liftoff/
 │   │   ├── broadcast.js                # Event broadcast dispatcher
 │   │   ├── playlistRunner.js           # Playlist scheduling & execution
 │   │   ├── state.js                    # In-memory state
+│   │   ├── idleKick.js                 # Auto-kick idle pilots
 │   │   ├── skipVote.js                 # Vote-to-skip logic
 │   │   ├── contracts.js                # Event validation
 │   │   ├── routes/
@@ -185,6 +196,7 @@ Liftoff/
    PLUGIN_API_KEY=your-plugin-key
    ADMIN_TOKEN=your-admin-token
    DB_PATH=./competition.db
+   IDLE_KICK_WHITELIST=              # comma-separated nicks immune to idle kick
    ```
 
 3. **Run with Docker (recommended):**
