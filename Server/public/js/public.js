@@ -6,6 +6,8 @@ let currentTrack = null;
 // actor → { actor, nick, lastSeen } for players currently in the lobby
 const lobbyPlayers = new Map();
 const LOBBY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+// nick → { total_laps, best_lap_ms, races_entered } fetched from server
+let allTimeStats = {};
 
 function lobbyTouch(actor, nick) {
   const existing = lobbyPlayers.get(actor);
@@ -89,16 +91,44 @@ function renderPlayers() {
   }
 
   if (rows.size === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" class="empty">No pilots in lobby.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">No pilots in lobby.</td></tr>';
     return;
   }
 
   const sorted = [...rows.values()].sort((a, b) => (a.bestMs || Infinity) - (b.bestMs || Infinity));
-  tbody.innerHTML = sorted.map(r => `<tr>
-    <td class="pilot-name"><span class="online-dot">●</span> ${esc(r.nick)}</td>
-    <td>${r.laps || '—'}</td>
-    <td class="lap-time best-time">${fmtMs(r.bestMs)}</td>
-  </tr>`).join('');
+  tbody.innerHTML = sorted.map(r => {
+    const at = allTimeStats[r.nick];
+    return `<tr>
+      <td class="pilot-name"><span class="online-dot">●</span> ${esc(r.nick)}</td>
+      <td>${r.laps || '—'}</td>
+      <td class="lap-time best-time">${fmtMs(r.bestMs)}</td>
+      <td class="all-time">${at ? at.total_laps.toLocaleString() : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Fetch all-time stats for online players ────────────────────────────────
+let allTimeFetchTimer = null;
+function scheduleAllTimeFetch() {
+  if (allTimeFetchTimer) return;
+  allTimeFetchTimer = setTimeout(() => {
+    allTimeFetchTimer = null;
+    fetchAllTimeStats();
+  }, 300);
+}
+
+function fetchAllTimeStats() {
+  const nicks = new Set();
+  for (const p of livePilots.values()) nicks.add(p.nick);
+  for (const { nick } of lobbyPlayers.values()) nicks.add(nick);
+  if (nicks.size === 0) return;
+  fetch('/api/players/online-stats?nicks=' + encodeURIComponent([...nicks].join(',')))
+    .then(r => r.json())
+    .then(data => {
+      allTimeStats = data;
+      renderPlayers();
+    })
+    .catch(() => {});
 }
 
 // ── Apply race snapshot ────────────────────────────────────────────────────
@@ -216,6 +246,7 @@ function connect() {
         for (const p of event.online_players) lobbyTouch(p.actor, p.nick);
       }
       applyRaceSnapshot(event.race, event.track_since);
+      scheduleAllTimeFetch();
       return;
     }
 
@@ -246,6 +277,7 @@ function connect() {
     if (event.event_type === 'player_entered') {
       lobbyTouch(event.actor, event.nick);
       renderPlayers();
+      scheduleAllTimeFetch();
       return;
     }
 
@@ -259,6 +291,7 @@ function connect() {
       lobbyPlayers.clear();
       for (const p of (event.players || [])) lobbyTouch(p.actor, p.nick);
       renderPlayers();
+      scheduleAllTimeFetch();
       return;
     }
 
@@ -275,4 +308,5 @@ function connect() {
 
 loadInitialState();
 loadPilotActivity();
+fetchAllTimeStats();
 connect();

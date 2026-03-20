@@ -85,4 +85,42 @@ router.get('/catalog', (req, res) => {
   res.json(catalog);
 });
 
+/**
+ * GET /api/players/online-stats?nicks=Nick1,Nick2
+ * All-time stats for currently online players.
+ */
+router.get('/players/online-stats', (req, res) => {
+  const raw = req.query.nicks || '';
+  const nicks = raw.split(',').map(n => n.trim()).filter(Boolean);
+  res.json(db.getAllTimeStatsByNick(nicks));
+});
+
+/**
+ * GET /api/laps/browse
+ * Paginated lap browser with optional filters.
+ * Query: ?env=X&track=Y&nick=Z&dateFrom=...&dateTo=...&limit=50&offset=0
+ */
+router.get('/laps/browse', (req, res) => {
+  const { env, track, nick, dateFrom, dateTo } = req.query;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const offset = parseInt(req.query.offset) || 0;
+  res.json(db.browseLaps({ env, track, nick, dateFrom, dateTo, limit, offset }));
+});
+
+/**
+ * GET /api/filters
+ * Distinct filter values for the data browser dropdowns.
+ */
+router.get('/filters', (req, res) => {
+  res.json(db.getFilterOptions());
+});
+
+/**
+ * GET /api/stats/overview
+ * Summary totals for the stats page header.
+ */
+router.get('/stats/overview', (req, res) => {
+  res.json(db.getOverallStats());
+});
+
 module.exports = router;

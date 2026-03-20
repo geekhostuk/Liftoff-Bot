@@ -121,6 +121,7 @@
     .empty { padding: 2rem; text-align: center; color: #444; font-size: 0.9rem; }
 
     .online-dot { color: #22c55e; font-size: 0.75rem; }
+    .all-time { color: #818cf8; font-variant-numeric: tabular-nums; }
 
     .lap-new { animation: flashRow 1s ease-out; }
     @keyframes flashRow {
@@ -144,6 +145,7 @@
 
 <header>
   <h1>⚡ Liftoff Competition</h1>
+  <a href="/stats.html" style="color:#888;text-decoration:none;font-size:0.85rem;transition:color 0.2s;" onmouseover="this.style.color='#f97316'" onmouseout="this.style.color='#888'">Stats & Leaderboard →</a>
   <div id="plugin-status">
     <div class="dot" id="status-dot"></div>
     <span id="status-label">Connecting…</span>
@@ -196,12 +198,13 @@
       <thead>
         <tr>
           <th>Pilot</th>
-          <th>Laps</th>
+          <th>Race Laps</th>
           <th>Best Lap</th>
+          <th>All-Time Laps</th>
         </tr>
       </thead>
       <tbody id="players-body">
-        <tr><td colspan="3" class="empty">No pilots in session.</td></tr>
+        <tr><td colspan="4" class="empty">No pilots in session.</td></tr>
       </tbody>
     </table>
   </section>
