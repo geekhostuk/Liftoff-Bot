@@ -240,6 +240,10 @@ npm test
 
 ---
 
+## Contributing
+
+Contributions are welcome! Feel free to open an issue or submit a pull request.
+
 ## License
 
-This project is currently private. All rights reserved.
+This project is licensed under the [MIT License](LICENSE).
