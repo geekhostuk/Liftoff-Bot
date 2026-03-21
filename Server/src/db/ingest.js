@@ -15,6 +15,17 @@ function handleSessionStarted(event) {
 
 function handleRaceReset(event, currentTrack = {}) {
   const db = getDb();
+
+  // Close any open races for this session (safety net for missed race_end events)
+  db.prepare(`
+    UPDATE races SET ended_at = @ended_at
+    WHERE session_id = @session_id AND ended_at IS NULL AND id != @id
+  `).run({
+    ended_at: event.timestamp_utc,
+    session_id: event.session_id,
+    id: event.race_id,
+  });
+
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO races (id, session_id, ordinal, started_at, env, track)
     VALUES (@id, @session_id, @ordinal, @started_at, @env, @track)
