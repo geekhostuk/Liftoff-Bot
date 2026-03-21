@@ -93,8 +93,11 @@ function checkSkipVoteThreshold() {
       _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>Vote passed but playlist has stopped.</color>' });
       return;
     }
-    _sendCommand({ cmd: 'send_chat', message: '<color=#00FF00>VOTE PASSED</color> <color=#FFFF00>Skipping to next track...</color>' });
-    skipToNext();
+    _sendCommand({ cmd: 'send_chat', message: '<color=#00FF00>VOTE PASSED</color> <color=#FFFF00>Track will change in 10 seconds...</color>' });
+    setTimeout(() => {
+      if (!getPlaylistState().running) return;
+      skipToNext();
+    }, 10_000);
   }
 }
 
