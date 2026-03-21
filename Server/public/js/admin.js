@@ -724,6 +724,7 @@ async function selectWeek(weekId) {
   const end = new Date(w.ends_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   document.getElementById('comp-week-title').textContent = `Week ${w.week_number}: ${start} – ${end} (${w.status})`;
   document.getElementById('comp-week-editor').style.display = '';
+  document.getElementById('comp-week-edit-form').style.display = 'none';
 
   // Populate playlist dropdown
   const sel = document.getElementById('comp-wp-playlist-select');
@@ -807,6 +808,50 @@ async function recalculateWeekAdmin() {
   } catch (err) { toast(err.message, 'err'); }
 }
 
+function editWeek() {
+  if (!selectedWeekId) return;
+  const w = compWeeks.find(x => x.id === selectedWeekId);
+  if (!w) return;
+  document.getElementById('comp-week-edit-start').value = w.starts_at.slice(0, 10);
+  document.getElementById('comp-week-edit-end').value = w.ends_at.slice(0, 10);
+  document.getElementById('comp-week-edit-status').value = w.status;
+  document.getElementById('comp-week-edit-form').style.display = '';
+}
+
+function cancelWeekEdit() {
+  document.getElementById('comp-week-edit-form').style.display = 'none';
+}
+
+async function saveWeekEdit() {
+  if (!selectedWeekId) return;
+  const startVal = document.getElementById('comp-week-edit-start').value;
+  const endVal = document.getElementById('comp-week-edit-end').value;
+  const status = document.getElementById('comp-week-edit-status').value;
+  if (!startVal || !endVal) { toast('Both dates are required', 'err'); return; }
+  const starts_at = new Date(startVal + 'T00:00:00.000Z').toISOString();
+  const ends_at = new Date(endVal + 'T23:59:59.000Z').toISOString();
+  try {
+    await apiFetch('PUT', `/api/admin/competition/week/${selectedWeekId}`, { starts_at, ends_at, status });
+    toast('Week updated');
+    cancelWeekEdit();
+    await loadCompWeeks(selectedCompId);
+    selectWeek(selectedWeekId);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function deleteWeek() {
+  if (!selectedWeekId) return;
+  const w = compWeeks.find(x => x.id === selectedWeekId);
+  if (!confirm(`Delete Week ${w ? w.week_number : selectedWeekId}? This removes all associated playlists, points, and standings.`)) return;
+  try {
+    await apiFetch('DELETE', `/api/admin/competition/week/${selectedWeekId}`);
+    toast('Week deleted');
+    selectedWeekId = null;
+    document.getElementById('comp-week-editor').style.display = 'none';
+    await loadCompWeeks(selectedCompId);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
 async function loadCompRunnerState() {
   try {
     const state = await apiFetch('GET', '/api/admin/competition/runner/state');
@@ -884,6 +929,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-gen-weeks').addEventListener('click', generateWeeks);
   document.getElementById('btn-add-wp').addEventListener('click', addWeekPlaylist);
   document.getElementById('btn-recalc-week').addEventListener('click', recalculateWeekAdmin);
+  document.getElementById('btn-edit-week').addEventListener('click', editWeek);
+  document.getElementById('btn-save-week').addEventListener('click', saveWeekEdit);
+  document.getElementById('btn-cancel-week-edit').addEventListener('click', cancelWeekEdit);
+  document.getElementById('btn-delete-week').addEventListener('click', deleteWeek);
 
   document.getElementById('chat-msg-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') sendChatNow();

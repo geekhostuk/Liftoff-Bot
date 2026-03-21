@@ -460,13 +460,24 @@ router.get('/competition/:id/weeks', (req, res) => {
   res.json(db.getWeeks(Number(req.params.id)));
 });
 
-/** PUT /api/admin/competition/week/:id  Body: { status } */
+/** PUT /api/admin/competition/week/:id  Body: { status, starts_at, ends_at, week_number } */
 router.put('/competition/week/:id', (req, res) => {
-  const { status } = req.body;
-  if (!['scheduled', 'active', 'finalised'].includes(status)) {
+  const { status, starts_at, ends_at, week_number } = req.body;
+  if (status && !['scheduled', 'active', 'finalised'].includes(status)) {
     return res.status(400).json({ error: 'status must be scheduled, active, or finalised' });
   }
-  db.updateWeekStatus(Number(req.params.id), status);
+  const fields = {};
+  if (status) fields.status = status;
+  if (starts_at) fields.starts_at = starts_at;
+  if (ends_at) fields.ends_at = ends_at;
+  if (week_number !== undefined) fields.week_number = Number(week_number);
+  db.updateWeek(Number(req.params.id), fields);
+  res.json({ ok: true });
+});
+
+/** DELETE /api/admin/competition/week/:id */
+router.delete('/competition/week/:id', (req, res) => {
+  db.deleteWeek(Number(req.params.id));
   res.json({ ok: true });
 });
 

@@ -428,7 +428,34 @@
       <div id="comp-week-editor" style="display:none;border-top:1px solid #1e1e24;padding-top:1rem;margin-top:0.5rem">
         <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;flex-wrap:wrap">
           <span id="comp-week-title" style="font-weight:600;font-size:0.95rem;flex:1"></span>
+          <button class="btn-secondary mini-btn" id="btn-edit-week">Edit</button>
           <button class="btn-secondary mini-btn" id="btn-recalc-week">Recalculate</button>
+          <button class="btn-danger mini-btn" id="btn-delete-week">Delete</button>
+        </div>
+        <!-- Inline edit form (hidden by default) -->
+        <div id="comp-week-edit-form" style="display:none;margin-bottom:0.75rem;padding:0.75rem;border:1px solid #2a2a32;border-radius:6px">
+          <div class="row three" style="align-items:end">
+            <div>
+              <label>Start Date</label>
+              <input type="date" id="comp-week-edit-start" style="width:100%">
+            </div>
+            <div>
+              <label>End Date</label>
+              <input type="date" id="comp-week-edit-end" style="width:100%">
+            </div>
+            <div>
+              <label>Status</label>
+              <select id="comp-week-edit-status" style="width:100%">
+                <option value="scheduled">scheduled</option>
+                <option value="active">active</option>
+                <option value="finalised">finalised</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+            <button class="btn-secondary mini-btn" id="btn-save-week">Save</button>
+            <button class="btn-secondary mini-btn" id="btn-cancel-week-edit">Cancel</button>
+          </div>
         </div>
         <div>
           <label>Assigned Playlists (run back-to-back, repeating all week)</label>

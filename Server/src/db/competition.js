@@ -36,9 +36,9 @@ function generateWeeks(competitionId, count, startDate) {
   const db = getDb();
   const weeks = [];
   const start = new Date(startDate);
-  // Align to Monday
-  const day = start.getUTCDay();
-  const diff = day === 0 ? 1 : (day === 1 ? 0 : 8 - day);
+  // Align to the Monday of the week containing the chosen date
+  const day = start.getUTCDay(); // 0=Sun,1=Mon,...,6=Sat
+  const diff = day === 0 ? -6 : 1 - day; // Sun→back 6, Mon→0, Tue→-1, etc.
   start.setUTCDate(start.getUTCDate() + diff);
   start.setUTCHours(0, 0, 0, 0);
 
@@ -113,6 +113,28 @@ function getOverdueActiveWeek() {
 
 function updateWeekStatus(id, status) {
   getDb().prepare('UPDATE competition_weeks SET status = ? WHERE id = ?').run(status, id);
+}
+
+function updateWeek(id, fields) {
+  const db = getDb();
+  const sets = [];
+  const values = [];
+  if (fields.starts_at !== undefined) { sets.push('starts_at = ?'); values.push(fields.starts_at); }
+  if (fields.ends_at !== undefined) { sets.push('ends_at = ?'); values.push(fields.ends_at); }
+  if (fields.status !== undefined) { sets.push('status = ?'); values.push(fields.status); }
+  if (fields.week_number !== undefined) { sets.push('week_number = ?'); values.push(fields.week_number); }
+  if (sets.length === 0) return;
+  values.push(id);
+  db.prepare(`UPDATE competition_weeks SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+}
+
+function deleteWeek(id) {
+  const db = getDb();
+  db.prepare('DELETE FROM weekly_standings WHERE week_id = ?').run(id);
+  db.prepare('DELETE FROM weekly_points WHERE week_id = ?').run(id);
+  db.prepare('DELETE FROM race_results WHERE week_id = ?').run(id);
+  db.prepare('DELETE FROM week_playlists WHERE week_id = ?').run(id);
+  db.prepare('DELETE FROM competition_weeks WHERE id = ?').run(id);
 }
 
 function getCurrentWeekInfo() {
@@ -432,6 +454,8 @@ module.exports = {
   getNextScheduledWeek,
   getOverdueActiveWeek,
   updateWeekStatus,
+  updateWeek,
+  deleteWeek,
   getCurrentWeekInfo,
   // Week playlists
   getWeekPlaylists,
