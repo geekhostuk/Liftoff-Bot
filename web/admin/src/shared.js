@@ -1,12 +1,12 @@
 /**
- * Shared utilities used by both admin and public frontends.
+ * Shared utilities used by the admin frontend.
  */
 
-function esc(s) {
+export function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function fmtMs(ms) {
+export function fmtMs(ms) {
   if (ms == null) return '—';
   const totalSec = ms / 1000;
   const m = Math.floor(totalSec / 60);
@@ -14,7 +14,7 @@ function fmtMs(ms) {
   return m > 0 ? `${m}:${s}` : `${s}s`;
 }
 
-function fmtDelta(ms) {
+export function fmtDelta(ms) {
   if (ms == null) return '—';
   const sign = ms < 0 ? '-' : '+';
   const abs = Math.abs(ms);

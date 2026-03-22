@@ -7,7 +7,7 @@ function getProcessRaceClose() {
   return _processRaceClose;
 }
 
-function handleSessionStarted(event) {
+async function handleSessionStarted(event) {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO sessions (id, started_at, plugin_ver)
@@ -20,7 +20,7 @@ function handleSessionStarted(event) {
   });
 }
 
-function handleRaceReset(event, currentTrack = {}) {
+async function handleRaceReset(event, currentTrack = {}) {
   const db = getDb();
 
   // Close any open races for this session and populate results from laps
@@ -63,7 +63,7 @@ function handleRaceReset(event, currentTrack = {}) {
     });
 
     // Competition scoring — award points for this race if a competition week is active
-    try { getProcessRaceClose()(race.id); } catch (err) {
+    try { await getProcessRaceClose()(race.id); } catch (err) {
       console.error('[competition] Scoring error for race', race.id, err.message);
     }
   }
@@ -82,7 +82,7 @@ function handleRaceReset(event, currentTrack = {}) {
   });
 }
 
-function handleLapRecorded(event, currentTrack = {}) {
+async function handleLapRecorded(event, currentTrack = {}) {
   const db = getDb();
   ensureRaceExists(event);
   if (currentTrack.env && currentTrack.track) {
@@ -107,7 +107,7 @@ function handleLapRecorded(event, currentTrack = {}) {
   });
 }
 
-function handleRaceEnd(event) {
+async function handleRaceEnd(event) {
   const db = getDb();
   ensureRaceExists(event);
   const stmt = db.prepare(`
@@ -133,12 +133,12 @@ function handleRaceEnd(event) {
   // Competition scoring — race_end fires before race_reset, so this is the
   // reliable place to score a completed race. hasRaceResults() inside
   // processRaceClose prevents double-scoring if race_reset also triggers it.
-  try { getProcessRaceClose()(event.race_id); } catch (err) {
+  try { await getProcessRaceClose()(event.race_id); } catch (err) {
     console.error('[competition] Scoring error for race', event.race_id, err.message);
   }
 }
 
-function handleTrackCatalog(event) {
+async function handleTrackCatalog(event) {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT INTO track_catalog (session_id, recorded_at, catalog_json)

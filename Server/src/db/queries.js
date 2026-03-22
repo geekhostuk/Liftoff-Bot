@@ -1,6 +1,6 @@
 const { getDb } = require('./connection');
 
-function getRaces({ limit = 50, offset = 0 } = {}) {
+async function getRaces({ limit = 50, offset = 0 } = {}) {
   return getDb().prepare(`
     SELECT * FROM races
     ORDER BY started_at DESC
@@ -8,7 +8,7 @@ function getRaces({ limit = 50, offset = 0 } = {}) {
   `).all(limit, offset);
 }
 
-function getRaceById(id) {
+async function getRaceById(id) {
   const db = getDb();
   const race = db.prepare('SELECT * FROM races WHERE id = ?').get(id);
   if (!race) return null;
@@ -16,7 +16,7 @@ function getRaceById(id) {
   return race;
 }
 
-function getBestLaps({ limit = 100 } = {}) {
+async function getBestLaps({ limit = 100 } = {}) {
   return getDb().prepare(`
     SELECT
       COALESCE(steam_id, pilot_guid, nick) AS pilot_key,
@@ -32,7 +32,7 @@ function getBestLaps({ limit = 100 } = {}) {
   `).all(limit);
 }
 
-function getLatestRaceWithLaps(since) {
+async function getLatestRaceWithLaps(since) {
   const db = getDb();
   const race = db.prepare(`
     SELECT r.* FROM races r
@@ -54,7 +54,7 @@ function getLatestRaceWithLaps(since) {
   return race;
 }
 
-function getBestLapsByTrack(env, track, { limit = 100 } = {}) {
+async function getBestLapsByTrack(env, track, { limit = 100 } = {}) {
   return getDb().prepare(`
     SELECT
       COALESCE(l.steam_id, l.pilot_guid, l.nick) AS pilot_key,
@@ -70,7 +70,7 @@ function getBestLapsByTrack(env, track, { limit = 100 } = {}) {
   `).all(env, track, limit);
 }
 
-function getPlayerStats({ limit = 200 } = {}) {
+async function getPlayerStats({ limit = 200 } = {}) {
   return getDb().prepare(`
     SELECT
       COALESCE(steam_id, pilot_guid, nick) AS pilot_key,
@@ -85,14 +85,14 @@ function getPlayerStats({ limit = 200 } = {}) {
   `).all(limit);
 }
 
-function getLatestCatalog() {
+async function getLatestCatalog() {
   const row = getDb().prepare(`
     SELECT catalog_json FROM track_catalog ORDER BY id DESC LIMIT 1
   `).get();
   return row ? JSON.parse(row.catalog_json) : null;
 }
 
-function getPilotActivity() {
+async function getPilotActivity() {
   return getDb().prepare(`
     SELECT
       COUNT(DISTINCT CASE WHEN datetime(recorded_at) >= datetime('now', '-1 day')
@@ -109,7 +109,7 @@ function getPilotActivity() {
  * All-time lap totals for a list of nicks.
  * Returns { nick → { total_laps, best_lap_ms, races_entered } }
  */
-function getAllTimeStatsByNick(nicks) {
+async function getAllTimeStatsByNick(nicks) {
   if (!nicks || nicks.length === 0) return {};
   const db = getDb();
   const placeholders = nicks.map(() => '?').join(',');
@@ -131,7 +131,7 @@ function getAllTimeStatsByNick(nicks) {
 /**
  * Browse laps with optional filters. Returns { laps, total }.
  */
-function browseLaps({ env, track, nick, dateFrom, dateTo, limit = 50, offset = 0 } = {}) {
+async function browseLaps({ env, track, nick, dateFrom, dateTo, limit = 50, offset = 0 } = {}) {
   const db = getDb();
   const conditions = [];
   const params = [];
@@ -168,7 +168,7 @@ function browseLaps({ env, track, nick, dateFrom, dateTo, limit = 50, offset = 0
 /**
  * Distinct filter values for the data browser.
  */
-function getFilterOptions() {
+async function getFilterOptions() {
   const db = getDb();
   const envs = db.prepare(`
     SELECT DISTINCT env FROM races WHERE env IS NOT NULL ORDER BY env
@@ -190,7 +190,7 @@ function getFilterOptions() {
 /**
  * Summary stats for the stats page header.
  */
-function getOverallStats() {
+async function getOverallStats() {
   return getDb().prepare(`
     SELECT
       COUNT(*)                AS total_laps,

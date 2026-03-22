@@ -189,10 +189,10 @@ function fmtMs(ms) {
   return m > 0 ? `${m}:${s}` : `${s}s`;
 }
 
-function fireTemplates(trigger, vars = {}) {
+async function fireTemplates(trigger, vars = {}) {
   let templates;
   try {
-    templates = db.getChatTemplatesByTrigger(trigger);
+    templates = await db.getChatTemplatesByTrigger(trigger);
   } catch {
     return;
   }
@@ -244,7 +244,7 @@ function stripSensitiveFields(jsonLine, event) {
   return JSON.stringify(cleaned);
 }
 
-function handlePluginEvent(jsonLine) {
+async function handlePluginEvent(jsonLine) {
   let event;
   try {
     event = JSON.parse(jsonLine);
@@ -259,11 +259,11 @@ function handlePluginEvent(jsonLine) {
   // Persist to database
   try {
     switch (eventType) {
-      case E.SESSION_STARTED:  db.handleSessionStarted(event);  break;
-      case E.RACE_RESET:       db.handleRaceReset(event, state.getCurrentTrack());  break;
-      case E.LAP_RECORDED:     db.handleLapRecorded(event, state.getCurrentTrack()); break;
-      case E.RACE_END:         db.handleRaceEnd(event);         break;
-      case E.TRACK_CATALOG:    db.handleTrackCatalog(event);    break;
+      case E.SESSION_STARTED:  await db.handleSessionStarted(event);  break;
+      case E.RACE_RESET:       await db.handleRaceReset(event, state.getCurrentTrack());  break;
+      case E.LAP_RECORDED:     await db.handleLapRecorded(event, state.getCurrentTrack()); break;
+      case E.RACE_END:         await db.handleRaceEnd(event);         break;
+      case E.TRACK_CATALOG:    await db.handleTrackCatalog(event);    break;
       case E.PLAYER_ENTERED:
         state.setOnlinePlayer(event.actor, { actor: event.actor, nick: event.nick, user_id: event.user_id || null });
         break;

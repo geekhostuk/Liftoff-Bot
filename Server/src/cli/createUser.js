@@ -25,13 +25,20 @@ if (password.length < 6) {
   process.exit(1);
 }
 
-initDatabase();
+async function main() {
+  initDatabase();
 
-const existing = getUserByUsername(username);
-if (existing) {
-  console.error(`Error: User "${username}" already exists`);
-  process.exit(1);
+  const existing = await getUserByUsername(username);
+  if (existing) {
+    console.error(`Error: User "${username}" already exists`);
+    process.exit(1);
+  }
+
+  const user = await createUser(username, hashPassword(password));
+  console.log(`Admin user created: ${user.username} (id: ${user.id})`);
 }
 
-const user = createUser(username, hashPassword(password));
-console.log(`Admin user created: ${user.username} (id: ${user.id})`);
+main().catch(err => {
+  console.error('Error:', err.message);
+  process.exit(1);
+});

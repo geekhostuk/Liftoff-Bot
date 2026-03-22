@@ -1,3 +1,5 @@
+import { esc, fmtMs } from './shared.js';
+
 // ── State ──────────────────────────────────────────────────────────────────
 let filterData = { envs: [], tracks: [], pilots: [] };
 let currentPage = 0;

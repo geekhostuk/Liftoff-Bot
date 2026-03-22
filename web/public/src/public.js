@@ -1,3 +1,5 @@
+import { esc, fmtMs, fmtDelta } from './shared.js';
+
 // ── State ──────────────────────────────────────────────────────────────────
 // pilotKey → { nick, laps: [], bestMs, lastDelta }
 const livePilots = new Map();

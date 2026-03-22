@@ -1,12 +1,16 @@
+/**
+ * Admin routes for the API server.
+ *
+ * Database operations are called directly. Plugin commands, playlist control,
+ * competition runner, idle kick, and broadcasting go through realtimeClient.
+ */
+
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
-const { sendCommand, sendCommandAwait, getPluginSocket, setCurrentTrack, fireTemplates } = require('../pluginSocket');
-const broadcast = require('../broadcast');
-const db = require('../database');
-const playlist = require('../playlistRunner');
-const competitionRunner = require('../competitionRunner');
-const { recalculateWeek } = require('../competitionScoring');
-const { hashPassword, verifyPassword, createSession, getSession, destroySession, destroyUserSessions } = require('../auth');
+const rt = require('../realtimeClient');
+const db = require('../../database');
+const { recalculateWeek } = require('../../competitionScoring');
+const { hashPassword, verifyPassword, createSession, getSession, destroySession, destroyUserSessions } = require('../../auth');
 
 const router = Router();
 
@@ -24,10 +28,8 @@ function parseCookies(header) {
 }
 
 function extractToken(req) {
-  // 1. Bearer token in Authorization header
   const authHeader = req.headers['authorization'] || '';
   if (authHeader.startsWith('Bearer ')) return authHeader.slice(7);
-  // 2. httpOnly cookie
   const cookies = parseCookies(req.headers.cookie);
   return cookies[COOKIE_NAME] || '';
 }
@@ -37,21 +39,16 @@ function extractToken(req) {
 router.post('/login', async (req, res) => {
   const { username, password, token } = req.body || {};
 
-  // Legacy: accept { token } for backward compat with ADMIN_TOKEN
   if (token) {
     if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) {
       return res.status(401).json({ error: 'Invalid token' });
     }
     res.cookie(COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 24 * 60 * 60 * 1000,
+      httpOnly: true, sameSite: 'strict', path: '/', maxAge: 24 * 60 * 60 * 1000,
     });
     return res.json({ ok: true });
   }
 
-  // User account login
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
   }
@@ -61,10 +58,7 @@ router.post('/login', async (req, res) => {
   }
   const sessionToken = createSession(user);
   res.cookie(COOKIE_NAME, sessionToken, {
-    httpOnly: true,
-    sameSite: 'strict',
-    path: '/',
-    maxAge: 24 * 60 * 60 * 1000,
+    httpOnly: true, sameSite: 'strict', path: '/', maxAge: 24 * 60 * 60 * 1000,
   });
   res.json({ ok: true, username: user.username });
 });
@@ -81,10 +75,7 @@ router.post('/logout', (req, res) => {
 router.use((req, res, next) => {
   const token = extractToken(req);
   const session = getSession(token);
-  if (session) {
-    req.adminUser = session;
-    return next();
-  }
+  if (session) { req.adminUser = session; return next(); }
   if (ADMIN_TOKEN && token === ADMIN_TOKEN) {
     req.adminUser = { userId: 0, username: '_api_', role: 'admin' };
     return next();
@@ -95,93 +86,56 @@ router.use((req, res, next) => {
 // ── Rate limiting ───────────────────────────────────────────────────────────
 
 const generalLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
+  windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many requests — try again in a minute' },
 });
 
 const strictLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
+  windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many requests — try again in a minute' },
 });
 
 router.use(generalLimiter);
 
-// ── Helper ──────────────────────────────────────────────────────────────────
+// ── Plugin commands (via realtime) ──────────────────────────────────────────
 
-function pluginStatus(res, sent) {
-  if (!sent) {
-    return res.status(503).json({ error: 'Plugin not connected' });
-  }
+router.post('/track/next', async (req, res) => {
+  const sent = await rt.sendCommand({ cmd: 'next_track' });
+  if (!sent) return res.status(503).json({ error: 'Plugin not connected' });
   res.json({ ok: true });
-}
-
-// ── Endpoints ───────────────────────────────────────────────────────────────
-
-/**
- * POST /api/admin/track/next
- * Advance to the next track in the plugin's current sequence.
- */
-router.post('/track/next', (req, res) => {
-  pluginStatus(res, sendCommand({ cmd: 'next_track' }));
 });
 
-/**
- * POST /api/admin/track/set
- * Jump to a specific track immediately.
- * Body: { env, track, race, workshop_id }
- */
-router.post('/track/set', strictLimiter, (req, res) => {
+router.post('/track/set', strictLimiter, async (req, res) => {
   const { env = '', track = '', race = '', workshop_id = '' } = req.body;
   if (!env && !track && !workshop_id) {
     return res.status(400).json({ error: 'Provide at least env+track or workshop_id' });
   }
-  setCurrentTrack({ env, track, race });
-  const sent = sendCommand({ cmd: 'set_track', env, track, race, workshop_id });
-  if (sent) {
-    broadcast.broadcastAll({ event_type: 'track_changed', env, track, race });
-    fireTemplates('track_change', { env, track, race });
-  }
-  pluginStatus(res, sent);
+  const sent = await rt.setTrack({ env, track, race, workshop_id });
+  if (!sent) return res.status(503).json({ error: 'Plugin not connected' });
+  res.json({ ok: true });
 });
 
-/**
- * PUT /api/admin/playlist
- * Replace the full track sequence and optionally jump to the first entry.
- * Body: { sequence: "Env|Track|Race;Env2|Track2|Race2", apply_immediately: true }
- */
-router.put('/playlist', (req, res) => {
+router.put('/playlist', async (req, res) => {
   const { sequence, apply_immediately = false } = req.body;
   if (!sequence || typeof sequence !== 'string') {
     return res.status(400).json({ error: 'sequence is required (pipe/semicolon format)' });
   }
-  pluginStatus(res, sendCommand({ cmd: 'update_playlist', sequence, apply_immediately }));
+  const sent = await rt.sendCommand({ cmd: 'update_playlist', sequence, apply_immediately });
+  if (!sent) return res.status(503).json({ error: 'Plugin not connected' });
+  res.json({ ok: true });
 });
 
-/**
- * POST /api/admin/catalog/refresh
- * Asks the plugin to read the current popup dropdowns and emit a track_catalog event.
- * The popup must be open in-game for this to succeed.
- */
-router.post('/catalog/refresh', (req, res) => {
-  pluginStatus(res, sendCommand({ cmd: 'request_catalog' }));
+router.post('/catalog/refresh', async (req, res) => {
+  const sent = await rt.sendCommand({ cmd: 'request_catalog' });
+  if (!sent) return res.status(503).json({ error: 'Plugin not connected' });
+  res.json({ ok: true });
 });
 
-/**
- * POST /api/admin/players/kick
- * Kick a player from the room by actor number. Plugin must be master client.
- * Body: { actor: number }
- */
 router.post('/players/kick', strictLimiter, async (req, res) => {
   const actor = parseInt(req.body.actor);
   if (!actor || isNaN(actor)) return res.status(400).json({ error: 'actor (number) is required' });
   try {
-    const ack = await sendCommandAwait({ cmd: 'kick_player', actor });
+    const ack = await rt.sendCommandAwait({ cmd: 'kick_player', actor });
     if (ack.status === 'timeout') return res.json({ ok: true, ack: 'timeout' });
     if (ack.status === 'error') return res.status(502).json({ error: ack.message || 'Plugin error' });
     res.json({ ok: true, ack: ack.status });
@@ -190,134 +144,83 @@ router.post('/players/kick', strictLimiter, async (req, res) => {
   }
 });
 
-/**
- * GET /api/admin/status
- * Returns whether the plugin is currently connected.
- */
-router.get('/status', (req, res) => {
-  const socket = getPluginSocket();
-  res.json({ plugin_connected: socket !== null && socket.readyState === 1 });
+router.get('/status', async (req, res) => {
+  res.json(await rt.getPluginStatus());
 });
 
-// ── User management ─────────────────────────────────────────────────────────
+// ── Chat (send via realtime) ────────────────────────────────────────────────
 
-/** GET /api/admin/users */
+router.post('/chat/send', async (req, res) => {
+  const { message = '' } = req.body;
+  const trimmed = message.trim();
+  if (!trimmed) return res.status(400).json({ error: 'message is required' });
+  if (trimmed.length > 500) return res.status(400).json({ error: 'message too long (max 500 chars)' });
+  const sent = await rt.sendCommand({ cmd: 'send_chat', message: trimmed });
+  if (!sent) return res.status(503).json({ error: 'Plugin not connected' });
+  res.json({ ok: true });
+});
+
+// ── User management (direct DB) ─────────────────────────────────────────────
+
 router.get('/users', async (req, res) => {
   res.json(await db.getUsers());
 });
 
-/** POST /api/admin/users  Body: { username, password } */
 router.post('/users', strictLimiter, async (req, res) => {
   const { username = '', password = '' } = req.body;
-  if (!username.trim() || !password) {
-    return res.status(400).json({ error: 'username and password are required' });
-  }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
+  if (!username.trim() || !password) return res.status(400).json({ error: 'username and password are required' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   try {
     const user = await db.createUser(username.trim(), hashPassword(password));
     res.status(201).json(user);
   } catch (err) {
-    if (err.message && err.message.includes('UNIQUE')) {
-      return res.status(409).json({ error: 'Username already exists' });
-    }
+    if (err.message && err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Username already exists' });
     throw err;
   }
 });
 
-/** DELETE /api/admin/users/:id */
 router.delete('/users/:id', async (req, res) => {
   const id = Number(req.params.id);
-  if (req.adminUser && req.adminUser.userId === id) {
-    return res.status(400).json({ error: 'Cannot delete your own account' });
-  }
+  if (req.adminUser && req.adminUser.userId === id) return res.status(400).json({ error: 'Cannot delete your own account' });
   destroyUserSessions(id);
   await db.deleteUser(id);
   res.json({ ok: true });
 });
 
-// ── Idle Kick Whitelist ──────────────────────────────────────────────────────
+// ── Idle Kick (via realtime) ────────────────────────────────────────────────
 
-const idleKick = require('../idleKick');
-
-/**
- * GET /api/admin/idle-kick/status
- * Returns idle times, warned actors, and whitelist for the admin dashboard.
- */
-router.get('/idle-kick/status', (req, res) => {
-  res.json(idleKick.getIdleInfo());
+router.get('/idle-kick/status', async (req, res) => {
+  res.json(await rt.getIdleKickStatus());
 });
 
-/**
- * GET /api/admin/idle-kick/whitelist
- * Returns the current idle-kick whitelist.
- */
-router.get('/idle-kick/whitelist', (req, res) => {
-  res.json({ whitelist: idleKick.getWhitelist() });
+router.get('/idle-kick/whitelist', async (req, res) => {
+  res.json(await rt.getIdleKickWhitelist());
 });
 
-/**
- * POST /api/admin/idle-kick/whitelist
- * Add a nick to the idle-kick whitelist.
- * Body: { nick }
- */
-router.post('/idle-kick/whitelist', (req, res) => {
+router.post('/idle-kick/whitelist', async (req, res) => {
   const { nick = '' } = req.body;
   if (!nick.trim()) return res.status(400).json({ error: 'nick is required' });
-  idleKick.addToWhitelist(nick.trim());
-  res.json({ ok: true, whitelist: idleKick.getWhitelist() });
+  res.json(await rt.addToIdleKickWhitelist(nick.trim()));
 });
 
-/**
- * DELETE /api/admin/idle-kick/whitelist
- * Remove a nick from the idle-kick whitelist.
- * Body: { nick }
- */
-router.delete('/idle-kick/whitelist', (req, res) => {
+router.delete('/idle-kick/whitelist', async (req, res) => {
   const { nick = '' } = req.body;
   if (!nick.trim()) return res.status(400).json({ error: 'nick is required' });
-  idleKick.removeFromWhitelist(nick.trim());
-  res.json({ ok: true, whitelist: idleKick.getWhitelist() });
+  res.json(await rt.removeFromIdleKickWhitelist(nick.trim()));
 });
 
-// ── Chat ────────────────────────────────────────────────────────────────────
+// ── Chat templates (direct DB) ──────────────────────────────────────────────
 
-/**
- * POST /api/admin/chat/send
- * Send an immediate chat message into the game.
- * Body: { message }
- */
-router.post('/chat/send', (req, res) => {
-  const { message = '' } = req.body;
-  const trimmed = message.trim();
-  if (!trimmed) return res.status(400).json({ error: 'message is required' });
-  if (trimmed.length > 500) return res.status(400).json({ error: 'message too long (max 500 chars)' });
-  pluginStatus(res, sendCommand({ cmd: 'send_chat', message: trimmed }));
-});
-
-/**
- * GET /api/admin/chat/templates
- */
 router.get('/chat/templates', async (req, res) => {
   res.json(await db.getChatTemplates());
 });
 
-/**
- * POST /api/admin/chat/templates
- * Body: { trigger, template, enabled, delay_ms }
- */
 router.post('/chat/templates', async (req, res) => {
   const { trigger, template, enabled = true, delay_ms = 0 } = req.body;
   if (!trigger || !template) return res.status(400).json({ error: 'trigger and template are required' });
-  const row = await db.createChatTemplate({ trigger, template, enabled, delay_ms });
-  res.status(201).json(row);
+  res.status(201).json(await db.createChatTemplate({ trigger, template, enabled, delay_ms }));
 });
 
-/**
- * PUT /api/admin/chat/templates/:id
- * Body: { trigger, template, enabled, delay_ms }
- */
 router.put('/chat/templates/:id', async (req, res) => {
   const { trigger, template, enabled = true, delay_ms = 0 } = req.body;
   if (!trigger || !template) return res.status(400).json({ error: 'trigger and template are required' });
@@ -326,22 +229,17 @@ router.put('/chat/templates/:id', async (req, res) => {
   res.json(row);
 });
 
-/**
- * DELETE /api/admin/chat/templates/:id
- */
 router.delete('/chat/templates/:id', async (req, res) => {
   await db.deleteChatTemplate(Number(req.params.id));
   res.json({ ok: true });
 });
 
-// ── Playlists ────────────────────────────────────────────────────────────────
+// ── Playlists (direct DB + realtime for start/stop/skip) ────────────────────
 
-/** GET /api/admin/playlists */
 router.get('/playlists', async (req, res) => {
   res.json(await db.getPlaylists());
 });
 
-/** POST /api/admin/playlists  Body: { name } */
 router.post('/playlists', async (req, res) => {
   const { name = '' } = req.body;
   if (!name.trim()) return res.status(400).json({ error: 'name is required' });
@@ -352,7 +250,6 @@ router.post('/playlists', async (req, res) => {
   }
 });
 
-/** PUT /api/admin/playlists/:id  Body: { name } */
 router.put('/playlists/:id', async (req, res) => {
   const { name = '' } = req.body;
   if (!name.trim()) return res.status(400).json({ error: 'name is required' });
@@ -361,36 +258,31 @@ router.put('/playlists/:id', async (req, res) => {
   res.json(row);
 });
 
-/** DELETE /api/admin/playlists/:id */
 router.delete('/playlists/:id', async (req, res) => {
   const id = Number(req.params.id);
-  if (playlist.getState().playlist_id === id && playlist.getState().running) {
-    playlist.stopPlaylist();
+  const plState = await rt.getPlaylistState();
+  if (plState.playlist_id === id && plState.running) {
+    await rt.stopPlaylist();
   }
   await db.deletePlaylist(id);
   res.json({ ok: true });
 });
 
-/** GET /api/admin/playlists/:id/tracks */
 router.get('/playlists/:id/tracks', async (req, res) => {
   res.json(await db.getPlaylistTracks(Number(req.params.id)));
 });
 
-/** POST /api/admin/playlists/:id/tracks  Body: { env, track, race, workshop_id } */
 router.post('/playlists/:id/tracks', async (req, res) => {
   const { env = '', track = '', race = '', workshop_id = '' } = req.body;
   if (!env && !track && !workshop_id) return res.status(400).json({ error: 'Provide env+track or workshop_id' });
-  const row = await db.addPlaylistTrack(Number(req.params.id), { env, track, race, workshop_id });
-  res.status(201).json(row);
+  res.status(201).json(await db.addPlaylistTrack(Number(req.params.id), { env, track, race, workshop_id }));
 });
 
-/** DELETE /api/admin/playlists/tracks/:tid */
 router.delete('/playlists/tracks/:tid', async (req, res) => {
   await db.removePlaylistTrack(Number(req.params.tid));
   res.json({ ok: true });
 });
 
-/** POST /api/admin/playlists/tracks/:tid/move  Body: { direction: 'up'|'down' } */
 router.post('/playlists/tracks/:tid/move', async (req, res) => {
   const { direction } = req.body;
   if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'direction must be up or down' });
@@ -398,69 +290,55 @@ router.post('/playlists/tracks/:tid/move', async (req, res) => {
   res.json({ ok: true });
 });
 
-/** POST /api/admin/playlists/:id/start  Body: { interval_ms, start_index } */
 router.post('/playlists/:id/start', strictLimiter, async (req, res) => {
   const intervalMs = Math.max(5000, Number(req.body.interval_ms) || 15 * 60 * 1000);
   const startIndex = Math.max(0, parseInt(req.body.start_index) || 0);
   try {
-    await playlist.startPlaylist(Number(req.params.id), intervalMs, startIndex);
-    res.json(playlist.getState());
+    res.json(await rt.startPlaylist(Number(req.params.id), intervalMs, startIndex));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-/** POST /api/admin/playlist/stop */
-router.post('/playlist/stop', (req, res) => {
-  playlist.stopPlaylist();
-  res.json({ ok: true });
+router.post('/playlist/stop', async (req, res) => {
+  res.json(await rt.stopPlaylist());
 });
 
-/** POST /api/admin/playlist/skip */
-router.post('/playlist/skip', (req, res) => {
-  playlist.skipToNext();
-  res.json(playlist.getState());
+router.post('/playlist/skip', async (req, res) => {
+  res.json(await rt.skipPlaylist());
 });
 
-/** GET /api/admin/playlist/state */
-router.get('/playlist/state', (req, res) => {
-  res.json(playlist.getState());
+router.get('/playlist/state', async (req, res) => {
+  res.json(await rt.getPlaylistState());
 });
 
-// ── Competition ─────────────────────────────────────────────────────────────
+// ── Competition (direct DB + realtime for runner) ───────────────────────────
 
-/** POST /api/admin/competition  Body: { name } */
 router.post('/competition', async (req, res) => {
   const { name = '' } = req.body;
   if (!name.trim()) return res.status(400).json({ error: 'name is required' });
   res.status(201).json(await db.createCompetition(name.trim()));
 });
 
-/** GET /api/admin/competitions */
 router.get('/competitions', async (req, res) => {
   res.json(await db.getCompetitions());
 });
 
-/** POST /api/admin/competition/:id/archive */
 router.post('/competition/:id/archive', async (req, res) => {
   await db.archiveCompetition(Number(req.params.id));
   res.json({ ok: true });
 });
 
-/** POST /api/admin/competition/:id/weeks  Body: { count, start_date } */
 router.post('/competition/:id/weeks', async (req, res) => {
   const { count = 4, start_date } = req.body;
   if (!start_date) return res.status(400).json({ error: 'start_date is required (ISO format)' });
-  const weeks = await db.generateWeeks(Number(req.params.id), Number(count), start_date);
-  res.status(201).json(weeks);
+  res.status(201).json(await db.generateWeeks(Number(req.params.id), Number(count), start_date));
 });
 
-/** GET /api/admin/competition/:id/weeks */
 router.get('/competition/:id/weeks', async (req, res) => {
   res.json(await db.getWeeks(Number(req.params.id)));
 });
 
-/** PUT /api/admin/competition/week/:id  Body: { status, starts_at, ends_at, week_number } */
 router.put('/competition/week/:id', async (req, res) => {
   const { status, starts_at, ends_at, week_number } = req.body;
   if (status && !['scheduled', 'active', 'finalised'].includes(status)) {
@@ -475,32 +353,26 @@ router.put('/competition/week/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-/** DELETE /api/admin/competition/week/:id */
 router.delete('/competition/week/:id', async (req, res) => {
   await db.deleteWeek(Number(req.params.id));
   res.json({ ok: true });
 });
 
-/** GET /api/admin/competition/week/:id/playlists */
 router.get('/competition/week/:id/playlists', async (req, res) => {
   res.json(await db.getWeekPlaylists(Number(req.params.id)));
 });
 
-/** POST /api/admin/competition/week/:id/playlists  Body: { playlist_id, interval_ms } */
 router.post('/competition/week/:id/playlists', async (req, res) => {
   const { playlist_id, interval_ms = 900000 } = req.body;
   if (!playlist_id) return res.status(400).json({ error: 'playlist_id is required' });
-  const row = await db.addWeekPlaylist(Number(req.params.id), Number(playlist_id), Number(interval_ms));
-  res.status(201).json(row);
+  res.status(201).json(await db.addWeekPlaylist(Number(req.params.id), Number(playlist_id), Number(interval_ms)));
 });
 
-/** DELETE /api/admin/competition/week/:weekId/playlists/:wpId */
 router.delete('/competition/week/:weekId/playlists/:wpId', async (req, res) => {
   await db.removeWeekPlaylist(Number(req.params.wpId));
   res.json({ ok: true });
 });
 
-/** POST /api/admin/competition/week/:weekId/playlists/:wpId/move  Body: { direction } */
 router.post('/competition/week/:weekId/playlists/:wpId/move', async (req, res) => {
   const { direction } = req.body;
   if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'direction must be up or down' });
@@ -508,26 +380,20 @@ router.post('/competition/week/:weekId/playlists/:wpId/move', async (req, res) =
   res.json({ ok: true });
 });
 
-/** POST /api/admin/competition/recalculate/:weekId */
 router.post('/competition/recalculate/:weekId', strictLimiter, async (req, res) => {
   try {
-    const result = await recalculateWeek(Number(req.params.weekId));
-    res.json(result);
+    res.json(await recalculateWeek(Number(req.params.weekId)));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-/** GET /api/admin/competition/runner/state */
-router.get('/competition/runner/state', (req, res) => {
-  res.json(competitionRunner.getState());
+router.get('/competition/runner/state', async (req, res) => {
+  res.json(await rt.getCompetitionRunnerState());
 });
 
-/** POST /api/admin/competition/runner/auto  Body: { enabled } */
 router.post('/competition/runner/auto', async (req, res) => {
-  const { enabled } = req.body;
-  await competitionRunner.setAutoManaged(!!enabled);
-  res.json(competitionRunner.getState());
+  res.json(await rt.setCompetitionAutoManaged(!!req.body.enabled));
 });
 
 module.exports = router;

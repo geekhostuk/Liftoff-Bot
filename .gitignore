@@ -1,6 +1,9 @@
 # Node.js
 node_modules/
 
+# Vite build output
+dist/
+
 # .NET build output
 bin/
 obj/

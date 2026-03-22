@@ -66,12 +66,12 @@ function createLiveSocketServer(httpServer) {
 
   // ── Public /ws/live — limited snapshot, no sensitive fields ────────────────
 
-  publicWss.on('connection', (ws) => {
+  publicWss.on('connection', async (ws) => {
     console.log('[live] Public client connected');
 
     try {
       const trackSince = getCurrentTrackSince();
-      const race = db.getLatestRaceWithLaps(trackSince);
+      const race = await db.getLatestRaceWithLaps(trackSince);
       const players = getOnlinePlayers().map(({ actor, nick }) => ({ actor, nick }));
       ws.send(JSON.stringify({
         event_type: 'state_snapshot',
@@ -90,11 +90,11 @@ function createLiveSocketServer(httpServer) {
 
   // ── Admin /ws/admin — full snapshot, all events ───────────────────────────
 
-  adminWss.on('connection', (ws) => {
+  adminWss.on('connection', async (ws) => {
     console.log('[admin-ws] Admin client connected');
 
     try {
-      const race = db.getLatestRaceWithLaps();
+      const race = await db.getLatestRaceWithLaps();
       ws.send(JSON.stringify({
         event_type: 'state_snapshot',
         race,
