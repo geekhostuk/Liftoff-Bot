@@ -91,7 +91,6 @@ services:
       - api
       - realtime
       - public-web
-      - public-v2-web
       - admin-web
 
 networks:
