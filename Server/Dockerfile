@@ -10,9 +10,6 @@ RUN npm ci --only=production
 COPY Server/src/ ./src/
 COPY contracts/ ./contracts/
 
-# Data directory for the SQLite database volume
-RUN mkdir -p /app/data
-
 EXPOSE 3000
 
 # Default CMD — override in docker-compose per service

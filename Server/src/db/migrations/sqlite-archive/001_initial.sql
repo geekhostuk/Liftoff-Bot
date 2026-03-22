@@ -1,10 +1,8 @@
 -- Initial schema: core tables for sessions, races, laps, track catalog
 
-CREATE EXTENSION IF NOT EXISTS citext;
-
 CREATE TABLE IF NOT EXISTS sessions (
   id          TEXT PRIMARY KEY,
-  started_at  TIMESTAMPTZ NOT NULL,
+  started_at  TEXT NOT NULL,
   plugin_ver  TEXT
 );
 
@@ -12,8 +10,8 @@ CREATE TABLE IF NOT EXISTS races (
   id              TEXT PRIMARY KEY,
   session_id      TEXT NOT NULL,
   ordinal         INTEGER NOT NULL,
-  started_at      TIMESTAMPTZ NOT NULL,
-  ended_at        TIMESTAMPTZ,
+  started_at      TEXT NOT NULL,
+  ended_at        TEXT,
   winner_actor    INTEGER,
   winner_nick     TEXT,
   winner_total_ms INTEGER,
@@ -25,7 +23,7 @@ CREATE TABLE IF NOT EXISTS races (
 );
 
 CREATE TABLE IF NOT EXISTS laps (
-  id          SERIAL PRIMARY KEY,
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
   race_id     TEXT NOT NULL,
   session_id  TEXT NOT NULL,
   actor       INTEGER NOT NULL,
@@ -34,19 +32,19 @@ CREATE TABLE IF NOT EXISTS laps (
   steam_id    TEXT,
   lap_number  INTEGER NOT NULL,
   lap_ms      INTEGER NOT NULL,
-  recorded_at TIMESTAMPTZ NOT NULL,
+  recorded_at TEXT NOT NULL,
   FOREIGN KEY (race_id) REFERENCES races(id)
 );
 
 CREATE TABLE IF NOT EXISTS track_catalog (
-  id           SERIAL PRIMARY KEY,
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id   TEXT NOT NULL,
-  recorded_at  TIMESTAMPTZ NOT NULL,
+  recorded_at  TEXT NOT NULL,
   catalog_json TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS chat_templates (
-  id        SERIAL PRIMARY KEY,
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
   trigger   TEXT NOT NULL,
   template  TEXT NOT NULL,
   enabled   INTEGER NOT NULL DEFAULT 1,
@@ -54,13 +52,13 @@ CREATE TABLE IF NOT EXISTS chat_templates (
 );
 
 CREATE TABLE IF NOT EXISTS playlists (
-  id         SERIAL PRIMARY KEY,
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL UNIQUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS playlist_tracks (
-  id          SERIAL PRIMARY KEY,
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
   playlist_id INTEGER NOT NULL,
   position    INTEGER NOT NULL,
   env         TEXT NOT NULL DEFAULT '',
@@ -71,11 +69,11 @@ CREATE TABLE IF NOT EXISTS playlist_tracks (
 );
 
 CREATE TABLE IF NOT EXISTS admin_users (
-  id            SERIAL PRIMARY KEY,
-  username      CITEXT NOT NULL UNIQUE,
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'admin',
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Indexes for core tables

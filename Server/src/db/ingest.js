@@ -1,4 +1,4 @@
-const { getDb } = require('./connection');
+const { getPool } = require('./connection');
 
 // Lazy-loaded to avoid circular dependency (scoring → database → ingest → scoring)
 let _processRaceClose = null;
@@ -8,59 +8,56 @@ function getProcessRaceClose() {
 }
 
 async function handleSessionStarted(event) {
-  const db = getDb();
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO sessions (id, started_at, plugin_ver)
-    VALUES (@id, @started_at, @plugin_ver)
-  `);
-  stmt.run({
-    id: event.session_id,
-    started_at: event.timestamp_utc,
-    plugin_ver: event.version || null,
-  });
+  await getPool().query(`
+    INSERT INTO sessions (id, started_at, plugin_ver)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (id) DO NOTHING
+  `, [event.session_id, event.timestamp_utc, event.version || null]);
 }
 
 async function handleRaceReset(event, currentTrack = {}) {
-  const db = getDb();
+  const pool = getPool();
 
   // Close any open races for this session and populate results from laps
-  const openRaces = db.prepare(`
+  const { rows: openRaces } = await pool.query(`
     SELECT id FROM races
-    WHERE session_id = @session_id AND ended_at IS NULL AND id != @id
-  `).all({
-    session_id: event.session_id,
-    id: event.race_id,
-  });
+    WHERE session_id = $1 AND ended_at IS NULL AND id != $2
+  `, [event.session_id, event.race_id]);
 
   for (const race of openRaces) {
-    const participants = db.prepare(`
-      SELECT COUNT(DISTINCT actor) AS cnt FROM laps WHERE race_id = ?
-    `).get(race.id)?.cnt || 0;
+    const { rows: [{ cnt }] } = await pool.query(`
+      SELECT COUNT(DISTINCT actor) AS cnt FROM laps WHERE race_id = $1
+    `, [race.id]);
+    const participants = parseInt(cnt, 10) || 0;
 
-    const winner = participants > 0 ? db.prepare(`
-      SELECT actor, nick, MIN(lap_ms) AS best_ms
-      FROM laps WHERE race_id = ?
-      GROUP BY actor ORDER BY best_ms ASC LIMIT 1
-    `).get(race.id) : null;
+    let winner = null;
+    if (participants > 0) {
+      const { rows: [w] } = await pool.query(`
+        SELECT actor, nick, MIN(lap_ms) AS best_ms
+        FROM laps WHERE race_id = $1
+        GROUP BY actor, nick ORDER BY best_ms ASC LIMIT 1
+      `, [race.id]);
+      winner = w;
+    }
 
-    db.prepare(`
+    await pool.query(`
       UPDATE races
-      SET ended_at        = @ended_at,
-          winner_actor    = COALESCE(winner_actor, @winner_actor),
-          winner_nick     = COALESCE(winner_nick, @winner_nick),
-          winner_total_ms = COALESCE(winner_total_ms, @winner_total_ms),
-          participants    = CASE WHEN participants > 0 THEN participants ELSE @participants END,
-          completed       = CASE WHEN completed > 0 THEN completed ELSE @completed END
-      WHERE id = @id
-    `).run({
-      id: race.id,
-      ended_at: event.timestamp_utc,
-      winner_actor: winner?.actor ?? null,
-      winner_nick: winner?.nick ?? null,
-      winner_total_ms: winner?.best_ms ?? null,
+      SET ended_at        = $1,
+          winner_actor    = COALESCE(winner_actor, $2),
+          winner_nick     = COALESCE(winner_nick, $3),
+          winner_total_ms = COALESCE(winner_total_ms, $4),
+          participants    = CASE WHEN participants > 0 THEN participants ELSE $5 END,
+          completed       = CASE WHEN completed > 0 THEN completed ELSE $6 END
+      WHERE id = $7
+    `, [
+      event.timestamp_utc,
+      winner?.actor ?? null,
+      winner?.nick ?? null,
+      winner?.best_ms ?? null,
       participants,
-      completed: participants,
-    });
+      participants,
+      race.id,
+    ]);
 
     // Competition scoring — award points for this race if a competition week is active
     try { await getProcessRaceClose()(race.id); } catch (err) {
@@ -68,67 +65,65 @@ async function handleRaceReset(event, currentTrack = {}) {
     }
   }
 
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO races (id, session_id, ordinal, started_at, env, track)
-    VALUES (@id, @session_id, @ordinal, @started_at, @env, @track)
-  `);
-  stmt.run({
-    id: event.race_id,
-    session_id: event.session_id,
-    ordinal: event.race_ordinal,
-    started_at: event.timestamp_utc,
-    env: currentTrack.env || null,
-    track: currentTrack.track || null,
-  });
+  await pool.query(`
+    INSERT INTO races (id, session_id, ordinal, started_at, env, track)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (id) DO NOTHING
+  `, [
+    event.race_id,
+    event.session_id,
+    event.race_ordinal,
+    event.timestamp_utc,
+    currentTrack.env || null,
+    currentTrack.track || null,
+  ]);
 }
 
 async function handleLapRecorded(event, currentTrack = {}) {
-  const db = getDb();
-  ensureRaceExists(event);
+  const pool = getPool();
+  await ensureRaceExists(event);
   if (currentTrack.env && currentTrack.track) {
-    db.prepare(`
-      UPDATE races SET env = ?, track = ? WHERE id = ? AND env IS NULL
-    `).run(currentTrack.env, currentTrack.track, event.race_id);
+    await pool.query(`
+      UPDATE races SET env = $1, track = $2 WHERE id = $3 AND env IS NULL
+    `, [currentTrack.env, currentTrack.track, event.race_id]);
   }
-  const stmt = db.prepare(`
+  await pool.query(`
     INSERT INTO laps (race_id, session_id, actor, nick, pilot_guid, steam_id, lap_number, lap_ms, recorded_at)
-    VALUES (@race_id, @session_id, @actor, @nick, @pilot_guid, @steam_id, @lap_number, @lap_ms, @recorded_at)
-  `);
-  stmt.run({
-    race_id: event.race_id,
-    session_id: event.session_id,
-    actor: event.actor,
-    nick: event.nick || null,
-    pilot_guid: event.pilot_guid || null,
-    steam_id: event.steam_id || null,
-    lap_number: event.lap_number,
-    lap_ms: event.lap_ms,
-    recorded_at: event.timestamp_utc,
-  });
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  `, [
+    event.race_id,
+    event.session_id,
+    event.actor,
+    event.nick || null,
+    event.pilot_guid || null,
+    event.steam_id || null,
+    event.lap_number,
+    event.lap_ms,
+    event.timestamp_utc,
+  ]);
 }
 
 async function handleRaceEnd(event) {
-  const db = getDb();
-  ensureRaceExists(event);
-  const stmt = db.prepare(`
+  const pool = getPool();
+  await ensureRaceExists(event);
+  await pool.query(`
     UPDATE races
-    SET ended_at        = @ended_at,
-        winner_actor    = @winner_actor,
-        winner_nick     = @winner_nick,
-        winner_total_ms = @winner_total_ms,
-        participants    = @participants,
-        completed       = @completed
-    WHERE id = @id
-  `);
-  stmt.run({
-    id: event.race_id,
-    ended_at: event.timestamp_utc,
-    winner_actor: event.winner_actor || null,
-    winner_nick: event.winner_nick || null,
-    winner_total_ms: event.winner_total_ms || null,
-    participants: event.participants || 0,
-    completed: event.completed || 0,
-  });
+    SET ended_at        = $1,
+        winner_actor    = $2,
+        winner_nick     = $3,
+        winner_total_ms = $4,
+        participants    = $5,
+        completed       = $6
+    WHERE id = $7
+  `, [
+    event.timestamp_utc,
+    event.winner_actor || null,
+    event.winner_nick || null,
+    event.winner_total_ms || null,
+    event.participants || 0,
+    event.completed || 0,
+    event.race_id,
+  ]);
 
   // Competition scoring — race_end fires before race_reset, so this is the
   // reliable place to score a completed race. hasRaceResults() inside
@@ -139,38 +134,25 @@ async function handleRaceEnd(event) {
 }
 
 async function handleTrackCatalog(event) {
-  const db = getDb();
-  const stmt = db.prepare(`
+  await getPool().query(`
     INSERT INTO track_catalog (session_id, recorded_at, catalog_json)
-    VALUES (@session_id, @recorded_at, @catalog_json)
-  `);
-  stmt.run({
-    session_id: event.session_id,
-    recorded_at: event.timestamp_utc,
-    catalog_json: JSON.stringify(event),
-  });
+    VALUES ($1, $2, $3)
+  `, [event.session_id, event.timestamp_utc, JSON.stringify(event)]);
 }
 
-function ensureRaceExists(event) {
-  const db = getDb();
-  db.prepare(`
-    INSERT OR IGNORE INTO sessions (id, started_at, plugin_ver)
-    VALUES (@id, @started_at, @plugin_ver)
-  `).run({
-    id: event.session_id,
-    started_at: event.timestamp_utc,
-    plugin_ver: event.version || null,
-  });
+async function ensureRaceExists(event) {
+  const pool = getPool();
+  await pool.query(`
+    INSERT INTO sessions (id, started_at, plugin_ver)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (id) DO NOTHING
+  `, [event.session_id, event.timestamp_utc, event.version || null]);
 
-  db.prepare(`
-    INSERT OR IGNORE INTO races (id, session_id, ordinal, started_at)
-    VALUES (@id, @session_id, @ordinal, @started_at)
-  `).run({
-    id: event.race_id,
-    session_id: event.session_id,
-    ordinal: event.race_ordinal || 0,
-    started_at: event.timestamp_utc,
-  });
+  await pool.query(`
+    INSERT INTO races (id, session_id, ordinal, started_at)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (id) DO NOTHING
+  `, [event.race_id, event.session_id, event.race_ordinal || 0, event.timestamp_utc]);
 }
 
 module.exports = {

@@ -1,39 +1,41 @@
-const { getDb } = require('./connection');
+const { getPool } = require('./connection');
 
 // ── Competitions ────────────────────────────────────────────────────────────
 
 async function createCompetition(name) {
-  const db = getDb();
-  const result = db.prepare(
-    "INSERT INTO competitions (name, created_at) VALUES (?, datetime('now'))"
-  ).run(name);
-  return db.prepare('SELECT * FROM competitions WHERE id = ?').get(result.lastInsertRowid);
+  const { rows: [row] } = await getPool().query(`
+    INSERT INTO competitions (name, created_at) VALUES ($1, NOW())
+    RETURNING *
+  `, [name]);
+  return row;
 }
 
 async function getCompetitions() {
-  return getDb().prepare('SELECT * FROM competitions ORDER BY id DESC').all();
+  const { rows } = await getPool().query('SELECT * FROM competitions ORDER BY id DESC');
+  return rows;
 }
 
 async function getActiveCompetition() {
-  return getDb().prepare("SELECT * FROM competitions WHERE status = 'active' ORDER BY id DESC LIMIT 1").get() || null;
+  const { rows: [row] } = await getPool().query("SELECT * FROM competitions WHERE status = 'active' ORDER BY id DESC LIMIT 1");
+  return row || null;
 }
 
 async function archiveCompetition(id) {
-  getDb().prepare("UPDATE competitions SET status = 'archived' WHERE id = ?").run(id);
+  await getPool().query("UPDATE competitions SET status = 'archived' WHERE id = $1", [id]);
 }
 
 // ── Competition Weeks ───────────────────────────────────────────────────────
 
 async function createWeek(competitionId, weekNumber, startsAt, endsAt) {
-  const db = getDb();
-  const result = db.prepare(
-    'INSERT INTO competition_weeks (competition_id, week_number, starts_at, ends_at) VALUES (?, ?, ?, ?)'
-  ).run(competitionId, weekNumber, startsAt, endsAt);
-  return db.prepare('SELECT * FROM competition_weeks WHERE id = ?').get(result.lastInsertRowid);
+  const { rows: [row] } = await getPool().query(`
+    INSERT INTO competition_weeks (competition_id, week_number, starts_at, ends_at)
+    VALUES ($1, $2, $3, $4)
+    RETURNING *
+  `, [competitionId, weekNumber, startsAt, endsAt]);
+  return row;
 }
 
 async function generateWeeks(competitionId, count, startDate) {
-  const db = getDb();
   const weeks = [];
   const start = new Date(startDate);
   // Align to the Monday of the week containing the chosen date
@@ -61,162 +63,181 @@ async function generateWeeks(competitionId, count, startDate) {
 }
 
 async function getWeeks(competitionId) {
-  const db = getDb();
-  const rows = db.prepare(
-    'SELECT * FROM competition_weeks WHERE competition_id = ? ORDER BY week_number'
-  ).all(competitionId);
+  const pool = getPool();
+  const { rows } = await pool.query(
+    'SELECT * FROM competition_weeks WHERE competition_id = $1 ORDER BY week_number', [competitionId]
+  );
   for (const w of rows) {
-    w.playlist_count = db.prepare(
-      'SELECT COUNT(*) AS n FROM week_playlists WHERE week_id = ?'
-    ).get(w.id).n;
+    const { rows: [{ n }] } = await pool.query(
+      'SELECT COUNT(*) AS n FROM week_playlists WHERE week_id = $1', [w.id]
+    );
+    w.playlist_count = parseInt(n, 10);
   }
   return rows;
 }
 
 async function getWeekById(id) {
-  return getDb().prepare('SELECT * FROM competition_weeks WHERE id = ?').get(id) || null;
+  const { rows: [row] } = await getPool().query('SELECT * FROM competition_weeks WHERE id = $1', [id]);
+  return row || null;
 }
 
 async function getActiveWeek() {
-  return getDb().prepare(`
+  const { rows: [row] } = await getPool().query(`
     SELECT cw.*, c.name AS competition_name
     FROM competition_weeks cw
     JOIN competitions c ON c.id = cw.competition_id
     WHERE cw.status = 'active' AND c.status = 'active'
     ORDER BY cw.id DESC LIMIT 1
-  `).get() || null;
+  `);
+  return row || null;
 }
 
 async function getNextScheduledWeek() {
   const now = new Date().toISOString();
-  return getDb().prepare(`
+  const { rows: [row] } = await getPool().query(`
     SELECT cw.*, c.name AS competition_name
     FROM competition_weeks cw
     JOIN competitions c ON c.id = cw.competition_id
     WHERE cw.status = 'scheduled' AND c.status = 'active'
-      AND cw.starts_at <= ?
+      AND cw.starts_at <= $1
     ORDER BY cw.starts_at ASC LIMIT 1
-  `).get(now) || null;
+  `, [now]);
+  return row || null;
 }
 
 async function getOverdueActiveWeek() {
   const now = new Date().toISOString();
-  return getDb().prepare(`
+  const { rows: [row] } = await getPool().query(`
     SELECT cw.*, c.name AS competition_name
     FROM competition_weeks cw
     JOIN competitions c ON c.id = cw.competition_id
     WHERE cw.status = 'active' AND c.status = 'active'
-      AND cw.ends_at < ?
+      AND cw.ends_at < $1
     ORDER BY cw.ends_at ASC LIMIT 1
-  `).get(now) || null;
+  `, [now]);
+  return row || null;
 }
 
 async function updateWeekStatus(id, status) {
-  getDb().prepare('UPDATE competition_weeks SET status = ? WHERE id = ?').run(status, id);
+  await getPool().query('UPDATE competition_weeks SET status = $1 WHERE id = $2', [status, id]);
 }
 
 async function updateWeek(id, fields) {
-  const db = getDb();
   const sets = [];
   const values = [];
-  if (fields.starts_at !== undefined) { sets.push('starts_at = ?'); values.push(fields.starts_at); }
-  if (fields.ends_at !== undefined) { sets.push('ends_at = ?'); values.push(fields.ends_at); }
-  if (fields.status !== undefined) { sets.push('status = ?'); values.push(fields.status); }
-  if (fields.week_number !== undefined) { sets.push('week_number = ?'); values.push(fields.week_number); }
+  let n = 1;
+  if (fields.starts_at !== undefined) { sets.push(`starts_at = $${n++}`); values.push(fields.starts_at); }
+  if (fields.ends_at !== undefined) { sets.push(`ends_at = $${n++}`); values.push(fields.ends_at); }
+  if (fields.status !== undefined) { sets.push(`status = $${n++}`); values.push(fields.status); }
+  if (fields.week_number !== undefined) { sets.push(`week_number = $${n++}`); values.push(fields.week_number); }
   if (sets.length === 0) return;
   values.push(id);
-  db.prepare(`UPDATE competition_weeks SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  await getPool().query(`UPDATE competition_weeks SET ${sets.join(', ')} WHERE id = $${n}`, values);
 }
 
 async function deleteWeek(id) {
-  const db = getDb();
-  db.prepare('DELETE FROM weekly_standings WHERE week_id = ?').run(id);
-  db.prepare('DELETE FROM weekly_points WHERE week_id = ?').run(id);
-  db.prepare('DELETE FROM race_results WHERE week_id = ?').run(id);
-  db.prepare('DELETE FROM week_playlists WHERE week_id = ?').run(id);
-  db.prepare('DELETE FROM competition_weeks WHERE id = ?').run(id);
+  const pool = getPool();
+  await pool.query('DELETE FROM weekly_standings WHERE week_id = $1', [id]);
+  await pool.query('DELETE FROM weekly_points WHERE week_id = $1', [id]);
+  await pool.query('DELETE FROM race_results WHERE week_id = $1', [id]);
+  await pool.query('DELETE FROM week_playlists WHERE week_id = $1', [id]);
+  await pool.query('DELETE FROM competition_weeks WHERE id = $1', [id]);
 }
 
 async function getCurrentWeekInfo() {
-  const db = getDb();
+  const pool = getPool();
   const active = await getActiveWeek();
   if (!active) return null;
-  const comp = db.prepare('SELECT * FROM competitions WHERE id = ?').get(active.competition_id);
+  const { rows: [comp] } = await pool.query('SELECT * FROM competitions WHERE id = $1', [active.competition_id]);
   return { competition: comp, week: active };
 }
 
 // ── Week Playlists ──────────────────────────────────────────────────────────
 
 async function getWeekPlaylists(weekId) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT wp.*, p.name AS playlist_name
     FROM week_playlists wp
     JOIN playlists p ON p.id = wp.playlist_id
-    WHERE wp.week_id = ?
+    WHERE wp.week_id = $1
     ORDER BY wp.position
-  `).all(weekId);
+  `, [weekId]);
+  return rows;
 }
 
 async function addWeekPlaylist(weekId, playlistId, intervalMs = 900000) {
-  const db = getDb();
-  const maxPos = db.prepare(
-    'SELECT COALESCE(MAX(position), -1) AS m FROM week_playlists WHERE week_id = ?'
-  ).get(weekId).m;
-  const result = db.prepare(
-    'INSERT INTO week_playlists (week_id, playlist_id, position, interval_ms) VALUES (?, ?, ?, ?)'
-  ).run(weekId, playlistId, maxPos + 1, intervalMs);
-  return db.prepare('SELECT * FROM week_playlists WHERE id = ?').get(result.lastInsertRowid);
+  const pool = getPool();
+  const { rows: [{ m }] } = await pool.query(
+    'SELECT COALESCE(MAX(position), -1) AS m FROM week_playlists WHERE week_id = $1', [weekId]
+  );
+  const { rows: [row] } = await pool.query(`
+    INSERT INTO week_playlists (week_id, playlist_id, position, interval_ms)
+    VALUES ($1, $2, $3, $4)
+    RETURNING *
+  `, [weekId, playlistId, parseInt(m, 10) + 1, intervalMs]);
+  return row;
 }
 
 async function removeWeekPlaylist(wpId) {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM week_playlists WHERE id = ?').get(wpId);
+  const pool = getPool();
+  const { rows: [row] } = await pool.query('SELECT * FROM week_playlists WHERE id = $1', [wpId]);
   if (!row) return;
-  db.prepare('DELETE FROM week_playlists WHERE id = ?').run(wpId);
-  const remaining = db.prepare(
-    'SELECT id FROM week_playlists WHERE week_id = ? ORDER BY position'
-  ).all(row.week_id);
-  const update = db.prepare('UPDATE week_playlists SET position = ? WHERE id = ?');
-  remaining.forEach((r, i) => update.run(i, r.id));
+  await pool.query('DELETE FROM week_playlists WHERE id = $1', [wpId]);
+  const { rows: remaining } = await pool.query(
+    'SELECT id FROM week_playlists WHERE week_id = $1 ORDER BY position', [row.week_id]
+  );
+  for (let i = 0; i < remaining.length; i++) {
+    await pool.query('UPDATE week_playlists SET position = $1 WHERE id = $2', [i, remaining[i].id]);
+  }
 }
 
 async function moveWeekPlaylist(wpId, direction) {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM week_playlists WHERE id = ?').get(wpId);
+  const pool = getPool();
+  const { rows: [row] } = await pool.query('SELECT * FROM week_playlists WHERE id = $1', [wpId]);
   if (!row) return;
-  const items = db.prepare(
-    'SELECT * FROM week_playlists WHERE week_id = ? ORDER BY position'
-  ).all(row.week_id);
+  const { rows: items } = await pool.query(
+    'SELECT * FROM week_playlists WHERE week_id = $1 ORDER BY position', [row.week_id]
+  );
   const idx = items.findIndex(r => r.id === wpId);
   const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
   if (swapIdx < 0 || swapIdx >= items.length) return;
   const a = items[idx], b = items[swapIdx];
-  db.prepare('UPDATE week_playlists SET position = ? WHERE id = ?').run(b.position, a.id);
-  db.prepare('UPDATE week_playlists SET position = ? WHERE id = ?').run(a.position, b.id);
+  await pool.query('UPDATE week_playlists SET position = $1 WHERE id = $2', [b.position, a.id]);
+  await pool.query('UPDATE week_playlists SET position = $1 WHERE id = $2', [a.position, b.id]);
 }
 
 // ── Race Results ────────────────────────────────────────────────────────────
 
 async function insertRaceResult(raceId, pilotKey, displayName, position, bestLapMs, totalLaps, avgLapMs, weekId) {
-  getDb().prepare(`
-    INSERT OR REPLACE INTO race_results (race_id, pilot_key, display_name, position, best_lap_ms, total_laps, avg_lap_ms, week_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(raceId, pilotKey, displayName, position, bestLapMs, totalLaps, avgLapMs, weekId);
+  await getPool().query(`
+    INSERT INTO race_results (race_id, pilot_key, display_name, position, best_lap_ms, total_laps, avg_lap_ms, week_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    ON CONFLICT (race_id, pilot_key) DO UPDATE SET
+      display_name = EXCLUDED.display_name,
+      position = EXCLUDED.position,
+      best_lap_ms = EXCLUDED.best_lap_ms,
+      total_laps = EXCLUDED.total_laps,
+      avg_lap_ms = EXCLUDED.avg_lap_ms,
+      week_id = EXCLUDED.week_id
+  `, [raceId, pilotKey, displayName, position, bestLapMs, totalLaps, avgLapMs, weekId]);
 }
 
 async function getRaceResults(raceId) {
-  return getDb().prepare(
-    'SELECT * FROM race_results WHERE race_id = ? ORDER BY position'
-  ).all(raceId);
+  const { rows } = await getPool().query(
+    'SELECT * FROM race_results WHERE race_id = $1 ORDER BY position', [raceId]
+  );
+  return rows;
 }
 
 async function getRaceResultsWithPoints(raceId) {
-  const db = getDb();
+  const pool = getPool();
   const results = await getRaceResults(raceId);
   for (const r of results) {
-    r.points = db.prepare(
-      'SELECT category, points, detail FROM weekly_points WHERE week_id = ? AND pilot_key = ? AND detail LIKE ?'
-    ).all(r.week_id, r.pilot_key, `%${raceId}%`);
+    const { rows } = await pool.query(
+      'SELECT category, points, detail FROM weekly_points WHERE week_id = $1 AND pilot_key = $2 AND detail LIKE $3',
+      [r.week_id, r.pilot_key, `%${raceId}%`]
+    );
+    r.points = rows;
   }
   return results;
 }
@@ -224,36 +245,38 @@ async function getRaceResultsWithPoints(raceId) {
 // ── Points ──────────────────────────────────────────────────────────────────
 
 async function awardPoints(weekId, pilotKey, category, points, detail = null) {
-  getDb().prepare(`
+  await getPool().query(`
     INSERT INTO weekly_points (week_id, pilot_key, category, points, detail)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(weekId, pilotKey, category, points, detail ? JSON.stringify(detail) : null);
+    VALUES ($1, $2, $3, $4, $5)
+  `, [weekId, pilotKey, category, points, detail ? JSON.stringify(detail) : null]);
 }
 
 async function getWeeklyPointsForPilot(weekId, pilotKey) {
-  return getDb().prepare(
-    'SELECT * FROM weekly_points WHERE week_id = ? AND pilot_key = ? ORDER BY awarded_at'
-  ).all(weekId, pilotKey);
+  const { rows } = await getPool().query(
+    'SELECT * FROM weekly_points WHERE week_id = $1 AND pilot_key = $2 ORDER BY awarded_at', [weekId, pilotKey]
+  );
+  return rows;
 }
 
 async function getPointsByCategory(weekId) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT pilot_key, category, SUM(points) AS total
-    FROM weekly_points WHERE week_id = ?
+    FROM weekly_points WHERE week_id = $1
     GROUP BY pilot_key, category
     ORDER BY total DESC
-  `).all(weekId);
+  `, [weekId]);
+  return rows;
 }
 
 // ── Standings ───────────────────────────────────────────────────────────────
 
 async function refreshWeeklyStandings(weekId) {
-  const db = getDb();
+  const pool = getPool();
   const week = await getWeekById(weekId);
   if (!week) return;
 
   // Aggregate points by pilot and category
-  const pilots = db.prepare(`
+  const { rows: pilots } = await pool.query(`
     SELECT pilot_key,
       SUM(points) AS total_points,
       SUM(CASE WHEN category = 'race_position' THEN points ELSE 0 END) AS position_points,
@@ -263,56 +286,53 @@ async function refreshWeeklyStandings(weekId) {
       SUM(CASE WHEN category = 'participation' THEN points ELSE 0 END) AS participation_points,
       SUM(CASE WHEN category = 'hot_streak' THEN points ELSE 0 END) AS streak_points
     FROM weekly_points
-    WHERE week_id = ?
+    WHERE week_id = $1
     GROUP BY pilot_key
     ORDER BY total_points DESC
-  `).all(weekId);
+  `, [weekId]);
 
   // Get display names from most recent race_results
   const nameMap = {};
-  const names = db.prepare(`
+  const { rows: names } = await pool.query(`
     SELECT pilot_key, display_name FROM race_results
-    WHERE week_id = ? AND display_name IS NOT NULL
+    WHERE week_id = $1 AND display_name IS NOT NULL
     ORDER BY id DESC
-  `).all(weekId);
+  `, [weekId]);
   for (const n of names) {
     if (!nameMap[n.pilot_key]) nameMap[n.pilot_key] = n.display_name;
   }
 
-  // Also check weekly_points detail for display names from batch awards
-  // (participation/improvement pilots might not have race_results yet)
-
   // Clear and rebuild standings
-  db.prepare('DELETE FROM weekly_standings WHERE week_id = ?').run(weekId);
+  await pool.query('DELETE FROM weekly_standings WHERE week_id = $1', [weekId]);
 
-  const insert = db.prepare(`
-    INSERT INTO weekly_standings
-      (week_id, competition_id, pilot_key, display_name, total_points,
-       position_points, laps_points, improved_points, consistency_points,
-       participation_points, streak_points, rank, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-  `);
-
-  pilots.forEach((p, i) => {
-    insert.run(
+  for (let i = 0; i < pilots.length; i++) {
+    const p = pilots[i];
+    await pool.query(`
+      INSERT INTO weekly_standings
+        (week_id, competition_id, pilot_key, display_name, total_points,
+         position_points, laps_points, improved_points, consistency_points,
+         participation_points, streak_points, rank, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+    `, [
       weekId, week.competition_id, p.pilot_key,
       nameMap[p.pilot_key] || p.pilot_key,
       p.total_points, p.position_points, p.laps_points,
       p.improved_points, p.consistency_points,
       p.participation_points, p.streak_points,
-      i + 1
-    );
-  });
+      i + 1,
+    ]);
+  }
 }
 
 async function getWeeklyStandings(weekId) {
-  return getDb().prepare(
-    'SELECT * FROM weekly_standings WHERE week_id = ? ORDER BY rank ASC'
-  ).all(weekId);
+  const { rows } = await getPool().query(
+    'SELECT * FROM weekly_standings WHERE week_id = $1 ORDER BY rank ASC', [weekId]
+  );
+  return rows;
 }
 
 async function getSeasonStandings(competitionId) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT pilot_key, display_name,
       SUM(total_points) AS total_points,
       SUM(position_points) AS position_points,
@@ -323,31 +343,32 @@ async function getSeasonStandings(competitionId) {
       SUM(streak_points) AS streak_points,
       COUNT(DISTINCT week_id) AS weeks_active
     FROM weekly_standings
-    WHERE competition_id = ?
-    GROUP BY pilot_key
+    WHERE competition_id = $1
+    GROUP BY pilot_key, display_name
     ORDER BY total_points DESC
-  `).all(competitionId);
+  `, [competitionId]);
+  return rows;
 }
 
 async function getPilotCompetitionHistory(competitionId, pilotKey) {
-  const db = getDb();
-  const weeklyStandings = db.prepare(`
+  const pool = getPool();
+  const { rows: weeklyStandings } = await pool.query(`
     SELECT ws.*, cw.week_number, cw.starts_at, cw.ends_at
     FROM weekly_standings ws
     JOIN competition_weeks cw ON cw.id = ws.week_id
-    WHERE ws.competition_id = ? AND ws.pilot_key = ?
+    WHERE ws.competition_id = $1 AND ws.pilot_key = $2
     ORDER BY cw.week_number
-  `).all(competitionId, pilotKey);
+  `, [competitionId, pilotKey]);
 
-  const recentResults = db.prepare(`
+  const { rows: recentResults } = await pool.query(`
     SELECT rr.*, r.env, r.track, r.started_at AS race_started_at
     FROM race_results rr
     JOIN races r ON r.id = rr.race_id
     JOIN competition_weeks cw ON cw.id = rr.week_id
-    WHERE cw.competition_id = ? AND rr.pilot_key = ?
+    WHERE cw.competition_id = $1 AND rr.pilot_key = $2
     ORDER BY r.started_at DESC
     LIMIT 50
-  `).all(competitionId, pilotKey);
+  `, [competitionId, pilotKey]);
 
   return { weeklyStandings, recentResults };
 }
@@ -355,7 +376,7 @@ async function getPilotCompetitionHistory(competitionId, pilotKey) {
 // ── Scoring Helpers ─────────────────────────────────────────────────────────
 
 async function getRaceLapsGrouped(raceId) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT
       COALESCE(steam_id, pilot_guid, nick) AS pilot_key,
       nick,
@@ -363,120 +384,127 @@ async function getRaceLapsGrouped(raceId) {
       COUNT(*) AS total_laps,
       AVG(lap_ms) AS avg_lap_ms
     FROM laps
-    WHERE race_id = ?
-    GROUP BY pilot_key
-    HAVING total_laps >= 2
+    WHERE race_id = $1
+    GROUP BY COALESCE(steam_id, pilot_guid, nick), nick
+    HAVING COUNT(*) >= 2
     ORDER BY best_lap_ms ASC
-  `).all(raceId);
+  `, [raceId]);
+  return rows;
 }
 
 async function getRaceLapsDetailed(raceId, pilotKey) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT lap_ms FROM laps
-    WHERE race_id = ? AND COALESCE(steam_id, pilot_guid, nick) = ?
+    WHERE race_id = $1 AND COALESCE(steam_id, pilot_guid, nick) = $2
     ORDER BY lap_number
-  `).all(raceId, pilotKey).map(r => r.lap_ms);
+  `, [raceId, pilotKey]);
+  return rows.map(r => r.lap_ms);
 }
 
 async function getPilotBaselineBests(pilotKey, beforeDate) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT r.env, r.track, MIN(l.lap_ms) AS best_lap_ms
     FROM laps l
     JOIN races r ON r.id = l.race_id
-    WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = ?
-      AND l.recorded_at < ?
+    WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = $1
+      AND l.recorded_at < $2
       AND r.env IS NOT NULL AND r.track IS NOT NULL
     GROUP BY r.env, r.track
-  `).all(pilotKey, beforeDate);
+  `, [pilotKey, beforeDate]);
+  return rows;
 }
 
 async function getPilotWeekBests(pilotKey, startsAt, endsAt) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT r.env, r.track, MIN(l.lap_ms) AS best_lap_ms
     FROM laps l
     JOIN races r ON r.id = l.race_id
-    WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = ?
-      AND l.recorded_at >= ? AND l.recorded_at <= ?
+    WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = $1
+      AND l.recorded_at >= $2 AND l.recorded_at <= $3
       AND r.env IS NOT NULL AND r.track IS NOT NULL
     GROUP BY r.env, r.track
-  `).all(pilotKey, startsAt, endsAt);
+  `, [pilotKey, startsAt, endsAt]);
+  return rows;
 }
 
 async function getWeekPilots(weekId) {
   const week = await getWeekById(weekId);
   if (!week) return [];
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT DISTINCT COALESCE(l.steam_id, l.pilot_guid, l.nick) AS pilot_key, l.nick
     FROM laps l
     JOIN races r ON r.id = l.race_id
-    WHERE l.recorded_at >= ? AND l.recorded_at <= ?
-  `).all(week.starts_at, week.ends_at);
+    WHERE l.recorded_at >= $1 AND l.recorded_at <= $2
+  `, [week.starts_at, week.ends_at]);
+  return rows;
 }
 
 async function getPilotActiveDays(pilotKey, startsAt, endsAt) {
-  return getDb().prepare(`
-    SELECT COUNT(DISTINCT date(l.recorded_at)) AS day_count
+  const { rows: [{ day_count }] } = await getPool().query(`
+    SELECT COUNT(DISTINCT l.recorded_at::date) AS day_count
     FROM laps l
-    WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = ?
-      AND l.recorded_at >= ? AND l.recorded_at <= ?
-  `).get(pilotKey, startsAt, endsAt).day_count;
+    WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = $1
+      AND l.recorded_at >= $2 AND l.recorded_at <= $3
+  `, [pilotKey, startsAt, endsAt]);
+  return parseInt(day_count, 10);
 }
 
 async function getPilotDistinctTracks(pilotKey, startsAt, endsAt) {
-  return getDb().prepare(`
+  const { rows: [{ track_count }] } = await getPool().query(`
     SELECT COUNT(DISTINCT r.env || '|' || r.track) AS track_count
     FROM laps l
     JOIN races r ON r.id = l.race_id
-    WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = ?
-      AND l.recorded_at >= ? AND l.recorded_at <= ?
+    WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = $1
+      AND l.recorded_at >= $2 AND l.recorded_at <= $3
       AND r.env IS NOT NULL AND r.track IS NOT NULL
-  `).get(pilotKey, startsAt, endsAt).track_count;
+  `, [pilotKey, startsAt, endsAt]);
+  return parseInt(track_count, 10);
 }
 
 async function hasRaceResults(raceId) {
-  return getDb().prepare(
-    'SELECT COUNT(*) AS n FROM race_results WHERE race_id = ?'
-  ).get(raceId).n > 0;
+  const { rows: [{ n }] } = await getPool().query(
+    'SELECT COUNT(*) AS n FROM race_results WHERE race_id = $1', [raceId]
+  );
+  return parseInt(n, 10) > 0;
 }
 
 // ── Runner State Persistence ────────────────────────────────────────────────
 
 async function saveRunnerState(state) {
-  const db = getDb();
-  const upsert = db.prepare(
-    "INSERT INTO kv_store (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
-  );
-  upsert.run('runner_auto_managed', state.autoManaged ? '1' : '0');
-  upsert.run('runner_week_id', state.currentWeekId != null ? String(state.currentWeekId) : '');
-  upsert.run('runner_playlist_index', String(state.currentPlaylistIndex || 0));
+  const pool = getPool();
+  const upsert = `INSERT INTO kv_store (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+  await pool.query(upsert, ['runner_auto_managed', state.autoManaged ? '1' : '0']);
+  await pool.query(upsert, ['runner_week_id', state.currentWeekId != null ? String(state.currentWeekId) : '']);
+  await pool.query(upsert, ['runner_playlist_index', String(state.currentPlaylistIndex || 0)]);
 }
 
 async function loadRunnerState() {
-  const db = getDb();
-  const get = (key) => {
-    const row = db.prepare('SELECT value FROM kv_store WHERE key = ?').get(key);
+  const pool = getPool();
+  const get = async (key) => {
+    const { rows: [row] } = await pool.query('SELECT value FROM kv_store WHERE key = $1', [key]);
     return row ? row.value : null;
   };
   return {
-    autoManaged: get('runner_auto_managed') === '1',
-    currentWeekId: get('runner_week_id') ? Number(get('runner_week_id')) : null,
-    currentPlaylistIndex: Number(get('runner_playlist_index') || 0),
+    autoManaged: (await get('runner_auto_managed')) === '1',
+    currentWeekId: (await get('runner_week_id')) ? Number(await get('runner_week_id')) : null,
+    currentPlaylistIndex: Number((await get('runner_playlist_index')) || 0),
   };
 }
 
 async function clearWeekData(weekId) {
-  const db = getDb();
-  db.prepare('DELETE FROM weekly_points WHERE week_id = ?').run(weekId);
-  db.prepare('DELETE FROM race_results WHERE week_id = ?').run(weekId);
-  db.prepare('DELETE FROM weekly_standings WHERE week_id = ?').run(weekId);
+  const pool = getPool();
+  await pool.query('DELETE FROM weekly_points WHERE week_id = $1', [weekId]);
+  await pool.query('DELETE FROM race_results WHERE week_id = $1', [weekId]);
+  await pool.query('DELETE FROM weekly_standings WHERE week_id = $1', [weekId]);
 }
 
 async function getRacesInRange(startsAt, endsAt) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT id FROM races
-    WHERE started_at >= ? AND started_at <= ? AND ended_at IS NOT NULL
+    WHERE started_at >= $1 AND started_at <= $2 AND ended_at IS NOT NULL
     ORDER BY started_at
-  `).all(startsAt, endsAt);
+  `, [startsAt, endsAt]);
+  return rows;
 }
 
 module.exports = {

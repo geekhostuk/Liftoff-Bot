@@ -1,31 +1,34 @@
-const { getDb } = require('./connection');
+const { getPool } = require('./connection');
 
 async function getChatTemplates() {
-  return getDb().prepare('SELECT * FROM chat_templates ORDER BY id').all();
+  const { rows } = await getPool().query('SELECT * FROM chat_templates ORDER BY id');
+  return rows;
 }
 
 async function getChatTemplatesByTrigger(trigger) {
-  return getDb().prepare('SELECT * FROM chat_templates WHERE trigger = ? AND enabled = 1').all(trigger);
+  const { rows } = await getPool().query('SELECT * FROM chat_templates WHERE trigger = $1 AND enabled = 1', [trigger]);
+  return rows;
 }
 
 async function createChatTemplate({ trigger, template, enabled = 1, delay_ms = 0 }) {
-  const db = getDb();
-  const result = db.prepare(
-    'INSERT INTO chat_templates (trigger, template, enabled, delay_ms) VALUES (?, ?, ?, ?)'
-  ).run(trigger, template, enabled ? 1 : 0, delay_ms || 0);
-  return db.prepare('SELECT * FROM chat_templates WHERE id = ?').get(result.lastInsertRowid);
+  const { rows: [row] } = await getPool().query(`
+    INSERT INTO chat_templates (trigger, template, enabled, delay_ms)
+    VALUES ($1, $2, $3, $4)
+    RETURNING *
+  `, [trigger, template, enabled ? 1 : 0, delay_ms || 0]);
+  return row;
 }
 
 async function updateChatTemplate(id, { trigger, template, enabled, delay_ms }) {
-  const db = getDb();
-  db.prepare(`
-    UPDATE chat_templates SET trigger = ?, template = ?, enabled = ?, delay_ms = ? WHERE id = ?
-  `).run(trigger, template, enabled ? 1 : 0, delay_ms || 0, id);
-  return db.prepare('SELECT * FROM chat_templates WHERE id = ?').get(id);
+  const { rows: [row] } = await getPool().query(`
+    UPDATE chat_templates SET trigger = $1, template = $2, enabled = $3, delay_ms = $4 WHERE id = $5
+    RETURNING *
+  `, [trigger, template, enabled ? 1 : 0, delay_ms || 0, id]);
+  return row;
 }
 
 async function deleteChatTemplate(id) {
-  getDb().prepare('DELETE FROM chat_templates WHERE id = ?').run(id);
+  await getPool().query('DELETE FROM chat_templates WHERE id = $1', [id]);
 }
 
 module.exports = {

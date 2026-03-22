@@ -1,23 +1,25 @@
-const { getDb } = require('./connection');
+const { getPool } = require('./connection');
 
 async function getRaces({ limit = 50, offset = 0 } = {}) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT * FROM races
     ORDER BY started_at DESC
-    LIMIT ? OFFSET ?
-  `).all(limit, offset);
+    LIMIT $1 OFFSET $2
+  `, [limit, offset]);
+  return rows;
 }
 
 async function getRaceById(id) {
-  const db = getDb();
-  const race = db.prepare('SELECT * FROM races WHERE id = ?').get(id);
+  const pool = getPool();
+  const { rows: [race] } = await pool.query('SELECT * FROM races WHERE id = $1', [id]);
   if (!race) return null;
-  race.laps = db.prepare('SELECT * FROM laps WHERE race_id = ? ORDER BY lap_number').all(id);
+  const { rows: laps } = await pool.query('SELECT * FROM laps WHERE race_id = $1 ORDER BY lap_number', [id]);
+  race.laps = laps;
   return race;
 }
 
 async function getBestLaps({ limit = 100 } = {}) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT
       COALESCE(steam_id, pilot_guid, nick) AS pilot_key,
       nick,
@@ -26,36 +28,39 @@ async function getBestLaps({ limit = 100 } = {}) {
       MIN(lap_ms)  AS best_lap_ms,
       COUNT(*)     AS total_laps
     FROM laps
-    GROUP BY pilot_key
+    GROUP BY COALESCE(steam_id, pilot_guid, nick), nick, pilot_guid, steam_id
     ORDER BY best_lap_ms ASC
-    LIMIT ?
-  `).all(limit);
+    LIMIT $1
+  `, [limit]);
+  return rows;
 }
 
 async function getLatestRaceWithLaps(since) {
-  const db = getDb();
-  const race = db.prepare(`
+  const pool = getPool();
+  const { rows: [race] } = await pool.query(`
     SELECT r.* FROM races r
     LEFT JOIN laps l ON l.race_id = r.id
     GROUP BY r.id
     ORDER BY COALESCE(MAX(l.recorded_at), r.started_at) DESC, r.started_at DESC
     LIMIT 1
-  `).get();
+  `);
   if (!race) return null;
   if (since) {
-    race.laps = db.prepare(`
-      SELECT * FROM laps WHERE race_id = ? AND recorded_at >= ? ORDER BY recorded_at ASC
-    `).all(race.id, since);
+    const { rows } = await pool.query(`
+      SELECT * FROM laps WHERE race_id = $1 AND recorded_at >= $2 ORDER BY recorded_at ASC
+    `, [race.id, since]);
+    race.laps = rows;
   } else {
-    race.laps = db.prepare(`
-      SELECT * FROM laps WHERE race_id = ? ORDER BY recorded_at ASC
-    `).all(race.id);
+    const { rows } = await pool.query(`
+      SELECT * FROM laps WHERE race_id = $1 ORDER BY recorded_at ASC
+    `, [race.id]);
+    race.laps = rows;
   }
   return race;
 }
 
 async function getBestLapsByTrack(env, track, { limit = 100 } = {}) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT
       COALESCE(l.steam_id, l.pilot_guid, l.nick) AS pilot_key,
       l.nick, l.pilot_guid, l.steam_id,
@@ -63,15 +68,16 @@ async function getBestLapsByTrack(env, track, { limit = 100 } = {}) {
       COUNT(*)       AS total_laps
     FROM laps l
     JOIN races r ON l.race_id = r.id
-    WHERE r.env = ? AND r.track = ?
-    GROUP BY pilot_key
+    WHERE r.env = $1 AND r.track = $2
+    GROUP BY COALESCE(l.steam_id, l.pilot_guid, l.nick), l.nick, l.pilot_guid, l.steam_id
     ORDER BY best_lap_ms ASC
-    LIMIT ?
-  `).all(env, track, limit);
+    LIMIT $3
+  `, [env, track, limit]);
+  return rows;
 }
 
 async function getPlayerStats({ limit = 200 } = {}) {
-  return getDb().prepare(`
+  const { rows } = await getPool().query(`
     SELECT
       COALESCE(steam_id, pilot_guid, nick) AS pilot_key,
       nick, pilot_guid, steam_id,
@@ -79,30 +85,32 @@ async function getPlayerStats({ limit = 200 } = {}) {
       COUNT(*)               AS total_laps,
       COUNT(DISTINCT race_id) AS races_entered
     FROM laps
-    GROUP BY pilot_key
+    GROUP BY COALESCE(steam_id, pilot_guid, nick), nick, pilot_guid, steam_id
     ORDER BY total_laps DESC
-    LIMIT ?
-  `).all(limit);
+    LIMIT $1
+  `, [limit]);
+  return rows;
 }
 
 async function getLatestCatalog() {
-  const row = getDb().prepare(`
+  const { rows: [row] } = await getPool().query(`
     SELECT catalog_json FROM track_catalog ORDER BY id DESC LIMIT 1
-  `).get();
+  `);
   return row ? JSON.parse(row.catalog_json) : null;
 }
 
 async function getPilotActivity() {
-  return getDb().prepare(`
+  const { rows: [row] } = await getPool().query(`
     SELECT
-      COUNT(DISTINCT CASE WHEN datetime(recorded_at) >= datetime('now', '-1 day')
+      COUNT(DISTINCT CASE WHEN recorded_at >= NOW() - INTERVAL '1 day'
         THEN COALESCE(steam_id, pilot_guid, nick) END) AS last_24h,
-      COUNT(DISTINCT CASE WHEN datetime(recorded_at) >= datetime('now', '-7 days')
+      COUNT(DISTINCT CASE WHEN recorded_at >= NOW() - INTERVAL '7 days'
         THEN COALESCE(steam_id, pilot_guid, nick) END) AS last_7d,
-      COUNT(DISTINCT CASE WHEN datetime(recorded_at) >= datetime('now', '-1 month')
+      COUNT(DISTINCT CASE WHEN recorded_at >= NOW() - INTERVAL '1 month'
         THEN COALESCE(steam_id, pilot_guid, nick) END) AS last_30d
     FROM laps
-  `).get();
+  `);
+  return row;
 }
 
 /**
@@ -111,9 +119,8 @@ async function getPilotActivity() {
  */
 async function getAllTimeStatsByNick(nicks) {
   if (!nicks || nicks.length === 0) return {};
-  const db = getDb();
-  const placeholders = nicks.map(() => '?').join(',');
-  const rows = db.prepare(`
+  const placeholders = nicks.map((_, i) => `$${i + 1}`).join(',');
+  const { rows } = await getPool().query(`
     SELECT
       nick,
       COUNT(*)               AS total_laps,
@@ -122,7 +129,7 @@ async function getAllTimeStatsByNick(nicks) {
     FROM laps
     WHERE nick IN (${placeholders})
     GROUP BY nick
-  `).all(...nicks);
+  `, nicks);
   const map = {};
   for (const r of rows) map[r.nick] = r;
   return map;
@@ -132,26 +139,27 @@ async function getAllTimeStatsByNick(nicks) {
  * Browse laps with optional filters. Returns { laps, total }.
  */
 async function browseLaps({ env, track, nick, dateFrom, dateTo, limit = 50, offset = 0 } = {}) {
-  const db = getDb();
+  const pool = getPool();
   const conditions = [];
   const params = [];
+  let n = 1;
 
-  if (env) { conditions.push('r.env = ?'); params.push(env); }
-  if (track) { conditions.push('r.track = ?'); params.push(track); }
-  if (nick) { conditions.push('l.nick LIKE ?'); params.push(`%${nick}%`); }
-  if (dateFrom) { conditions.push('l.recorded_at >= ?'); params.push(dateFrom); }
-  if (dateTo) { conditions.push('l.recorded_at <= ?'); params.push(dateTo); }
+  if (env) { conditions.push(`r.env = $${n++}`); params.push(env); }
+  if (track) { conditions.push(`r.track = $${n++}`); params.push(track); }
+  if (nick) { conditions.push(`l.nick LIKE $${n++}`); params.push(`%${nick}%`); }
+  if (dateFrom) { conditions.push(`l.recorded_at >= $${n++}`); params.push(dateFrom); }
+  if (dateTo) { conditions.push(`l.recorded_at <= $${n++}`); params.push(dateTo); }
 
   const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
-  const total = db.prepare(`
+  const { rows: [{ cnt }] } = await pool.query(`
     SELECT COUNT(*) AS cnt
     FROM laps l
     JOIN races r ON l.race_id = r.id
     ${where}
-  `).get(...params).cnt;
+  `, params);
 
-  const laps = db.prepare(`
+  const { rows: laps } = await pool.query(`
     SELECT
       l.id, l.nick, l.lap_number, l.lap_ms, l.recorded_at, l.race_id,
       r.env, r.track
@@ -159,31 +167,32 @@ async function browseLaps({ env, track, nick, dateFrom, dateTo, limit = 50, offs
     JOIN races r ON l.race_id = r.id
     ${where}
     ORDER BY l.recorded_at DESC
-    LIMIT ? OFFSET ?
-  `).all(...params, limit, offset);
+    LIMIT $${n++} OFFSET $${n++}
+  `, [...params, limit, offset]);
 
-  return { laps, total };
+  return { laps, total: parseInt(cnt, 10) };
 }
 
 /**
  * Distinct filter values for the data browser.
  */
 async function getFilterOptions() {
-  const db = getDb();
-  const envs = db.prepare(`
+  const pool = getPool();
+  const { rows: envRows } = await pool.query(`
     SELECT DISTINCT env FROM races WHERE env IS NOT NULL ORDER BY env
-  `).all().map(r => r.env);
-  const tracks = db.prepare(`
+  `);
+  const envs = envRows.map(r => r.env);
+  const { rows: tracks } = await pool.query(`
     SELECT DISTINCT env, track FROM races
     WHERE env IS NOT NULL AND track IS NOT NULL
     ORDER BY env, track
-  `).all();
-  const pilots = db.prepare(`
+  `);
+  const { rows: pilots } = await pool.query(`
     SELECT nick, COUNT(*) AS total_laps
     FROM laps
     GROUP BY nick
     ORDER BY total_laps DESC
-  `).all();
+  `);
   return { envs, tracks, pilots };
 }
 
@@ -191,13 +200,14 @@ async function getFilterOptions() {
  * Summary stats for the stats page header.
  */
 async function getOverallStats() {
-  return getDb().prepare(`
+  const { rows: [row] } = await getPool().query(`
     SELECT
       COUNT(*)                AS total_laps,
       COUNT(DISTINCT nick)   AS total_pilots,
       COUNT(DISTINCT race_id) AS total_races
     FROM laps
-  `).get();
+  `);
+  return row;
 }
 
 module.exports = {

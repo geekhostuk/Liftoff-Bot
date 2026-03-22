@@ -1,26 +1,26 @@
 -- Competition system tables
 
 CREATE TABLE IF NOT EXISTS competitions (
-  id          SERIAL PRIMARY KEY,
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL,
   status      TEXT NOT NULL DEFAULT 'active',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS competition_weeks (
-  id              SERIAL PRIMARY KEY,
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
   competition_id  INTEGER NOT NULL,
   week_number     INTEGER NOT NULL,
-  starts_at       TIMESTAMPTZ NOT NULL,
-  ends_at         TIMESTAMPTZ NOT NULL,
+  starts_at       TEXT NOT NULL,
+  ends_at         TEXT NOT NULL,
   status          TEXT NOT NULL DEFAULT 'scheduled',
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (competition_id) REFERENCES competitions(id),
   UNIQUE(competition_id, week_number)
 );
 
 CREATE TABLE IF NOT EXISTS week_playlists (
-  id          SERIAL PRIMARY KEY,
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
   week_id     INTEGER NOT NULL,
   playlist_id INTEGER NOT NULL,
   position    INTEGER NOT NULL DEFAULT 0,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS week_playlists (
 );
 
 CREATE TABLE IF NOT EXISTS race_results (
-  id           SERIAL PRIMARY KEY,
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
   race_id      TEXT NOT NULL,
   pilot_key    TEXT NOT NULL,
   display_name TEXT,
@@ -44,18 +44,18 @@ CREATE TABLE IF NOT EXISTS race_results (
 );
 
 CREATE TABLE IF NOT EXISTS weekly_points (
-  id          SERIAL PRIMARY KEY,
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
   week_id     INTEGER NOT NULL,
   pilot_key   TEXT NOT NULL,
   category    TEXT NOT NULL,
   points      INTEGER NOT NULL DEFAULT 0,
   detail      TEXT,
-  awarded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  awarded_at  TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (week_id) REFERENCES competition_weeks(id)
 );
 
 CREATE TABLE IF NOT EXISTS weekly_standings (
-  id                   SERIAL PRIMARY KEY,
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
   week_id              INTEGER NOT NULL,
   competition_id       INTEGER NOT NULL,
   pilot_key            TEXT NOT NULL,
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS weekly_standings (
   participation_points INTEGER NOT NULL DEFAULT 0,
   streak_points        INTEGER NOT NULL DEFAULT 0,
   rank                 INTEGER,
-  updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (week_id) REFERENCES competition_weeks(id),
   UNIQUE(week_id, pilot_key)
 );
