@@ -51,11 +51,11 @@ function getState() {
   };
 }
 
-function startPlaylist(playlistId, intervalMs, startIndex = 0) {
-  const playlist = db.getPlaylistById(playlistId);
+async function startPlaylist(playlistId, intervalMs, startIndex = 0) {
+  const playlist = await db.getPlaylistById(playlistId);
   if (!playlist) throw new Error(`Playlist ${playlistId} not found`);
 
-  const tracks = db.getPlaylistTracks(playlistId);
+  const tracks = await db.getPlaylistTracks(playlistId);
   if (tracks.length === 0) throw new Error('Playlist is empty — add tracks first');
 
   const idx = Math.max(0, Math.min(startIndex, tracks.length - 1));
@@ -116,7 +116,7 @@ function skipToNext() {
   _broadcastState();
 }
 
-function extendTimer(ms) {
+async function extendTimer(ms) {
   if (!state.running || !state.nextChangeAt) return;
   // Clear the current auto-advance timer and pre-timers
   if (_timer) { clearTimeout(_timer); _timer = null; }
@@ -129,7 +129,7 @@ function extendTimer(ms) {
   // Re-schedule pre-change messages relative to the new nextChangeAt
   if (state.tracks.length > 0) {
     let preTemplates = [];
-    try { preTemplates = db.getChatTemplatesByTrigger('track_change').filter(t => t.delay_ms < 0); } catch (_) {}
+    try { preTemplates = (await db.getChatTemplatesByTrigger('track_change')).filter(t => t.delay_ms < 0); } catch (_) {}
 
     if (preTemplates.length > 0) {
       const nextIndex = (state.currentIndex + 1) % state.tracks.length;
@@ -185,11 +185,11 @@ function skipToIndex(index) {
  * @param {number} remainingMs - time until the next track change (custom first delay)
  * @param {boolean} [forceTrack=true] - whether to send set_track (false to skip if track already correct)
  */
-function resumePlaylist(playlistId, intervalMs, startIndex, remainingMs, forceTrack = true) {
-  const playlist = db.getPlaylistById(playlistId);
+async function resumePlaylist(playlistId, intervalMs, startIndex, remainingMs, forceTrack = true) {
+  const playlist = await db.getPlaylistById(playlistId);
   if (!playlist) throw new Error(`Playlist ${playlistId} not found`);
 
-  const tracks = db.getPlaylistTracks(playlistId);
+  const tracks = await db.getPlaylistTracks(playlistId);
   if (tracks.length === 0) throw new Error('Playlist is empty — add tracks first');
 
   const idx = Math.max(0, Math.min(startIndex, tracks.length - 1));
@@ -219,7 +219,7 @@ function resumePlaylist(playlistId, intervalMs, startIndex, remainingMs, forceTr
   // Schedule pre-change messages relative to the custom delay
   if (state.tracks.length > 0) {
     let preTemplates = [];
-    try { preTemplates = db.getChatTemplatesByTrigger('track_change').filter(t => t.delay_ms < 0); } catch (_) {}
+    try { preTemplates = (await db.getChatTemplatesByTrigger('track_change')).filter(t => t.delay_ms < 0); } catch (_) {}
     if (preTemplates.length > 0) {
       const nextIndex = (state.currentIndex + 1) % state.tracks.length;
       const nextTrack = state.tracks[nextIndex];
@@ -252,7 +252,7 @@ function resumePlaylist(playlistId, intervalMs, startIndex, remainingMs, forceTr
 
 // ── Internals ────────────────────────────────────────────────────────────────
 
-function _scheduleNext() {
+async function _scheduleNext() {
   state.nextChangeAt = new Date(Date.now() + state.intervalMs);
   _clearPreTimers();
 
@@ -260,7 +260,7 @@ function _scheduleNext() {
   // delay_ms = -120000 means "fire 2 minutes before the track changes".
   if (state.tracks.length > 0) {
     let preTemplates = [];
-    try { preTemplates = db.getChatTemplatesByTrigger('track_change').filter(t => t.delay_ms < 0); } catch (_) {}
+    try { preTemplates = (await db.getChatTemplatesByTrigger('track_change')).filter(t => t.delay_ms < 0); } catch (_) {}
 
     if (preTemplates.length > 0) {
       const nextIndex = (state.currentIndex + 1) % state.tracks.length;

@@ -33,17 +33,17 @@ const state = {
 let _timer = null;
 let _playlistWrapDetected = false;
 
-function _persistState() {
+async function _persistState() {
   try {
-    db.saveRunnerState(state);
+    await db.saveRunnerState(state);
   } catch (err) {
     console.error('[competition] Failed to persist state:', err.message);
   }
 }
 
-function _restoreState() {
+async function _restoreState() {
   try {
-    const saved = db.loadRunnerState();
+    const saved = await db.loadRunnerState();
     if (saved.autoManaged) {
       state.autoManaged = true;
       state.currentWeekId = saved.currentWeekId;
@@ -57,27 +57,27 @@ function _restoreState() {
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
-function start() {
+async function start() {
   if (_timer) return;
 
   // Restore persisted state before first tick
-  _restoreState();
+  await _restoreState();
 
   _timer = setInterval(tick, CHECK_INTERVAL);
   console.log('[competition] Runner started (checking every 60s)');
 
   // Run an immediate check on startup
-  tick();
+  await tick();
 }
 
-function stop() {
+async function stop() {
   if (_timer) {
     clearInterval(_timer);
     _timer = null;
   }
   state.running = false;
   state.autoManaged = false;
-  _persistState();
+  await _persistState();
   console.log('[competition] Runner stopped');
 }
 
@@ -92,19 +92,19 @@ function getState() {
   };
 }
 
-function setAutoManaged(enabled) {
+async function setAutoManaged(enabled) {
   state.autoManaged = enabled;
   if (enabled && state.currentWeekId) {
-    const weekPlaylists = db.getWeekPlaylists(state.currentWeekId);
+    const weekPlaylists = await db.getWeekPlaylists(state.currentWeekId);
     if (weekPlaylists.length > 0) {
       state.weekPlaylists = weekPlaylists;
-      const week = db.getWeekById(state.currentWeekId);
+      const week = await db.getWeekById(state.currentWeekId);
       if (week) {
-        resumeFromCalculatedPosition(week, weekPlaylists);
+        await resumeFromCalculatedPosition(week, weekPlaylists);
       }
     }
   }
-  _persistState();
+  await _persistState();
   _broadcastState();
 }
 
@@ -121,16 +121,17 @@ function setAutoManaged(enabled) {
  * @param {string} weekStartsAt - ISO datetime when the week started
  * @returns {{ playlistIndex, trackIndex, remainingMs, expectedTrack }} or null
  */
-function calculateCurrentPosition(weekPlaylists, weekStartsAt) {
+async function calculateCurrentPosition(weekPlaylists, weekStartsAt) {
   if (weekPlaylists.length === 0) return null;
 
   // Load track counts for each playlist
-  const playlistInfo = weekPlaylists.map(wp => {
-    const tracks = db.getPlaylistTracks(wp.playlist_id);
+  const playlistInfo = [];
+  for (const wp of weekPlaylists) {
+    const tracks = await db.getPlaylistTracks(wp.playlist_id);
     const trackCount = tracks.length;
     const cycleDurationMs = trackCount * wp.interval_ms; // time for one full pass of this playlist
-    return { ...wp, tracks, trackCount, cycleDurationMs };
-  });
+    playlistInfo.push({ ...wp, tracks, trackCount, cycleDurationMs });
+  }
 
   // Total time for one complete rotation through ALL playlists
   const totalCycleMs = playlistInfo.reduce((sum, p) => sum + p.cycleDurationMs, 0);
@@ -186,14 +187,14 @@ function calculateCurrentPosition(weekPlaylists, weekStartsAt) {
  * Called by the playlist state broadcast listener to detect when a playlist
  * wraps back to index 0 (meaning it completed a full cycle).
  */
-function onPlaylistStateChange(playlistState) {
+async function onPlaylistStateChange(playlistState) {
   if (!state.autoManaged || !state.running) return;
   if (!playlistState.running) return;
 
   // Detect wrap: playlist current_index went to 0 and we have multiple playlists
   if (playlistState.current_index === 0 && state.weekPlaylists.length > 1 && _playlistWrapDetected) {
     _playlistWrapDetected = false;
-    advanceToNextPlaylist();
+    await advanceToNextPlaylist();
   }
 
   // Track when we're at the last track (next advance will wrap to 0)
@@ -204,13 +205,13 @@ function onPlaylistStateChange(playlistState) {
 
 // ── Core tick ───────────────────────────────────────────────────────────────
 
-function tick() {
+async function tick() {
   try {
     // Check for overdue active weeks that need finalisation
-    const overdue = db.getOverdueActiveWeek();
+    const overdue = await db.getOverdueActiveWeek();
     if (overdue) {
       console.log(`[competition] Finalising week ${overdue.week_number} (${overdue.competition_name})`);
-      finaliseWeek(overdue.id);
+      await finaliseWeek(overdue.id);
 
       if (state.currentWeekId === overdue.id) {
         state.currentWeekId = null;
@@ -220,23 +221,23 @@ function tick() {
     }
 
     // Check for scheduled weeks that should now be active
-    const ready = db.getNextScheduledWeek();
+    const ready = await db.getNextScheduledWeek();
     if (ready) {
-      activateWeek(ready);
+      await activateWeek(ready);
     }
 
     // If we have an active week, make sure state is current
-    const active = db.getActiveWeek();
+    const active = await db.getActiveWeek();
     if (active) {
       state.running = true;
       state.currentWeekId = active.id;
 
       // If auto-managed and no playlist is running, resume at the calculated position
       if (state.autoManaged && !playlistRunner.getState().running) {
-        const weekPlaylists = db.getWeekPlaylists(active.id);
+        const weekPlaylists = await db.getWeekPlaylists(active.id);
         if (weekPlaylists.length > 0) {
           state.weekPlaylists = weekPlaylists;
-          resumeFromCalculatedPosition(active, weekPlaylists);
+          await resumeFromCalculatedPosition(active, weekPlaylists);
         }
       }
     } else {
@@ -250,8 +251,8 @@ function tick() {
 
 // ── Resume at calculated position ───────────────────────────────────────────
 
-function resumeFromCalculatedPosition(week, weekPlaylists) {
-  const pos = calculateCurrentPosition(weekPlaylists, week.starts_at);
+async function resumeFromCalculatedPosition(week, weekPlaylists) {
+  const pos = await calculateCurrentPosition(weekPlaylists, week.starts_at);
   if (!pos) {
     console.log('[competition] Could not calculate position — no playlists or week not started');
     return;
@@ -259,7 +260,7 @@ function resumeFromCalculatedPosition(week, weekPlaylists) {
 
   state.currentPlaylistIndex = pos.playlistIndex;
   _playlistWrapDetected = false;
-  _persistState();
+  await _persistState();
 
   // Check if the in-game track already matches what we expect
   const current = getCurrentTrack();
@@ -268,7 +269,7 @@ function resumeFromCalculatedPosition(week, weekPlaylists) {
     current.env === expected.env && current.track === expected.track;
 
   try {
-    playlistRunner.resumePlaylist(
+    await playlistRunner.resumePlaylist(
       pos.playlistId,
       pos.intervalMs,
       pos.trackIndex,
@@ -284,7 +285,7 @@ function resumeFromCalculatedPosition(week, weekPlaylists) {
     console.error(`[competition] Failed to resume playlist:`, err.message);
     // Fall back to starting fresh
     try {
-      playlistRunner.startPlaylist(pos.playlistId, pos.intervalMs, pos.trackIndex);
+      await playlistRunner.startPlaylist(pos.playlistId, pos.intervalMs, pos.trackIndex);
     } catch (err2) {
       console.error(`[competition] Fallback start also failed:`, err2.message);
     }
@@ -295,9 +296,9 @@ function resumeFromCalculatedPosition(week, weekPlaylists) {
 
 // ── Week activation ─────────────────────────────────────────────────────────
 
-function activateWeek(week) {
+async function activateWeek(week) {
   console.log(`[competition] Activating week ${week.week_number} (${week.competition_name})`);
-  db.updateWeekStatus(week.id, 'active');
+  await db.updateWeekStatus(week.id, 'active');
 
   state.running = true;
   state.currentWeekId = week.id;
@@ -305,10 +306,10 @@ function activateWeek(week) {
   state.autoManaged = true;
   _playlistWrapDetected = false;
 
-  const weekPlaylists = db.getWeekPlaylists(week.id);
+  const weekPlaylists = await db.getWeekPlaylists(week.id);
   state.weekPlaylists = weekPlaylists;
 
-  _persistState();
+  await _persistState();
 
   broadcast.broadcastAll({
     event_type: 'competition_week_started',
@@ -321,13 +322,13 @@ function activateWeek(week) {
 
   // Resume at the calculated position (handles both fresh starts and restarts mid-week)
   if (weekPlaylists.length > 0) {
-    resumeFromCalculatedPosition(week, weekPlaylists);
+    await resumeFromCalculatedPosition(week, weekPlaylists);
   }
 }
 
 // ── Playlist orchestration ──────────────────────────────────────────────────
 
-function advanceToNextPlaylist() {
+async function advanceToNextPlaylist() {
   if (!state.autoManaged || state.weekPlaylists.length <= 1) return;
 
   state.currentPlaylistIndex = (state.currentPlaylistIndex + 1) % state.weekPlaylists.length;
@@ -337,13 +338,13 @@ function advanceToNextPlaylist() {
   if (!wp) return;
 
   try {
-    playlistRunner.startPlaylist(wp.playlist_id, wp.interval_ms);
+    await playlistRunner.startPlaylist(wp.playlist_id, wp.interval_ms);
     _playlistWrapDetected = false;
   } catch (err) {
     console.error(`[competition] Failed to start playlist ${wp.playlist_id}:`, err.message);
   }
 
-  _persistState();
+  await _persistState();
   _broadcastState();
 }
 

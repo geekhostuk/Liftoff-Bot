@@ -2,6 +2,7 @@
  * Competition page — public-facing league tables and award highlights.
  * Real-time updates via WebSocket.
  */
+import { esc } from './shared.js';
 
 let competition = null;
 let currentWeek = null;

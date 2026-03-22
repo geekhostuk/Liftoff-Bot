@@ -1,3 +1,5 @@
+import { esc } from './shared.js';
+
 // ── Authentication ─────────────────────────────────────────────────────────
 // Login sets an httpOnly cookie — no token stored in JS memory.
 

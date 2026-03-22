@@ -13,20 +13,20 @@ const POSITION_POINTS = [25, 18, 15, 12, 10, 8, 6, 4];
 
 // ── Real-time scoring (per race close) ──────────────────────────────────────
 
-function processRaceClose(raceId) {
-  const week = db.getActiveWeek();
+async function processRaceClose(raceId) {
+  const week = await db.getActiveWeek();
   if (!week) return;
 
   // Avoid double-processing
-  if (db.hasRaceResults(raceId)) return;
+  if (await db.hasRaceResults(raceId)) return;
 
-  const race = db.getRaceById(raceId);
+  const race = await db.getRaceById(raceId);
   if (!race) return;
 
   // Check race falls within the active week
   if (race.started_at < week.starts_at || race.started_at > week.ends_at) return;
 
-  const pilots = db.getRaceLapsGrouped(raceId);
+  const pilots = await db.getRaceLapsGrouped(raceId);
   if (pilots.length === 0) return;
 
   const participantCount = pilots.length;
@@ -46,7 +46,7 @@ function processRaceClose(raceId) {
     const pilot = pilots[i];
     const position = i + 1;
 
-    db.insertRaceResult(
+    await db.insertRaceResult(
       raceId, pilot.pilot_key, pilot.nick, position,
       pilot.best_lap_ms, pilot.total_laps,
       Math.round(pilot.avg_lap_ms), week.id
@@ -56,7 +56,7 @@ function processRaceClose(raceId) {
     if (awardPositionPoints && i < POSITION_POINTS.length) {
       const pts = Math.floor(POSITION_POINTS[i] * positionScale);
       if (pts > 0) {
-        db.awardPoints(week.id, pilot.pilot_key, 'race_position', pts, {
+        await db.awardPoints(week.id, pilot.pilot_key, 'race_position', pts, {
           position, race_id: raceId, participants: participantCount,
         });
         awards.push({ pilot_key: pilot.pilot_key, display_name: pilot.nick, category: 'race_position', points: pts, detail: ordinal(position) + ' place' });
@@ -66,7 +66,7 @@ function processRaceClose(raceId) {
     // Lap volume points: 1 per 5 laps, capped at 10
     const lapPts = Math.min(Math.floor(pilot.total_laps / 5), 10);
     if (lapPts > 0) {
-      db.awardPoints(week.id, pilot.pilot_key, 'most_laps', lapPts, {
+      await db.awardPoints(week.id, pilot.pilot_key, 'most_laps', lapPts, {
         total_laps: pilot.total_laps, race_id: raceId,
       });
       awards.push({ pilot_key: pilot.pilot_key, display_name: pilot.nick, category: 'most_laps', points: lapPts, detail: `${pilot.total_laps} laps` });
@@ -76,7 +76,7 @@ function processRaceClose(raceId) {
   // Lap leader bonus (5 points, requires 3+ participants)
   if (participantCount >= 3) {
     const lapLeader = pilots.reduce((max, p) => p.total_laps > max.total_laps ? p : max);
-    db.awardPoints(week.id, lapLeader.pilot_key, 'lap_leader', 5, {
+    await db.awardPoints(week.id, lapLeader.pilot_key, 'lap_leader', 5, {
       reason: 'lap_leader', total_laps: lapLeader.total_laps, race_id: raceId,
     });
     awards.push({ pilot_key: lapLeader.pilot_key, display_name: lapLeader.nick, category: 'lap_leader', points: 5, detail: 'Most laps' });
@@ -85,20 +85,20 @@ function processRaceClose(raceId) {
   // Hot streak: fastest lap bonus (3 points, requires 3+ participants)
   if (participantCount >= 3) {
     const fastest = pilots[0]; // already sorted by best_lap_ms ASC
-    db.awardPoints(week.id, fastest.pilot_key, 'hot_streak', 3, {
+    await db.awardPoints(week.id, fastest.pilot_key, 'hot_streak', 3, {
       reason: 'fastest_lap', best_lap_ms: fastest.best_lap_ms, race_id: raceId,
     });
     awards.push({ pilot_key: fastest.pilot_key, display_name: fastest.nick, category: 'hot_streak', points: 3, detail: 'Fastest lap' });
   }
 
   // Consistency points
-  calculateConsistencyPoints(raceId, pilots, week.id, awards);
+  await calculateConsistencyPoints(raceId, pilots, week.id, awards);
 
   // Refresh standings
-  db.refreshWeeklyStandings(week.id);
+  await db.refreshWeeklyStandings(week.id);
 
   // Broadcast updates
-  const standings = db.getWeeklyStandings(week.id);
+  const standings = await db.getWeeklyStandings(week.id);
 
   broadcast.broadcastAll({
     event_type: 'competition_points_awarded',
@@ -129,12 +129,12 @@ function processRaceClose(raceId) {
 
 // ── Consistency calculation ─────────────────────────────────────────────────
 
-function calculateConsistencyPoints(raceId, pilots, weekId, awards) {
+async function calculateConsistencyPoints(raceId, pilots, weekId, awards) {
   if (pilots.length < 2) return;
 
   const deviations = [];
   for (const pilot of pilots) {
-    const lapTimes = db.getRaceLapsDetailed(raceId, pilot.pilot_key);
+    const lapTimes = await db.getRaceLapsDetailed(raceId, pilot.pilot_key);
     if (lapTimes.length < 3) continue;
 
     // Drop worst 20% of laps
@@ -160,7 +160,7 @@ function calculateConsistencyPoints(raceId, pilots, weekId, awards) {
 
   for (const d of deviations) {
     if (d.stddev <= medianDev) {
-      db.awardPoints(weekId, d.pilot_key, 'consistency', 3, {
+      await db.awardPoints(weekId, d.pilot_key, 'consistency', 3, {
         stddev: Math.round(d.stddev), median: Math.round(medianDev), race_id: raceId,
       });
       awards.push({ pilot_key: d.pilot_key, display_name: d.nick, category: 'consistency', points: 3, detail: 'Consistent flyer' });
@@ -170,20 +170,20 @@ function calculateConsistencyPoints(raceId, pilots, weekId, awards) {
 
 // ── Batch scoring (week finalisation) ───────────────────────────────────────
 
-function finaliseWeek(weekId) {
-  const week = db.getWeekById(weekId);
+async function finaliseWeek(weekId) {
+  const week = await db.getWeekById(weekId);
   if (!week) return;
 
-  calculateMostImproved(weekId, week);
-  calculateParticipation(weekId, week);
+  await calculateMostImproved(weekId, week);
+  await calculateParticipation(weekId, week);
 
-  db.refreshWeeklyStandings(weekId);
-  db.updateWeekStatus(weekId, 'finalised');
+  await db.refreshWeeklyStandings(weekId);
+  await db.updateWeekStatus(weekId, 'finalised');
 
   broadcast.broadcastAll({
     event_type: 'competition_week_finalised',
     week_id: weekId,
-    standings: db.getWeeklyStandings(weekId).map(s => ({
+    standings: (await db.getWeeklyStandings(weekId)).map(s => ({
       rank: s.rank,
       display_name: s.display_name,
       total_points: s.total_points,
@@ -191,13 +191,13 @@ function finaliseWeek(weekId) {
   });
 }
 
-function calculateMostImproved(weekId, week) {
-  const pilots = db.getWeekPilots(weekId);
+async function calculateMostImproved(weekId, week) {
+  const pilots = await db.getWeekPilots(weekId);
   const improvements = [];
 
   for (const pilot of pilots) {
-    const baselines = db.getPilotBaselineBests(pilot.pilot_key, week.starts_at);
-    const weekBests = db.getPilotWeekBests(pilot.pilot_key, week.starts_at, week.ends_at);
+    const baselines = await db.getPilotBaselineBests(pilot.pilot_key, week.starts_at);
+    const weekBests = await db.getPilotWeekBests(pilot.pilot_key, week.starts_at, week.ends_at);
 
     if (baselines.length === 0 || weekBests.length === 0) continue;
 
@@ -223,7 +223,7 @@ function calculateMostImproved(weekId, week) {
 
     // Award personal best points (3 per track)
     if (personalBests > 0) {
-      db.awardPoints(weekId, pilot.pilot_key, 'personal_best', personalBests * 3, {
+      await db.awardPoints(weekId, pilot.pilot_key, 'personal_best', personalBests * 3, {
         tracks_improved: personalBests,
       });
     }
@@ -243,7 +243,7 @@ function calculateMostImproved(weekId, week) {
   const topRewards = [15, 10, 5];
   for (let i = 0; i < Math.min(3, improvements.length); i++) {
     const imp = improvements[i];
-    db.awardPoints(weekId, imp.pilot_key, 'most_improved', topRewards[i], {
+    await db.awardPoints(weekId, imp.pilot_key, 'most_improved', topRewards[i], {
       rank: i + 1,
       avg_improvement_pct: Math.round(imp.avg_improvement * 100) / 100,
       tracks_improved: imp.tracks_improved,
@@ -251,12 +251,12 @@ function calculateMostImproved(weekId, week) {
   }
 }
 
-function calculateParticipation(weekId, week) {
-  const pilots = db.getWeekPilots(weekId);
+async function calculateParticipation(weekId, week) {
+  const pilots = await db.getWeekPilots(weekId);
 
   for (const pilot of pilots) {
-    const dayCount = db.getPilotActiveDays(pilot.pilot_key, week.starts_at, week.ends_at);
-    const trackCount = db.getPilotDistinctTracks(pilot.pilot_key, week.starts_at, week.ends_at);
+    const dayCount = await db.getPilotActiveDays(pilot.pilot_key, week.starts_at, week.ends_at);
+    const trackCount = await db.getPilotDistinctTracks(pilot.pilot_key, week.starts_at, week.ends_at);
 
     let pts = 0;
     if (dayCount >= 7) pts = 30;
@@ -267,7 +267,7 @@ function calculateParticipation(weekId, week) {
     if (trackCount >= 3) pts += 5;
 
     if (pts > 0) {
-      db.awardPoints(weekId, pilot.pilot_key, 'participation', pts, {
+      await db.awardPoints(weekId, pilot.pilot_key, 'participation', pts, {
         days_active: dayCount,
         tracks_flown: trackCount,
       });
@@ -277,41 +277,33 @@ function calculateParticipation(weekId, week) {
 
 // ── Recalculate (admin tool) ────────────────────────────────────────────────
 
-function recalculateWeek(weekId) {
-  const week = db.getWeekById(weekId);
+async function recalculateWeek(weekId) {
+  const week = await db.getWeekById(weekId);
   if (!week) throw new Error('Week not found');
 
   // Clear existing points and results for this week
-  const { getDb } = require('./db/connection');
-  const conn = getDb();
-  conn.prepare('DELETE FROM weekly_points WHERE week_id = ?').run(weekId);
-  conn.prepare('DELETE FROM race_results WHERE week_id = ?').run(weekId);
-  conn.prepare('DELETE FROM weekly_standings WHERE week_id = ?').run(weekId);
+  await db.clearWeekData(weekId);
 
   // Find all races within this week's time range
-  const races = conn.prepare(`
-    SELECT id FROM races
-    WHERE started_at >= ? AND started_at <= ? AND ended_at IS NOT NULL
-    ORDER BY started_at
-  `).all(week.starts_at, week.ends_at);
+  const races = await db.getRacesInRange(week.starts_at, week.ends_at);
 
   // Temporarily set week as active for processRaceClose
   const originalStatus = week.status;
-  db.updateWeekStatus(weekId, 'active');
+  await db.updateWeekStatus(weekId, 'active');
 
   for (const race of races) {
-    processRaceClose(race.id);
+    await processRaceClose(race.id);
   }
 
   // Run batch calculations
-  calculateMostImproved(weekId, week);
-  calculateParticipation(weekId, week);
-  db.refreshWeeklyStandings(weekId);
+  await calculateMostImproved(weekId, week);
+  await calculateParticipation(weekId, week);
+  await db.refreshWeeklyStandings(weekId);
 
   // Restore original status
-  db.updateWeekStatus(weekId, originalStatus);
+  await db.updateWeekStatus(weekId, originalStatus);
 
-  return { races_processed: races.length, standings: db.getWeeklyStandings(weekId) };
+  return { races_processed: races.length, standings: await db.getWeeklyStandings(weekId) };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

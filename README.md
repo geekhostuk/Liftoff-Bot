@@ -11,29 +11,39 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 ### How It Works
 
 ```
-┌──────────────┐   WebSocket    ┌──────────────┐   WebSocket    ┌──────────────┐
-│  Liftoff Game │◄─────────────►│    Server     │◄─────────────►│  Admin Panel  │
-│  (BepInEx     │   /ws/plugin  │  (Node.js +   │   /ws/admin   │  (Browser)    │
-│   Plugin)     │               │   Express)    │               │               │
-└──────────────┘               │               │               └──────────────┘
-                                │   SQLite DB   │
-                                │               │   WebSocket    ┌──────────────┐
-                                │   Competition │◄─────────────►│  Live View    │
-                                │    Runner     │   /ws/live     │  (Browser)    │
-                                └──────────────┘                │               │
-                                                                ├──────────────┤
-                                                                │  Competition  │
-                                                                │  Page         │
-                                                                └──────────────┘
+                         ┌──────────────┐
+        Internet ───────►│    Nginx     │
+                         │ (TLS, route) │
+                         └──────┬───────┘
+                  ┌─────────┬───┴───┬──────────┐
+                  │         │       │          │
+           ┌──────┴──┐ ┌───┴───┐ ┌─┴────┐ ┌───┴──────┐
+           │ public  │ │ admin │ │ api  │ │ realtime │
+           │  web    │ │  web  │ │(REST)│ │  (WS +   │
+           │(static) │ │(stat.)│ │      │ │ domain)  │
+           └─────────┘ └───────┘ └──┬───┘ └────┬─────┘
+                                    │          │
+                                    └────┬─────┘
+                                         │
+                                     SQLite vol
 ```
 
-1. The **BepInEx plugin** captures Photon multiplayer events (races, laps, players, chat) inside Liftoff and sends them to the server over WebSocket.
-2. The **server** ingests events into SQLite, manages state, and broadcasts updates to connected web clients.
-3. The **competition runner** manages weekly competition lifecycles — activating weeks, rotating playlists, and auto-recovering after server reboots.
-4. The **admin dashboard** lets organisers control the lobby: change tracks, run playlists, send chat, manage players, and configure competitions.
-5. The **live view** gives spectators a real-time window into the current race, track, and player activity.
-6. The **competition page** shows season and weekly league tables with live-updating standings.
-7. Commands flow back from the server to the plugin to execute lobby changes (track switches, chat messages, kicks) inside the game.
+| Service | What it does | Exposed at |
+|---------|-------------|------------|
+| **public-web** | Serves the public HTML/JS/CSS (live view, competition, stats, about) | `/*` |
+| **admin-web** | Serves the admin dashboard HTML/JS/CSS | `/admin/*` (Basic Auth) |
+| **api** | Express REST API — public + admin routes, auth, DB reads/writes | `/api/*` |
+| **realtime** | WebSocket servers, plugin ingestion, domain services (playlists, competitions, idle kick, skip/extend vote), internal API | `/ws/*` |
+| **nginx** | TLS termination, path-based routing, Basic Auth for admin | Ports 80/443 |
+
+1. The **BepInEx plugin** captures Photon multiplayer events (races, laps, players, chat) inside Liftoff and sends them to the realtime server over WebSocket.
+2. The **realtime server** ingests events into SQLite, manages in-memory state, runs domain services, and broadcasts updates to connected web clients.
+3. The **API server** handles REST endpoints for both public data and admin operations. Admin actions that need the plugin or domain services are forwarded to the realtime server via an internal HTTP API.
+4. The **competition runner** (in realtime) manages weekly competition lifecycles — activating weeks, rotating playlists, and auto-recovering after server reboots.
+5. The **admin dashboard** lets organisers control the lobby: change tracks, run playlists, send chat, manage players, and configure competitions.
+6. The **live view** gives spectators a real-time window into the current race, track, and player activity.
+7. The **competition page** shows season and weekly league tables with live-updating standings.
+8. Commands flow back from the realtime server to the plugin to execute lobby changes (track switches, chat messages, kicks) inside the game.
 
 ---
 
@@ -101,7 +111,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 ### Competition Page
 
-- Dedicated `/competition.html` page with season and weekly league tables
+- Dedicated competition page with season and weekly league tables
 - Season leaderboard aggregating all weeks
 - Weekly standings broken down by category (position, laps, consistency, improved, participation, streak)
 - Award highlight cards for top performers in each category
@@ -157,10 +167,12 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 | Component | Technology |
 |-----------|------------|
 | Game Plugin | C# / .NET 4.7.2 / BepInEx / Photon (PUN3) |
-| Server | Node.js / Express / WebSocket (ws) |
+| API Server | Node.js / Express |
+| Realtime Server | Node.js / WebSocket (ws) |
 | Database | SQLite (WAL mode) |
 | Validation | AJV (JSON Schema) |
-| Frontend | Vanilla JS, HTML, CSS |
+| Frontend Build | Vite |
+| Frontend | Vanilla JS (ES modules), HTML, CSS |
 | Infrastructure | Docker, Docker Compose, Nginx, Let's Encrypt |
 | Tests | Vitest |
 
@@ -191,9 +203,42 @@ Liftoff/
 │       │   └── MultiplayerTrackControl/# Track/race/environment control
 │       └── docs/
 │
+├── web/
+│   ├── public/                         # Public frontend (Vite)
+│   │   ├── index.html                  # Live view
+│   │   ├── competition.html            # Competition league tables
+│   │   ├── stats.html                  # Player statistics
+│   │   ├── about.html                  # About page
+│   │   ├── src/
+│   │   │   ├── public.js               # Live view frontend
+│   │   │   ├── competition.js          # Competition page frontend
+│   │   │   ├── stats.js                # Stats page frontend
+│   │   │   └── shared.js               # Shared helpers
+│   │   ├── vite.config.js
+│   │   ├── Dockerfile
+│   │   └── nginx.conf                  # Container-level nginx config
+│   │
+│   └── admin/                          # Admin frontend (Vite)
+│       ├── index.html                  # Admin dashboard
+│       ├── src/
+│       │   ├── admin.js                # Admin dashboard frontend
+│       │   └── shared.js               # Shared helpers
+│       ├── vite.config.js
+│       ├── Dockerfile
+│       └── nginx.conf                  # Container-level nginx config
+│
 ├── Server/
 │   ├── src/
-│   │   ├── index.js                    # Entry point
+│   │   ├── api/                        # API server
+│   │   │   ├── index.js                # Entry point — Express REST API
+│   │   │   ├── realtimeClient.js       # HTTP client for internal API calls
+│   │   │   └── routes/
+│   │   │       ├── admin.js            # Admin API endpoints
+│   │   │       └── public.js           # Public API endpoints
+│   │   │
+│   │   ├── realtime/                   # Realtime server
+│   │   │   └── index.js               # Entry point — WebSockets + domain services + internal API
+│   │   │
 │   │   ├── pluginSocket.js             # Plugin WebSocket server
 │   │   ├── liveSocket.js               # Live & admin WebSocket servers
 │   │   ├── broadcast.js                # Event broadcast dispatcher
@@ -204,31 +249,29 @@ Liftoff/
 │   │   ├── auth.js                     # Password hashing & session store
 │   │   ├── idleKick.js                 # Auto-kick idle pilots
 │   │   ├── skipVote.js                 # Vote-to-skip logic
+│   │   ├── extendVote.js               # Vote-to-extend logic
 │   │   ├── eventTypes.js               # Event type constants
 │   │   ├── contracts.js                # Event validation
-│   │   ├── routes/
-│   │   │   ├── admin.js                # Admin API endpoints
-│   │   │   └── public.js               # Public API endpoints
+│   │   ├── routes/                     # Shared route definitions (used by realtime)
+│   │   │   ├── admin.js
+│   │   │   └── public.js
 │   │   ├── cli/
 │   │   │   └── createUser.js           # CLI admin user creation
-│   │   └── db/                         # SQLite layer
-│   │       ├── connection.js           # Schema & connection
+│   │   └── db/                         # Database layer (async, Postgres-ready)
+│   │       ├── connection.js           # Connection + migration runner
+│   │       ├── migrations/             # Numbered SQL migration files
+│   │       │   ├── 001_initial.sql
+│   │       │   └── 002_competition.sql
 │   │       ├── competition.js          # Competition queries
 │   │       ├── ingest.js               # Event ingestion
-│   │       └── ...
+│   │       ├── queries.js              # Public data queries
+│   │       ├── adminUsers.js           # Admin user management
+│   │       ├── chatTemplates.js        # Chat template CRUD
+│   │       └── playlists.js            # Playlist CRUD
 │   │
-│   ├── public/
-│   │   ├── index.html                  # Public live view
-│   │   ├── competition.html            # Competition league tables
-│   │   ├── admin.html                  # Admin dashboard
-│   │   └── js/
-│   │       ├── public.js               # Live view frontend
-│   │       ├── competition.js          # Competition page frontend
-│   │       ├── admin.js                # Admin dashboard frontend
-│   │       └── shared.js               # Shared helpers
-│   │
-│   ├── nginx/                          # Reverse proxy config
-│   ├── docker-compose.yml
+│   ├── nginx/
+│   │   └── nginx.conf                  # Reverse proxy config (4 upstreams)
+│   ├── docker-compose.yml              # 5 services: api, realtime, public-web, admin-web, nginx
 │   ├── Dockerfile
 │   └── .env.example
 │
@@ -254,7 +297,6 @@ Liftoff/
 
 2. **Edit `.env`** with your own secrets:
    ```env
-   PORT=3000
    PLUGIN_API_KEY=your-plugin-key
    ADMIN_TOKEN=your-admin-token
    DB_PATH=./competition.db
@@ -265,13 +307,18 @@ Liftoff/
 
 3. **Run with Docker (recommended):**
    ```bash
-   docker compose up -d
+   cd Server
+   docker compose up -d --build
    ```
 
-   Or **run locally:**
+   This starts 5 containers: API server, realtime server, public web, admin web, and nginx.
+
+   Or **run locally** (both servers needed):
    ```bash
+   cd Server
    npm install
-   npm start
+   npm run start:realtime &    # WebSockets + domain services (port 3000 + internal 3001)
+   npm run start:api           # REST API (port 3000)
    ```
 
 4. **Create an admin user** (choose one method):
@@ -287,9 +334,27 @@ Liftoff/
    You can create additional users the same way. The `ADMIN_TOKEN` in `.env` continues to work for API/script access via Bearer header.
 
 5. **Access the interfaces:**
-   - Live view: `http://localhost:3000/`
-   - Competition: `http://localhost:3000/competition.html`
-   - Admin panel: `http://localhost:3000/admin.html`
+
+   With Docker (via nginx):
+   - Live view: `https://yourdomain/`
+   - Competition: `https://yourdomain/competition.html`
+   - Stats: `https://yourdomain/stats.html`
+   - Admin panel: `https://yourdomain/admin/` (Basic Auth)
+
+### Frontend Development
+
+Both web projects use Vite for development with hot reload:
+
+```bash
+cd web/public    # or web/admin
+npm install
+npm run dev      # starts Vite dev server with proxy to localhost:3000
+```
+
+Build for production:
+```bash
+npm run build    # outputs to dist/
+```
 
 ### Plugin Setup
 
@@ -313,10 +378,31 @@ Liftoff/
 For production with HTTPS:
 
 1. Set up your domain's DNS to point to your server.
-2. Run `init-certs.sh` to provision Let's Encrypt certificates.
-3. (Optional) Run `init-htpasswd.sh` to set up Nginx Basic Auth as an extra layer for the admin page.
-4. Create admin users via CLI or env vars (see step 4 above).
-5. Start with Docker Compose — Nginx handles SSL termination and proxying.
+2. Update the domain in `Server/nginx/nginx.conf` if not using the default (`jesusmctwos.co.uk`).
+3. Run `init-certs.sh` to provision Let's Encrypt certificates.
+4. Run `init-htpasswd.sh` to set up Nginx Basic Auth for the admin page.
+5. Create admin users via CLI or env vars (see step 4 above).
+6. Start with Docker Compose:
+   ```bash
+   cd Server
+   docker compose up -d --build
+   ```
+
+---
+
+## Architecture
+
+The server is split into two processes that communicate via an internal HTTP API (port 3001, Docker-internal only):
+
+**API Server** — Handles all REST endpoints, admin authentication, and database CRUD. When an admin action needs the game plugin or a domain service (playlists, competitions, idle kick), it forwards the request to the realtime server.
+
+**Realtime Server** — Owns all WebSocket connections (plugin, live view, admin), in-memory state, event ingestion, and domain services (playlist runner, competition runner, idle kick, skip/extend vote). Exposes an internal API for the API server to call.
+
+Both servers share the same SQLite database via WAL mode. The database layer is fully async to prepare for a future PostgreSQL migration — only the internal `db/` module needs to change when that happens.
+
+### Database Migrations
+
+Schema changes are managed via numbered SQL files in `Server/src/db/migrations/`. The migration runner executes them in order on startup and tracks applied migrations in a `_migrations` table. To add a new migration, create a file like `003_your_change.sql` in the migrations directory.
 
 ---
 
