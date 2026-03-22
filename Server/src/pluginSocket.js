@@ -1,4 +1,6 @@
 const { WebSocketServer } = require('ws');
+const fs = require('fs');
+const path = require('path');
 const db = require('./database');
 const state = require('./state');
 const E = require('./eventTypes');
@@ -9,6 +11,18 @@ const idleKick = require('./idleKick');
 const { validateEvent } = require('./contracts');
 
 const PLUGIN_API_KEY = process.env.PLUGIN_API_KEY || '';
+
+// ── Temporary idle-kick debug logging ─────────────────────────────────────
+const IDLE_DEBUG_LOG = path.join(__dirname, '..', 'logs', 'idle-debug.log');
+const IDLE_DEBUG_EVENTS = new Set([
+  E.CHECKPOINT, E.PILOT_RESET, E.PILOT_COMPLETE, E.RACE_RESET, E.LAP_RECORDED, E.CHAT_MESSAGE,
+]);
+fs.mkdirSync(path.dirname(IDLE_DEBUG_LOG), { recursive: true });
+
+function idleDebugLog(msg) {
+  const ts = new Date().toISOString();
+  fs.appendFileSync(IDLE_DEBUG_LOG, `${ts} ${msg}\n`);
+}
 
 // Event types that should NOT reset the idle-kick timer (lifecycle/system events).
 // Everything else with an actor is treated as player activity.
@@ -294,6 +308,12 @@ async function handlePluginEvent(jsonLine) {
   // ── Idle-kick activity tracking ───────────────────────────────────────────
   // Any event carrying an actor indicates that pilot is active,
   // except lifecycle/system events handled separately below.
+  if (IDLE_DEBUG_EVENTS.has(eventType)) {
+    const hasActor = event.actor != null;
+    const ignored = hasActor && IDLE_KICK_IGNORE.has(eventType);
+    const action = !hasActor ? 'NO_ACTOR' : ignored ? 'IGNORED' : 'ACTIVITY_RESET';
+    idleDebugLog(`${action} event=${eventType} actor=${event.actor ?? '-'}`);
+  }
   if (event.actor != null && !IDLE_KICK_IGNORE.has(eventType)) {
     idleKick.recordActivity(event.actor);
   }
