@@ -1,5 +1,22 @@
 services:
 
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: liftoff
+      POSTGRES_USER: liftoff
+      POSTGRES_PASSWORD: liftoff
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U liftoff"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   realtime:
     build:
       context: ..
@@ -8,13 +25,14 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      - DB_PATH=/app/data/competition.db
+      - DATABASE_URL=postgresql://liftoff:liftoff@postgres:5432/liftoff
       - WS_PORT=3000
       - INTERNAL_PORT=3001
-    volumes:
-      - ./data:/app/data
     networks:
       - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   api:
     build:
@@ -24,15 +42,16 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      - DB_PATH=/app/data/competition.db
+      - DATABASE_URL=postgresql://liftoff:liftoff@postgres:5432/liftoff
       - PORT=3000
       - REALTIME_URL=http://realtime:3001
-    volumes:
-      - ./data:/app/data
     networks:
       - internal
     depends_on:
-      - realtime
+      postgres:
+        condition: service_healthy
+      realtime:
+        condition: service_started
 
   public-web:
     build:
@@ -70,3 +89,6 @@ services:
 networks:
   internal:
     driver: bridge
+
+volumes:
+  pgdata:

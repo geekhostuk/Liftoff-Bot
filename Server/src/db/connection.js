@@ -1,23 +1,22 @@
-const { DatabaseSync } = require('node:sqlite');
+const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = process.env.DB_PATH || './competition.db';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://liftoff:liftoff@localhost:5432/liftoff';
 
-let db;
+let pool;
 
-function getDb() {
-  if (!db) throw new Error('Database not initialised. Call initDatabase() first.');
-  return db;
+function getPool() {
+  if (!pool) throw new Error('Database not initialised. Call initDatabase() first.');
+  return pool;
 }
 
-function runMigrations() {
-  // Create migrations tracking table
-  db.exec(`
+async function runMigrations() {
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS _migrations (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      id         SERIAL PRIMARY KEY,
       name       TEXT NOT NULL UNIQUE,
-      applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
@@ -29,25 +28,41 @@ function runMigrations() {
     .sort();
 
   for (const file of files) {
-    const applied = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(file);
-    if (applied) continue;
+    const { rows } = await pool.query('SELECT 1 FROM _migrations WHERE name = $1', [file]);
+    if (rows.length > 0) continue;
 
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
     console.log(`[db] Applying migration: ${file}`);
-    db.exec(sql);
-    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(sql);
+      await client.query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
 
-function initDatabase() {
-  db = new DatabaseSync(path.resolve(DB_PATH));
-  db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA foreign_keys = ON');
+async function initDatabase() {
+  pool = new Pool({ connectionString: DATABASE_URL });
 
-  runMigrations();
+  await runMigrations();
 
-  console.log(`[db] Database ready at ${path.resolve(DB_PATH)}`);
-  return db;
+  console.log(`[db] Database ready (PostgreSQL)`);
+  return pool;
 }
 
-module.exports = { initDatabase, getDb };
+async function end() {
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
+}
+
+module.exports = { initDatabase, getPool, end };

@@ -24,7 +24,7 @@ const idleKick = require('../idleKick');
 
 async function main() {
   // ── Database ──────────────────────────────────────────────────────────────
-  initDatabase();
+  await initDatabase();
 
   // ── WebSocket HTTP server (port 3000) ─────────────────────────────────────
   const wsApp = express();

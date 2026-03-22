@@ -17,7 +17,7 @@ const { hashPassword } = require('../auth');
 
 async function main() {
   // ── Database ──────────────────────────────────────────────────────────────
-  initDatabase();
+  await initDatabase();
 
   // Auto-seed the first admin user from env vars (only when no users exist)
   const { getUserCount, createUser } = require('../database');

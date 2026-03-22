@@ -26,7 +26,7 @@ if (password.length < 6) {
 }
 
 async function main() {
-  initDatabase();
+  await initDatabase();
 
   const existing = await getUserByUsername(username);
   if (existing) {

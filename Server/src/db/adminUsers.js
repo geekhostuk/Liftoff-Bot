@@ -1,29 +1,31 @@
-const { getDb } = require('./connection');
+const { getPool } = require('./connection');
 
 async function createUser(username, passwordHash) {
-  const db = getDb();
-  const result = db.prepare(
-    'INSERT INTO admin_users (username, password_hash) VALUES (?, ?)'
-  ).run(username, passwordHash);
-  return db.prepare(
-    'SELECT id, username, role, created_at FROM admin_users WHERE id = ?'
-  ).get(result.lastInsertRowid);
+  const { rows: [row] } = await getPool().query(`
+    INSERT INTO admin_users (username, password_hash)
+    VALUES ($1, $2)
+    RETURNING id, username, role, created_at
+  `, [username, passwordHash]);
+  return row;
 }
 
 async function getUserByUsername(username) {
-  return getDb().prepare('SELECT * FROM admin_users WHERE username = ?').get(username);
+  const { rows: [row] } = await getPool().query('SELECT * FROM admin_users WHERE username = $1', [username]);
+  return row || undefined;
 }
 
 async function getUsers() {
-  return getDb().prepare('SELECT id, username, role, created_at FROM admin_users ORDER BY id').all();
+  const { rows } = await getPool().query('SELECT id, username, role, created_at FROM admin_users ORDER BY id');
+  return rows;
 }
 
 async function deleteUser(id) {
-  getDb().prepare('DELETE FROM admin_users WHERE id = ?').run(id);
+  await getPool().query('DELETE FROM admin_users WHERE id = $1', [id]);
 }
 
 async function getUserCount() {
-  return getDb().prepare('SELECT COUNT(*) AS count FROM admin_users').get().count;
+  const { rows: [{ count }] } = await getPool().query('SELECT COUNT(*) AS count FROM admin_users');
+  return parseInt(count, 10);
 }
 
 module.exports = {
