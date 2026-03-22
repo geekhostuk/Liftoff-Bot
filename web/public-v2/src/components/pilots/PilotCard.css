@@ -1,0 +1,74 @@
+.pilot-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.pilot-card:hover {
+  border-color: var(--color-primary);
+  background: var(--bg-hover);
+}
+
+.pilot-card-rank {
+  font-size: 1.2rem;
+  font-weight: 700;
+  min-width: 2.5rem;
+  text-align: center;
+}
+
+.pilot-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.pilot-card-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pilot-card-stats {
+  display: flex;
+  gap: var(--space-md);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.pilot-card-points {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.pilot-card-pts-value {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.pilot-card-pts-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+@media (max-width: 480px) {
+  .pilot-card {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .pilot-card-stats {
+    gap: var(--space-sm);
+  }
+}

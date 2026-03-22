@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "keepalive.json",
+  "title": "keepalive",
+  "description": "Periodic heartbeat sent by the server to keep WebSocket connections alive",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type": { "const": "keepalive" }
+  }
+}

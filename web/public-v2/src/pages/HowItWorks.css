@@ -1,0 +1,139 @@
+.hiw-page h1 {
+  margin-bottom: var(--space-sm);
+}
+
+.hiw-intro {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: var(--space-2xl);
+  max-width: 640px;
+}
+
+.hiw-section {
+  margin-bottom: var(--space-2xl);
+}
+
+.hiw-section h2 {
+  margin-bottom: var(--space-md);
+}
+
+.hiw-text p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  max-width: 700px;
+}
+
+.hiw-text p strong {
+  color: var(--text-primary);
+}
+
+/* Lifecycle */
+.hiw-lifecycle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.lifecycle-step {
+  flex: 1;
+  min-width: 160px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+}
+
+.lifecycle-step .status-dot {
+  margin-bottom: var(--space-sm);
+}
+
+.lifecycle-step strong {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  margin-bottom: var(--space-xs);
+  color: var(--text-primary);
+}
+
+.lifecycle-step p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.lifecycle-arrow {
+  align-self: center;
+  font-size: 1.2rem;
+  color: var(--text-dim);
+}
+
+/* Scoring Grid */
+.hiw-scoring-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--space-md);
+}
+
+.hiw-scoring-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+}
+
+.hiw-scoring-icon {
+  font-size: 1.5rem;
+  margin-bottom: var(--space-sm);
+}
+
+.hiw-scoring-card h3 {
+  font-size: 1rem;
+  color: var(--color-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.hiw-scoring-card p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* FAQ */
+.hiw-faq {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.faq-item {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+}
+
+.faq-item h4 {
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.faq-item p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .lifecycle-arrow {
+    display: none;
+  }
+
+  .hiw-lifecycle {
+    flex-direction: column;
+  }
+
+  .hiw-scoring-grid {
+    grid-template-columns: 1fr;
+  }
+}
