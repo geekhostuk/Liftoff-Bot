@@ -118,9 +118,10 @@ internal sealed class RaceStateProjector
 
             if (TryExtractCheckpointFromGmsText(gmsText, out var checkpointId, out var checkpointLap, out var checkpointTimeSec))
             {
-                if (!_actorLastCheckpointId.TryGetValue(actor, out var prevCheckpointId) || !string.Equals(prevCheckpointId, checkpointId, StringComparison.Ordinal))
+                var checkpointKey = $"{checkpointId}|{checkpointLap}";
+                if (!_actorLastCheckpointId.TryGetValue(actor, out var prevCheckpointKey) || !string.Equals(prevCheckpointKey, checkpointKey, StringComparison.Ordinal))
                 {
-                    _actorLastCheckpointId[actor] = checkpointId;
+                    _actorLastCheckpointId[actor] = checkpointKey;
                     _appendRaceLine(
                         $"CHECKPOINT actor={actor} nick=\"{_identity.ResolveNick(actor)}\" checkpointId={checkpointId} lap={checkpointLap} timeSec={checkpointTimeSec:0.000}");
                     _appendRaceEvent("checkpoint", new Dictionary<string, object?>
@@ -142,9 +143,11 @@ internal sealed class RaceStateProjector
 
         if (TryGetInt(changedProps, "RS", out var rs))
         {
-            var hadLowerRs = _actorToRaceState.TryGetValue(actor, out var prevRs) && prevRs < 5;
+            var hadPrevRs = _actorToRaceState.TryGetValue(actor, out var prevRs);
             _actorToRaceState[actor] = rs;
-            if (rs >= 5 && hadLowerRs)
+
+            // Pilot completed the race (RS crossed into ≥5 from an active state)
+            if (rs >= 5 && hadPrevRs && prevRs < 5)
             {
                 var state = GetOrCreatePilotLapState(actor, string.Empty);
                 if (!state.IsComplete)
@@ -154,6 +157,12 @@ internal sealed class RaceStateProjector
                     EmitPilotComplete(state);
                 }
                 TryEmitRaceEnd();
+            }
+
+            // Drone reset: RS decreased while actively racing (not from a finished state)
+            if (hadPrevRs && rs < prevRs && prevRs < 5)
+            {
+                ResetPilotState(actor, "drone_reset");
             }
         }
     }
