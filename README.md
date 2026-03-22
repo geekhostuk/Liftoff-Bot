@@ -1,6 +1,8 @@
 # Liftoff Competition
 
-Competition management platform for Liftoff FPV Simulator. Remotely control your lobby — change tracks, kick players, run playlists with scheduled rotations, and let pilots vote to skip or extend. Run weekly competitions with automatic scoring, league tables, and a playlist calendar that auto-rotates tracks all week. Includes a BepInEx game plugin, Node.js backend, live spectator view, competition page, and admin dashboard. Turn casual lobbies into league nights.
+Competition management platform for Liftoff FPV Simulator. Remotely control your lobby — change tracks, kick players, run playlists with scheduled rotations, and let pilots vote to skip or extend. Run weekly competitions with automatic scoring, league tables, and a playlist calendar that auto-rotates tracks all week. Includes a Node.js backend, live spectator view, competition page, and admin dashboard. Turn casual lobbies into league nights.
+
+> **BepInEx game plugin** — the plugin that runs inside Liftoff lives in its own repo: [liftoff-plugin](https://github.com/geekhostuk/liftoff-plugin) (private).
 
 ---
 
@@ -170,7 +172,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 | Component | Technology |
 |-----------|------------|
-| Game Plugin | C# / .NET 4.7.2 / BepInEx / Photon (PUN3) |
+| Game Plugin | C# / .NET 4.7.2 / BepInEx / Photon (PUN3) — [separate repo](https://github.com/geekhostuk/liftoff-plugin) |
 | API Server | Node.js / Express |
 | Realtime Server | Node.js / WebSocket (ws) |
 | Database | PostgreSQL 16 |
@@ -195,17 +197,6 @@ Liftoff/
 │   ├── race_end.json
 │   ├── race_reset.json
 │   └── set_track.json
-│
-├── Pluggins/
-│   └── LiftoffPhotonEventLogger/       # BepInEx game plugin
-│       ├── LiftoffPhotonEventLogger.cs
-│       ├── Features/
-│       │   ├── Chat/                   # In-game chat capture
-│       │   ├── Competition/            # WebSocket client & config
-│       │   ├── Identity/               # Player identity tracking
-│       │   ├── Logging/                # File logging & serialization
-│       │   └── MultiplayerTrackControl/# Track/race/environment control
-│       └── docs/
 │
 ├── web/
 │   ├── public/                         # Public frontend (Vite)
@@ -365,20 +356,7 @@ npm run build    # outputs to dist/
 
 ### Plugin Setup
 
-1. Install [BepInEx 5](https://github.com/BepInEx/BepInEx) into your Liftoff game directory.
-
-2. Build the plugin:
-   ```bash
-   cd Pluggins/LiftoffPhotonEventLogger
-   dotnet build
-   ```
-   > By default, the project looks for Liftoff at the standard Steam install path. Set the `LIFTOFF_DIR` environment variable to override.
-
-3. Copy the built DLL into `BepInEx/plugins/` in your Liftoff install folder.
-
-4. Configure the plugin's connection settings (server URL and API key) to match your server's `.env` values.
-
-5. Launch Liftoff and join a multiplayer session — the plugin connects to the server automatically.
+The BepInEx game plugin lives in a separate repository: [liftoff-plugin](https://github.com/geekhostuk/liftoff-plugin). See that repo for build and install instructions.
 
 ### Production Deployment
 

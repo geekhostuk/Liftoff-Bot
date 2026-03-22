@@ -4,9 +4,6 @@ node_modules/
 # Vite build output
 dist/
 
-# .NET build output
-bin/
-obj/
 
 # Database
 *.db
@@ -22,11 +19,6 @@ obj/
 Logs/
 *.log
 
-# Decompiled game assemblies
-.decompiled_*/
-
-# Tool stores
-.tools/
 
 # IDE / editor
 .vs/
@@ -51,4 +43,3 @@ Server/data/
 
 # Docs
 Docs/
-Pluggins/LiftoffPhotonEventLogger/docs
