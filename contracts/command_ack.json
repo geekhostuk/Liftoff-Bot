@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "command_ack.json",
+  "title": "command_ack",
+  "description": "Sent by the plugin to acknowledge receipt of a server command",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type": { "const": "command_ack" },
+    "command_id": { "type": "string", "description": "ID of the acknowledged command" },
+    "status":     { "type": "string", "description": "Outcome (e.g. ok, error)" },
+    "message":    { "type": "string", "description": "Human-readable detail (empty on success)" }
+  },
+  "required": ["command_id", "status"]
+}
