@@ -8,4 +8,5 @@ module.exports = {
   ...require('./playlists'),
   ...require('./adminUsers'),
   ...require('./competition'),
+  ...require('./whitelist'),
 };

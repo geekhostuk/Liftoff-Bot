@@ -113,11 +113,11 @@ function handleCommandAck(event) {
   pending.resolve({ status: event.status || 'ok', message: event.message || '' });
 }
 
-function createPluginSocketServer(httpServer) {
+async function createPluginSocketServer(httpServer) {
   // Initialise the vote modules with access to sendCommand
   skipVote.init(sendCommand);
   extendVote.init(sendCommand);
-  idleKick.init(sendCommand, sendCommandAwait);
+  await idleKick.init(sendCommand, sendCommandAwait);
 
   // Cancel any active votes when the playlist stops so orphaned votes
   // don't cause "No playlist is running" on the next attempt.

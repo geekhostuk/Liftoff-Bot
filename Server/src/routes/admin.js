@@ -262,10 +262,10 @@ router.get('/idle-kick/whitelist', (req, res) => {
  * Add a nick to the idle-kick whitelist.
  * Body: { nick }
  */
-router.post('/idle-kick/whitelist', (req, res) => {
+router.post('/idle-kick/whitelist', async (req, res) => {
   const { nick = '' } = req.body;
   if (!nick.trim()) return res.status(400).json({ error: 'nick is required' });
-  idleKick.addToWhitelist(nick.trim());
+  await idleKick.addToWhitelist(nick.trim());
   res.json({ ok: true, whitelist: idleKick.getWhitelist() });
 });
 
@@ -274,10 +274,10 @@ router.post('/idle-kick/whitelist', (req, res) => {
  * Remove a nick from the idle-kick whitelist.
  * Body: { nick }
  */
-router.delete('/idle-kick/whitelist', (req, res) => {
+router.delete('/idle-kick/whitelist', async (req, res) => {
   const { nick = '' } = req.body;
   if (!nick.trim()) return res.status(400).json({ error: 'nick is required' });
-  idleKick.removeFromWhitelist(nick.trim());
+  await idleKick.removeFromWhitelist(nick.trim());
   res.json({ ok: true, whitelist: idleKick.getWhitelist() });
 });
 
