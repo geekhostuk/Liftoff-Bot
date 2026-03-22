@@ -10,6 +10,13 @@ const { validateEvent } = require('./contracts');
 
 const PLUGIN_API_KEY = process.env.PLUGIN_API_KEY || '';
 
+// Event types that should NOT reset the idle-kick timer (lifecycle/system events).
+// Everything else with an actor is treated as player activity.
+const IDLE_KICK_IGNORE = new Set([
+  E.PLAYER_ENTERED, E.PLAYER_LEFT, E.PLAYER_LIST,
+  E.COMMAND_ACK, E.SESSION_STARTED,
+]);
+
 /**
  * Creates the /ws/plugin WebSocket server.
  * The plugin connects here to send events and receive commands.
@@ -285,13 +292,10 @@ async function handlePluginEvent(jsonLine) {
   }
 
   // ── Idle-kick activity tracking ───────────────────────────────────────────
-  if (event.actor != null) {
-    if (eventType === E.LAP_RECORDED || eventType === E.CHECKPOINT ||
-        eventType === E.PILOT_COMPLETE || eventType === E.PILOT_RESET ||
-        eventType === E.CHAT_MESSAGE || eventType === E.RACE_END ||
-        eventType === E.RACE_RESET) {
-      idleKick.recordActivity(event.actor);
-    }
+  // Any event carrying an actor indicates that pilot is active,
+  // except lifecycle/system events handled separately below.
+  if (event.actor != null && !IDLE_KICK_IGNORE.has(eventType)) {
+    idleKick.recordActivity(event.actor);
   }
   if (eventType === E.PLAYER_ENTERED) idleKick.handlePlayerEntered(event.actor);
   if (eventType === E.PLAYER_LEFT) idleKick.handlePlayerLeft(event.actor);

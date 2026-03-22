@@ -138,6 +138,22 @@ async function main() {
     res.json({ ok: true, whitelist: idleKick.getWhitelist() });
   });
 
+  // ── Session sync (from API server) ───────────────────────────────────────
+  const { registerSession, destroySession: removeSession } = require('../auth');
+
+  internal.post('/internal/session/register', (req, res) => {
+    const { token, session } = req.body;
+    if (!token || !session) return res.status(400).json({ error: 'token and session required' });
+    registerSession(token, session);
+    res.json({ ok: true });
+  });
+
+  internal.post('/internal/session/destroy', (req, res) => {
+    const { token } = req.body;
+    if (token) removeSession(token);
+    res.json({ ok: true });
+  });
+
   // ── Broadcast ─────────────────────────────────────────────────────────────
   internal.post('/internal/broadcast', (req, res) => {
     broadcast.broadcastAll(req.body);

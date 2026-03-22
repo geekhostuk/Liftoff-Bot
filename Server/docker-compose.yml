@@ -92,3 +92,5 @@ networks:
 
 volumes:
   pgdata:
+    name: liftoff_pgdata
+    external: true

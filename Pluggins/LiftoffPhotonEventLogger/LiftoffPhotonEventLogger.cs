@@ -496,12 +496,58 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     // 226 = periodic room ping/heartbeat
     private static readonly HashSet<byte> _silentEventCodes = new() { 201, 226 };
 
+    // Movement-based pilot_active detection from Event 201 position telemetry
+    // Position is at indices 4,5,6 of the Single[12] array inside customData
+    private static readonly TimeSpan PilotActiveInterval = TimeSpan.FromSeconds(30);
+    private const float MovementThreshold = 2.0f; // minimum distance to count as movement
+    private readonly Dictionary<int, DateTime> _lastPilotActive = new();
+    private readonly Dictionary<int, float[]> _lastPosition = new(); // actor → [x, y, z]
+
     // Called for ALL Photon RaiseEvent messages received by this client
     public void OnEvent(EventData photonEvent)
     {
         try
         {
             ProcessRaceSignals(photonEvent);
+
+            // Detect actual movement from Event 201 position telemetry
+            if (photonEvent.Code == 201 && photonEvent.Sender > 0)
+            {
+                var actor = photonEvent.Sender;
+                if (TryExtractPosition(photonEvent.CustomData, out var x, out var y, out var z))
+                {
+                    var moved = false;
+                    if (_lastPosition.TryGetValue(actor, out var prev))
+                    {
+                        var dx = x - prev[0];
+                        var dy = y - prev[1];
+                        var dz = z - prev[2];
+                        moved = (dx * dx + dy * dy + dz * dz) >= MovementThreshold * MovementThreshold;
+                    }
+
+                    if (moved)
+                    {
+                        _lastPosition[actor] = new[] { x, y, z };
+                        var now = DateTime.UtcNow;
+                        if (!_lastPilotActive.TryGetValue(actor, out var lastSent)
+                            || (now - lastSent) >= PilotActiveInterval)
+                        {
+                            _lastPilotActive[actor] = now;
+                            AppendRaceEvent("pilot_active", new Dictionary<string, object?>
+                            {
+                                ["actor"] = actor,
+                                ["nick"] = _identity.ResolveNick(actor)
+                            });
+                        }
+                    }
+                    else if (!_lastPosition.ContainsKey(actor))
+                    {
+                        // Store initial position (no event emitted until they move)
+                        _lastPosition[actor] = new[] { x, y, z };
+                    }
+                }
+                return;
+            }
 
             if (_silentEventCodes.Contains(photonEvent.Code))
                 return;
@@ -551,6 +597,8 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _multiplayerTrackControl?.NotifyActivity(nameof(OnPlayerLeftRoom));
         _raceState.OnPlayerLeft(otherPlayer.ActorNumber);
         _identity.RemovePlayer(otherPlayer.ActorNumber);
+        _lastPilotActive.Remove(otherPlayer.ActorNumber);
+        _lastPosition.Remove(otherPlayer.ActorNumber);
         AppendStateLine($"Player left room: Actor={otherPlayer.ActorNumber} Nick=\"{otherPlayer.NickName}\"");
         AppendRaceEvent("player_left", new Dictionary<string, object?>
         {
@@ -626,6 +674,23 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             }
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Extracts drone position (X, Y, Z) from Event 201 customData.
+    /// Layout: Object[3] { int, null, Object[4] { int, bool, null, Single[12] } }
+    /// Position is at Single[12] indices 4, 5, 6.
+    /// </summary>
+    private static bool TryExtractPosition(object? customData, out float x, out float y, out float z)
+    {
+        x = y = z = 0f;
+        if (customData is not object[] outer || outer.Length < 3) return false;
+        if (outer[2] is not object[] inner || inner.Length < 4) return false;
+        if (inner[3] is not float[] floats || floats.Length < 7) return false;
+        x = floats[4];
+        y = floats[5];
+        z = floats[6];
+        return true;
     }
 
     private void ProcessRaceSignals(EventData photonEvent)
