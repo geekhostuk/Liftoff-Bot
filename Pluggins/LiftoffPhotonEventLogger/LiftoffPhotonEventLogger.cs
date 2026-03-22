@@ -496,12 +496,34 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     // 226 = periodic room ping/heartbeat
     private static readonly HashSet<byte> _silentEventCodes = new() { 201, 226 };
 
+    // Throttle pilot_active events: actor → UTC time of last emission
+    private static readonly TimeSpan PilotActiveInterval = TimeSpan.FromSeconds(30);
+    private readonly Dictionary<int, DateTime> _lastPilotActive = new();
+
     // Called for ALL Photon RaiseEvent messages received by this client
     public void OnEvent(EventData photonEvent)
     {
         try
         {
             ProcessRaceSignals(photonEvent);
+
+            // Emit a throttled pilot_active event from position telemetry
+            if (photonEvent.Code == 201 && photonEvent.Sender > 0)
+            {
+                var actor = photonEvent.Sender;
+                var now = DateTime.UtcNow;
+                if (!_lastPilotActive.TryGetValue(actor, out var lastSent)
+                    || (now - lastSent) >= PilotActiveInterval)
+                {
+                    _lastPilotActive[actor] = now;
+                    AppendRaceEvent("pilot_active", new Dictionary<string, object?>
+                    {
+                        ["actor"] = actor,
+                        ["nick"] = _identity.ResolveNick(actor)
+                    });
+                }
+                return;
+            }
 
             if (_silentEventCodes.Contains(photonEvent.Code))
                 return;
@@ -551,6 +573,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _multiplayerTrackControl?.NotifyActivity(nameof(OnPlayerLeftRoom));
         _raceState.OnPlayerLeft(otherPlayer.ActorNumber);
         _identity.RemovePlayer(otherPlayer.ActorNumber);
+        _lastPilotActive.Remove(otherPlayer.ActorNumber);
         AppendStateLine($"Player left room: Actor={otherPlayer.ActorNumber} Nick=\"{otherPlayer.NickName}\"");
         AppendRaceEvent("player_left", new Dictionary<string, object?>
         {

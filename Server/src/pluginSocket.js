@@ -16,6 +16,7 @@ const PLUGIN_API_KEY = process.env.PLUGIN_API_KEY || '';
 const IDLE_DEBUG_LOG = path.join(__dirname, '..', 'logs', 'idle-debug.log');
 const IDLE_DEBUG_EVENTS = new Set([
   E.CHECKPOINT, E.PILOT_RESET, E.PILOT_COMPLETE, E.RACE_RESET, E.LAP_RECORDED, E.CHAT_MESSAGE,
+  'pilot_active',
 ]);
 fs.mkdirSync(path.dirname(IDLE_DEBUG_LOG), { recursive: true });
 
