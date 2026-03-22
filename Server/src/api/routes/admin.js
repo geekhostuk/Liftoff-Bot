@@ -57,6 +57,9 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
   const sessionToken = createSession(user);
+  // Sync session to realtime server so admin WebSocket auth works
+  const session = getSession(sessionToken);
+  rt.syncSession(sessionToken, session).catch(() => {});
   res.cookie(COOKIE_NAME, sessionToken, {
     httpOnly: true, sameSite: 'strict', path: '/', maxAge: 24 * 60 * 60 * 1000,
   });
@@ -66,6 +69,7 @@ router.post('/login', async (req, res) => {
 router.post('/logout', (req, res) => {
   const token = extractToken(req);
   destroySession(token);
+  rt.destroyRemoteSession(token).catch(() => {});
   res.clearCookie(COOKIE_NAME, { path: '/' });
   res.json({ ok: true });
 });

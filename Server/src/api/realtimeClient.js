@@ -99,6 +99,16 @@ async function removeFromIdleKickWhitelist(nick) {
   return del('/internal/idle-kick/whitelist', { nick });
 }
 
+// ── Session sync ────────────────────────────────────────────────────────────
+
+async function syncSession(token, session) {
+  return post('/internal/session/register', { token, session });
+}
+
+async function destroyRemoteSession(token) {
+  return post('/internal/session/destroy', { token });
+}
+
 // ── Broadcast ───────────────────────────────────────────────────────────────
 
 async function broadcast(event) {
@@ -126,6 +136,8 @@ module.exports = {
   getIdleKickWhitelist,
   addToIdleKickWhitelist,
   removeFromIdleKickWhitelist,
+  syncSession,
+  destroyRemoteSession,
   broadcast,
   getState,
 };
