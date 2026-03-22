@@ -1,0 +1,26 @@
+.pilot-search {
+  margin-bottom: var(--space-lg);
+}
+
+.pilot-search-input {
+  width: 100%;
+  max-width: 400px;
+  padding: var(--space-sm) var(--space-md);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.pilot-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.pilot-search-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-muted);
+}

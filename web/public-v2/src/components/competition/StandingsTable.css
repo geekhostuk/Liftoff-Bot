@@ -1,0 +1,9 @@
+.standings-table {
+  min-width: 600px;
+}
+
+@media (max-width: 768px) {
+  .standings-table {
+    font-size: 0.8rem;
+  }
+}

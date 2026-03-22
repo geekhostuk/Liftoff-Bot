@@ -1,0 +1,25 @@
+.competition-page {
+  position: relative;
+}
+
+.comp-page-status {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-md);
+}
+
+.comp-page-status .status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.comp-page-status .status-label {
+  font-weight: 500;
+}
+
+.comp-section {
+  margin-bottom: var(--space-2xl);
+}

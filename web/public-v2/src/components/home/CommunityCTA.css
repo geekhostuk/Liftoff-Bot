@@ -1,0 +1,32 @@
+.community-cta {
+  margin-bottom: var(--space-2xl);
+}
+
+.community-cta-inner {
+  background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-surface-alt) 100%);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2xl) var(--space-xl);
+  text-align: center;
+}
+
+.community-cta-inner h2 {
+  font-size: 1.6rem;
+  color: var(--color-primary);
+  margin-bottom: var(--space-md);
+}
+
+.community-cta-inner p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  max-width: 540px;
+  margin: 0 auto var(--space-xl);
+  line-height: 1.6;
+}
+
+.community-cta-actions {
+  display: flex;
+  gap: var(--space-md);
+  justify-content: center;
+  flex-wrap: wrap;
+}
