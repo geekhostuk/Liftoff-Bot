@@ -46,6 +46,10 @@ function getSession(token) {
   return session;
 }
 
+function registerSession(token, session) {
+  sessions.set(token, session);
+}
+
 function destroySession(token) {
   sessions.delete(token);
 }
@@ -60,6 +64,7 @@ module.exports = {
   hashPassword,
   verifyPassword,
   createSession,
+  registerSession,
   getSession,
   destroySession,
   destroyUserSessions,
