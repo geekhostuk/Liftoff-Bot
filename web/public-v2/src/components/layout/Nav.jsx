@@ -11,8 +11,11 @@ const links = [
   { to: '/about', label: 'About' },
 ];
 
-export default function Nav() {
+export default function Nav({ lobby }) {
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const lobbyFull = lobby && lobby.count >= lobby.max;
+  const lobbyLabel = lobby ? `${lobby.count}/${lobby.max}` : '';
 
   return (
     <header className="site-header">
@@ -34,6 +37,14 @@ export default function Nav() {
             </NavLink>
           ))}
         </nav>
+
+        {lobby && (
+          <div className={`lobby-indicator ${lobbyFull ? 'lobby-full' : ''}`} title="Players in lobby">
+            <span className="lobby-icon" />
+            <span className="lobby-count">{lobbyLabel}</span>
+            {lobbyFull && <span className="lobby-tag">FULL</span>}
+          </div>
+        )}
 
         <Link to="/competition" className="btn btn-primary nav-cta">
           View Season

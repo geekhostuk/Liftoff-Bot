@@ -71,6 +71,45 @@
   color: var(--color-primary);
 }
 
+/* Lobby indicator */
+.lobby-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.3em 0.7em;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.lobby-icon {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success, #22c55e);
+  flex-shrink: 0;
+}
+
+.lobby-full .lobby-icon {
+  background: var(--color-primary);
+}
+
+.lobby-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.lobby-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-primary);
+}
+
 /* CTA button in nav */
 .nav-cta {
   margin-left: var(--space-sm);
@@ -135,5 +174,10 @@
 
   .site-header-inner {
     padding: 0 var(--space-md);
+  }
+
+  .lobby-indicator {
+    margin-left: auto;
+    margin-right: var(--space-sm);
   }
 }

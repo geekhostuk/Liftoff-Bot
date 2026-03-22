@@ -6,11 +6,14 @@ import Competition from './pages/Competition';
 import Pilots from './pages/Pilots';
 import HowItWorks from './pages/HowItWorks';
 import About from './pages/About';
+import useLobbyCount from './hooks/useLobbyCount';
 
 export default function App() {
+  const lobby = useLobbyCount();
+
   return (
     <>
-      <Nav />
+      <Nav lobby={lobby} />
       <main className="main-content">
         <Routes>
           <Route path="/" element={<Home />} />
