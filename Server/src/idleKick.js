@@ -12,6 +12,7 @@
  */
 
 const state = require('./state');
+const db = require('./db');
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;       // 5 minutes before warning
 const WARN_BEFORE_KICK_MS = 1 * 60 * 1000;   // 1 minute grace after warning
@@ -35,15 +36,29 @@ let _sendCommandAwait = null;
  * @param {Function} sendCommandFn      fire-and-forget command sender
  * @param {Function} sendCommandAwaitFn command sender that returns a Promise
  */
-function init(sendCommandFn, sendCommandAwaitFn) {
+async function init(sendCommandFn, sendCommandAwaitFn) {
   _sendCommand = sendCommandFn;
   _sendCommandAwait = sendCommandAwaitFn;
 
-  // Load whitelist from environment (comma-separated nicks)
-  const envList = process.env.IDLE_KICK_WHITELIST || '';
-  for (const nick of envList.split(',')) {
-    const trimmed = nick.trim();
-    if (trimmed) _whitelist.add(trimmed.toLowerCase());
+  // Load whitelist from database
+  try {
+    const nicks = await db.getWhitelistDB();
+    for (const nick of nicks) _whitelist.add(nick.toLowerCase());
+
+    // One-time migration: seed DB from env var if set, then ignore it
+    const envList = process.env.IDLE_KICK_WHITELIST || '';
+    for (const raw of envList.split(',')) {
+      const trimmed = raw.trim();
+      if (trimmed && !_whitelist.has(trimmed.toLowerCase())) {
+        await db.addToWhitelistDB(trimmed);
+        _whitelist.add(trimmed.toLowerCase());
+      }
+    }
+    if (envList.trim()) {
+      console.log('[idle-kick] IDLE_KICK_WHITELIST env var is deprecated — whitelist is now managed via the database. You can remove this env var.');
+    }
+  } catch (err) {
+    console.error('[idle-kick] Failed to load whitelist from database:', err.message);
   }
 
   // Start the periodic sweep
@@ -128,12 +143,18 @@ function getWhitelist() {
   return [..._whitelist];
 }
 
-function addToWhitelist(nick) {
+async function addToWhitelist(nick) {
   _whitelist.add(nick.toLowerCase());
+  try { await db.addToWhitelistDB(nick); } catch (err) {
+    console.error('[idle-kick] Failed to persist whitelist add:', err.message);
+  }
 }
 
-function removeFromWhitelist(nick) {
+async function removeFromWhitelist(nick) {
   _whitelist.delete(nick.toLowerCase());
+  try { await db.removeFromWhitelistDB(nick); } catch (err) {
+    console.error('[idle-kick] Failed to persist whitelist remove:', err.message);
+  }
 }
 
 /**

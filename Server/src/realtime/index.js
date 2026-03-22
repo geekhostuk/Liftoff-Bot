@@ -32,7 +32,7 @@ async function main() {
 
   const { broadcastPublic, broadcastAdmin } = createLiveSocketServer(wsServer);
   broadcast.init(broadcastPublic, broadcastAdmin);
-  createPluginSocketServer(wsServer);
+  await createPluginSocketServer(wsServer);
 
   // Initialise playlist runner
   playlistRunner.init(broadcast.broadcastAll);
@@ -128,13 +128,13 @@ async function main() {
     res.json({ whitelist: idleKick.getWhitelist() });
   });
 
-  internal.post('/internal/idle-kick/whitelist', (req, res) => {
-    idleKick.addToWhitelist(req.body.nick);
+  internal.post('/internal/idle-kick/whitelist', async (req, res) => {
+    await idleKick.addToWhitelist(req.body.nick);
     res.json({ ok: true, whitelist: idleKick.getWhitelist() });
   });
 
-  internal.delete('/internal/idle-kick/whitelist', (req, res) => {
-    idleKick.removeFromWhitelist(req.body.nick);
+  internal.delete('/internal/idle-kick/whitelist', async (req, res) => {
+    await idleKick.removeFromWhitelist(req.body.nick);
     res.json({ ok: true, whitelist: idleKick.getWhitelist() });
   });
 

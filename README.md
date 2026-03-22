@@ -25,7 +25,10 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
                                     │          │
                                     └────┬─────┘
                                          │
-                                     SQLite vol
+                                   ┌─────┴─────┐
+                                   │ PostgreSQL │
+                                   │   (pg 16)  │
+                                   └───────────┘
 ```
 
 | Service | What it does | Exposed at |
@@ -34,10 +37,11 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 | **admin-web** | Serves the admin dashboard HTML/JS/CSS | `/admin/*` (Basic Auth) |
 | **api** | Express REST API — public + admin routes, auth, DB reads/writes | `/api/*` |
 | **realtime** | WebSocket servers, plugin ingestion, domain services (playlists, competitions, idle kick, skip/extend vote), internal API | `/ws/*` |
+| **postgres** | PostgreSQL 16 database — stores all race data, competitions, playlists, and admin users | Port 5432 (internal) |
 | **nginx** | TLS termination, path-based routing, Basic Auth for admin | Ports 80/443 |
 
 1. The **BepInEx plugin** captures Photon multiplayer events (races, laps, players, chat) inside Liftoff and sends them to the realtime server over WebSocket.
-2. The **realtime server** ingests events into SQLite, manages in-memory state, runs domain services, and broadcasts updates to connected web clients.
+2. The **realtime server** ingests events into PostgreSQL, manages in-memory state, runs domain services, and broadcasts updates to connected web clients.
 3. The **API server** handles REST endpoints for both public data and admin operations. Admin actions that need the plugin or domain services are forwarded to the realtime server via an internal HTTP API.
 4. The **competition runner** (in realtime) manages weekly competition lifecycles — activating weeks, rotating playlists, and auto-recovering after server reboots.
 5. The **admin dashboard** lets organisers control the lobby: change tracks, run playlists, send chat, manage players, and configure competitions.
@@ -154,7 +158,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 ### Race Data
 
-- Automatic race and lap recording to SQLite
+- Automatic race and lap recording to PostgreSQL
 - Per-pilot tracking via Steam ID and pilot GUID
 - Session history and leaderboard support
 - Structured JSONL event logs from the plugin
@@ -169,7 +173,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 | Game Plugin | C# / .NET 4.7.2 / BepInEx / Photon (PUN3) |
 | API Server | Node.js / Express |
 | Realtime Server | Node.js / WebSocket (ws) |
-| Database | SQLite (WAL mode) |
+| Database | PostgreSQL 16 |
 | Validation | AJV (JSON Schema) |
 | Frontend Build | Vite |
 | Frontend | Vanilla JS (ES modules), HTML, CSS |
@@ -257,8 +261,8 @@ Liftoff/
 │   │   │   └── public.js
 │   │   ├── cli/
 │   │   │   └── createUser.js           # CLI admin user creation
-│   │   └── db/                         # Database layer (async, Postgres-ready)
-│   │       ├── connection.js           # Connection + migration runner
+│   │   └── db/                         # Database layer (PostgreSQL via pg pool)
+│   │       ├── connection.js           # PostgreSQL connection pool + migration runner
 │   │       ├── migrations/             # Numbered SQL migration files
 │   │       │   ├── 001_initial.sql
 │   │       │   └── 002_competition.sql
@@ -271,7 +275,7 @@ Liftoff/
 │   │
 │   ├── nginx/
 │   │   └── nginx.conf                  # Reverse proxy config (4 upstreams)
-│   ├── docker-compose.yml              # 5 services: api, realtime, public-web, admin-web, nginx
+│   ├── docker-compose.yml              # 6 services: api, realtime, postgres, public-web, admin-web, nginx
 │   ├── Dockerfile
 │   └── .env.example
 │
@@ -284,7 +288,7 @@ Liftoff/
 
 ### Prerequisites
 
-- **Server:** Node.js 23+ (or Docker)
+- **Server:** Node.js 23+, PostgreSQL 16+ (or Docker, which includes Postgres)
 - **Plugin:** .NET Framework 4.7.2 SDK, Liftoff with [BepInEx](https://github.com/BepInEx/BepInEx) installed
 
 ### Server Setup
@@ -299,7 +303,7 @@ Liftoff/
    ```env
    PLUGIN_API_KEY=your-plugin-key
    ADMIN_TOKEN=your-admin-token
-   DB_PATH=./competition.db
+   DATABASE_URL=postgresql://liftoff:liftoff@localhost:5432/liftoff
    IDLE_KICK_WHITELIST=              # comma-separated nicks immune to idle kick
    ADMIN_USER=                       # initial admin username (first run only)
    ADMIN_PASS=                       # initial admin password (first run only)
@@ -311,10 +315,13 @@ Liftoff/
    docker compose up -d --build
    ```
 
-   This starts 5 containers: API server, realtime server, public web, admin web, and nginx.
+   This starts 6 containers: API server, realtime server, PostgreSQL, public web, admin web, and nginx.
 
-   Or **run locally** (both servers needed):
+   Or **run locally** (PostgreSQL and both servers needed):
    ```bash
+   # Ensure PostgreSQL is running and the database exists:
+   createdb liftoff
+
    cd Server
    npm install
    npm run start:realtime &    # WebSockets + domain services (port 3000 + internal 3001)
@@ -398,11 +405,21 @@ The server is split into two processes that communicate via an internal HTTP API
 
 **Realtime Server** — Owns all WebSocket connections (plugin, live view, admin), in-memory state, event ingestion, and domain services (playlist runner, competition runner, idle kick, skip/extend vote). Exposes an internal API for the API server to call.
 
-Both servers share the same SQLite database via WAL mode. The database layer is fully async to prepare for a future PostgreSQL migration — only the internal `db/` module needs to change when that happens.
+Both servers share the same PostgreSQL database. The database layer uses the `pg` connection pool with parameterized queries throughout — no ORM.
 
 ### Database Migrations
 
-Schema changes are managed via numbered SQL files in `Server/src/db/migrations/`. The migration runner executes them in order on startup and tracks applied migrations in a `_migrations` table. To add a new migration, create a file like `003_your_change.sql` in the migrations directory.
+Schema changes are managed via numbered SQL files in `Server/src/db/migrations/`. The migration runner executes them in order on startup and tracks applied migrations in a `_migrations` table. To add a new migration, create a file like `003_your_change.sql` in the migrations directory. The schema uses the `citext` PostgreSQL extension for case-insensitive admin usernames.
+
+### SQLite to PostgreSQL Migration
+
+If migrating from a previous SQLite-based deployment, use the included migration script:
+
+```bash
+node scripts/migrate-sqlite-to-pg.js --sqlite ./competition.db --pg postgresql://liftoff:liftoff@localhost:5432/liftoff
+```
+
+This copies all data from the SQLite database into PostgreSQL, handling foreign keys and sequence resets automatically.
 
 ---
 
