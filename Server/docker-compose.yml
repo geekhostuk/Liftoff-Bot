@@ -74,6 +74,13 @@ services:
     networks:
       - internal
 
+  admin-v2-web:
+    build:
+      context: ../web/admin-v2
+    restart: unless-stopped
+    networks:
+      - internal
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped

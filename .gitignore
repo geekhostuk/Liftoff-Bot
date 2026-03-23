@@ -34,6 +34,7 @@ Thumbs.db
 # Claude Code
 .claude/
 CLAUDE.md
+.claude-flow/
 
 # SSL certs and auth (generated on server)
 Server/certbot/
