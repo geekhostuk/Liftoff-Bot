@@ -6,15 +6,13 @@ import { getStatus } from '../../lib/api';
 import Badge from '../ui/Badge';
 import './LiveStatus.css';
 
-const isBot = (nick) => String(nick || '').toLowerCase() === 'jmt_bot';
-
 export default function LiveStatus() {
   const [track, setTrack] = useState(null);
   const [players, setPlayers] = useState([]);
   const [playlist, setPlaylist] = useState(null);
   const [pluginConnected, setPluginConnected] = useState(null);
 
-  const playerCount = players.filter(p => !isBot(p.nick)).length;
+  const playerCount = players.length;
 
   const { connected } = useWebSocket(useCallback((event) => {
     switch (event.event_type) {
@@ -94,7 +92,7 @@ export default function LiveStatus() {
             <span className="live-status-item-label">Players</span>
             <span className="live-status-item-value">
               {playerCount}/8
-              {playerCount >= 7 && <Badge variant="warning">FULL</Badge>}
+              {playerCount >= 8 && <Badge variant="warning">FULL</Badge>}
             </span>
           </div>
         </div>
