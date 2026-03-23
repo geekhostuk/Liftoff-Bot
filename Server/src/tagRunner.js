@@ -204,7 +204,7 @@ async function _pickAndApplyTrack() {
       catalogEnvTracks = [];
       for (const env of (catalog.environments || [])) {
         for (const t of (env.tracks || [])) {
-          catalogEnvTracks.push({ env: env.name, track: t.name });
+          catalogEnvTracks.push({ env: env.internal_name || env.name, track: t.name });
         }
       }
     }

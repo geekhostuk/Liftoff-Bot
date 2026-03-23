@@ -72,8 +72,12 @@ async function upsertTrack(env, track, workshop_id = '') {
 async function upsertTracksFromCatalog(environments) {
   const pool = getPool();
   for (const envObj of environments) {
-    const envName = envObj.name;
+    // Catalog uses internal_name for the environment key
+    const envName = envObj.internal_name || envObj.name || envObj.caption || '';
+    if (!envName) continue;
     for (const t of envObj.tracks || []) {
+      const trackName = t.name || '';
+      if (!trackName) continue;
       await pool.query(`
         INSERT INTO tracks (env, track, workshop_id)
         VALUES ($1, $2, $3)
@@ -81,7 +85,7 @@ async function upsertTracksFromCatalog(environments) {
           WHEN tracks.workshop_id = '' AND EXCLUDED.workshop_id <> '' THEN EXCLUDED.workshop_id
           ELSE tracks.workshop_id
         END
-      `, [envName, t.name, t.workshop_id || '']);
+      `, [envName, trackName, t.workshop_id || t.track_dependency || '']);
     }
   }
 }
