@@ -157,9 +157,9 @@ export default function Playlists() {
           minWidth: 300,
           display: 'flex',
           flexDirection: 'column',
-          background: 'var(--color-surface)',
+          background: 'var(--bg-surface)',
           borderRadius: 'var(--radius-md, 8px)',
-          border: '1px solid var(--color-border)',
+          border: '1px solid var(--border-color)',
           overflow: 'hidden'
         }}>
           {/* Create form */}
@@ -167,7 +167,7 @@ export default function Playlists() {
             display: 'flex',
             gap: '0.5rem',
             padding: '0.75rem',
-            borderBottom: '1px solid var(--color-border)'
+            borderBottom: '1px solid var(--border-color)'
           }}>
             <input
               type="text"
@@ -180,7 +180,7 @@ export default function Playlists() {
                 padding: '0.5rem 0.75rem',
                 background: 'var(--color-input-bg, var(--color-bg))',
                 color: 'var(--color-text)',
-                border: '1px solid var(--color-border)',
+                border: '1px solid var(--border-color)',
                 borderRadius: 'var(--radius-sm, 4px)',
                 outline: 'none',
                 fontSize: '0.875rem'
@@ -194,7 +194,7 @@ export default function Playlists() {
                 alignItems: 'center',
                 gap: '0.25rem',
                 padding: '0.5rem 0.75rem',
-                background: 'var(--color-accent, #FF7A00)',
+                background: 'var(--color-primary)',
                 color: '#fff',
                 border: 'none',
                 borderRadius: 'var(--radius-sm, 4px)',
@@ -228,7 +228,7 @@ export default function Playlists() {
                     borderLeft: isPlRunning
                       ? '3px solid var(--color-success, #22c55e)'
                       : isSelected
-                        ? '3px solid var(--color-accent, #FF7A00)'
+                        ? '3px solid var(--color-primary)'
                         : '3px solid transparent',
                     background: isSelected ? 'var(--color-surface-hover, rgba(255,255,255,0.05))' : 'transparent',
                     transition: 'background 0.15s'
@@ -270,9 +270,9 @@ export default function Playlists() {
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          background: 'var(--color-surface)',
+          background: 'var(--bg-surface)',
           borderRadius: 'var(--radius-md, 8px)',
-          border: '1px solid var(--color-border)',
+          border: '1px solid var(--border-color)',
           overflow: 'hidden',
           minHeight: 0
         }}>
@@ -285,7 +285,7 @@ export default function Playlists() {
               {/* Header */}
               <div style={{
                 padding: '0.75rem 1rem',
-                borderBottom: '1px solid var(--color-border)',
+                borderBottom: '1px solid var(--border-color)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '0.75rem'
@@ -316,7 +316,7 @@ export default function Playlists() {
                         padding: '0.375rem 0.5rem',
                         background: 'var(--color-input-bg, var(--color-bg))',
                         color: 'var(--color-text)',
-                        border: '1px solid var(--color-border)',
+                        border: '1px solid var(--border-color)',
                         borderRadius: 'var(--radius-sm, 4px)',
                         fontSize: '0.8125rem'
                       }}
@@ -335,7 +335,7 @@ export default function Playlists() {
                         padding: '0.375rem 0.5rem',
                         background: 'var(--color-input-bg, var(--color-bg))',
                         color: 'var(--color-text)',
-                        border: '1px solid var(--color-border)',
+                        border: '1px solid var(--border-color)',
                         borderRadius: 'var(--radius-sm, 4px)',
                         fontSize: '0.8125rem'
                       }}
@@ -389,7 +389,7 @@ export default function Playlists() {
                           padding: '0.375rem 0.75rem',
                           background: 'var(--color-surface-hover, rgba(255,255,255,0.1))',
                           color: 'var(--color-text)',
-                          border: '1px solid var(--color-border)',
+                          border: '1px solid var(--border-color)',
                           borderRadius: 'var(--radius-sm, 4px)',
                           cursor: 'pointer',
                           fontSize: '0.8125rem'
@@ -420,7 +420,7 @@ export default function Playlists() {
                         gap: '0.5rem',
                         padding: '0.5rem 1rem',
                         background: isCurrent ? 'rgba(255, 122, 0, 0.1)' : 'transparent',
-                        borderLeft: isCurrent ? '3px solid var(--color-accent, #FF7A00)' : '3px solid transparent'
+                        borderLeft: isCurrent ? '3px solid var(--color-primary)' : '3px solid transparent'
                       }}
                     >
                       {/* Position / now-playing indicator */}
@@ -428,7 +428,7 @@ export default function Playlists() {
                         width: 28,
                         textAlign: 'center',
                         fontSize: '0.8125rem',
-                        color: isCurrent ? 'var(--color-accent, #FF7A00)' : 'var(--color-text-muted)',
+                        color: isCurrent ? 'var(--color-primary)' : 'var(--color-text-muted)',
                         fontWeight: isCurrent ? 700 : 400
                       }}>
                         {isCurrent ? '▶' : t.position ?? i + 1}
@@ -498,7 +498,7 @@ export default function Playlists() {
               {/* Add track form */}
               <div style={{
                 padding: '0.75rem 1rem',
-                borderTop: '1px solid var(--color-border)',
+                borderTop: '1px solid var(--border-color)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem'

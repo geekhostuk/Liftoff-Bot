@@ -20,10 +20,10 @@ const styles = {
     gap: 'var(--space-md)',
   },
   card: {
-    background: 'var(--surface-1)',
+    background: 'var(--bg-surface)',
     borderRadius: 'var(--radius-md)',
     padding: 'var(--space-lg)',
-    border: '1px solid var(--border)',
+    border: '1px solid var(--border-color)',
     display: 'flex',
     flexDirection: 'column',
     gap: 'var(--space-xs)',
@@ -53,10 +53,10 @@ const styles = {
     gap: 'var(--space-md)',
   },
   panel: {
-    background: 'var(--surface-1)',
+    background: 'var(--bg-surface)',
     borderRadius: 'var(--radius-md)',
     padding: 'var(--space-lg)',
-    border: '1px solid var(--border)',
+    border: '1px solid var(--border-color)',
   },
   panelHeader: {
     display: 'flex',
@@ -79,7 +79,7 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 'var(--space-sm) 0',
-    borderBottom: '1px solid var(--border)',
+    borderBottom: '1px solid var(--border-color)',
   },
   nick: {
     fontWeight: 600,
@@ -91,7 +91,7 @@ const styles = {
   },
   chatRow: {
     padding: 'var(--space-sm) 0',
-    borderBottom: '1px solid var(--border)',
+    borderBottom: '1px solid var(--border-color)',
     display: 'flex',
     flexDirection: 'column',
     gap: '2px',

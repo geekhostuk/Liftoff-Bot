@@ -137,9 +137,9 @@ const styles = {
     margin: 0,
   },
   card: {
-    background: 'var(--surface)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius, 8px)',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--radius-md)',
     padding: '1.25rem 1.5rem',
   },
   cardTitle: {
@@ -184,8 +184,8 @@ const styles = {
     gap: '0.75rem',
   },
   statBadge: {
-    background: 'var(--surface-alt, rgba(255,122,0,0.1))',
-    color: 'var(--accent, #FF7A00)',
+    background: 'var(--bg-surface-alt)',
+    color: 'var(--color-primary)',
     padding: '0.25rem 0.65rem',
     borderRadius: '4px',
     fontSize: '0.82rem',

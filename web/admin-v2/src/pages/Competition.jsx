@@ -19,125 +19,133 @@ const styles = {
   page: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 'var(--space-6)',
-    padding: 'var(--space-6)',
-    color: 'var(--text)',
+    gap: 'var(--space-xl)',
     maxWidth: 960,
   },
   heading: {
     display: 'flex',
     alignItems: 'center',
-    gap: 'var(--space-3)',
-    fontSize: 'var(--text-xl)',
+    gap: 'var(--space-sm)',
+    fontSize: '1.5rem',
     fontWeight: 700,
-    color: 'var(--text)',
+    fontFamily: 'var(--font-heading)',
+    color: 'var(--text-primary)',
   },
   section: {
-    background: 'var(--surface)',
-    borderRadius: 'var(--radius)',
-    padding: 'var(--space-5)',
+    background: 'var(--bg-surface)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-color)',
+    padding: 'var(--space-lg)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 'var(--space-4)',
+    gap: 'var(--space-md)',
   },
   sectionTitle: {
-    fontSize: 'var(--text-lg)',
+    fontSize: '1.1rem',
     fontWeight: 600,
-    color: 'var(--text)',
+    fontFamily: 'var(--font-heading)',
+    color: 'var(--text-primary)',
     margin: 0,
   },
   row: {
     display: 'flex',
     alignItems: 'center',
-    gap: 'var(--space-3)',
+    gap: 'var(--space-sm)',
     flexWrap: 'wrap',
   },
   select: {
     flex: 1,
-    padding: 'var(--space-2) var(--space-3)',
-    borderRadius: 'var(--radius)',
-    border: '1px solid var(--border)',
-    background: 'var(--surface-alt)',
-    color: 'var(--text)',
-    fontSize: 'var(--text-sm)',
+    padding: 'var(--space-sm) var(--space-md)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-color)',
+    background: 'var(--bg-surface-alt)',
+    color: 'var(--text-primary)',
+    fontSize: '0.9rem',
+    fontFamily: 'var(--font-body)',
   },
   input: {
-    padding: 'var(--space-2) var(--space-3)',
-    borderRadius: 'var(--radius)',
-    border: '1px solid var(--border)',
-    background: 'var(--surface-alt)',
-    color: 'var(--text)',
-    fontSize: 'var(--text-sm)',
+    padding: 'var(--space-sm) var(--space-md)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-color)',
+    background: 'var(--bg-surface-alt)',
+    color: 'var(--text-primary)',
+    fontSize: '0.9rem',
+    fontFamily: 'var(--font-body)',
   },
   btn: {
-    padding: 'var(--space-2) var(--space-4)',
-    borderRadius: 'var(--radius)',
+    padding: 'var(--space-sm) var(--space-md)',
+    borderRadius: 'var(--radius-md)',
     border: 'none',
-    background: 'var(--accent)',
+    background: 'var(--color-primary)',
     color: '#fff',
     fontWeight: 600,
-    fontSize: 'var(--text-sm)',
+    fontFamily: 'var(--font-heading)',
+    fontSize: '0.9rem',
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 'var(--space-2)',
+    gap: 'var(--space-sm)',
   },
   btnMuted: {
-    padding: 'var(--space-2) var(--space-4)',
-    borderRadius: 'var(--radius)',
-    border: '1px solid var(--border)',
+    padding: 'var(--space-sm) var(--space-md)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-color)',
     background: 'transparent',
     color: 'var(--text-muted)',
     fontWeight: 600,
-    fontSize: 'var(--text-sm)',
+    fontFamily: 'var(--font-heading)',
+    fontSize: '0.9rem',
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 'var(--space-2)',
+    gap: 'var(--space-sm)',
   },
   weekItem: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 'var(--space-3) var(--space-4)',
-    borderRadius: 'var(--radius)',
-    border: '1px solid var(--border)',
+    padding: 'var(--space-sm) var(--space-md)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-color)',
     cursor: 'pointer',
     transition: 'background 0.15s',
   },
   weekItemSelected: {
-    background: 'var(--surface-alt)',
-    borderColor: 'var(--accent)',
+    background: 'var(--bg-surface-alt)',
+    borderColor: 'var(--color-primary)',
   },
   playlistItem: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 'var(--space-2) var(--space-3)',
-    borderRadius: 'var(--radius)',
-    border: '1px solid var(--border)',
-    fontSize: 'var(--text-sm)',
+    padding: 'var(--space-sm) var(--space-md)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-color)',
+    fontSize: '0.9rem',
   },
   form: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 'var(--space-3)',
-    padding: 'var(--space-4)',
-    borderRadius: 'var(--radius)',
-    background: 'var(--surface-alt)',
+    gap: 'var(--space-sm)',
+    padding: 'var(--space-md)',
+    borderRadius: 'var(--radius-md)',
+    background: 'var(--bg-surface-alt)',
   },
   label: {
-    fontSize: 'var(--text-sm)',
+    fontSize: '0.8rem',
     color: 'var(--text-muted)',
-    fontWeight: 500,
+    fontWeight: 600,
+    fontFamily: 'var(--font-heading)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
   },
   iconBtn: {
     background: 'transparent',
     border: 'none',
     color: 'var(--text-muted)',
     cursor: 'pointer',
-    padding: 'var(--space-1)',
-    borderRadius: 'var(--radius)',
+    padding: 'var(--space-xs)',
+    borderRadius: 'var(--radius-sm)',
     display: 'inline-flex',
     alignItems: 'center',
   },
@@ -288,7 +296,7 @@ export default function Competition() {
   return (
     <div style={styles.page}>
       <div style={styles.heading}>
-        <Trophy size={24} color="var(--accent)" />
+        <Trophy size={24} color="var(--color-primary)" />
         Competition
       </div>
 
@@ -378,7 +386,7 @@ export default function Competition() {
           {weeks.length === 0 ? (
             <EmptyState message="No weeks yet — generate some above." />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
               {weeks.map(w => (
                 <div
                   key={w.id}
@@ -388,15 +396,15 @@ export default function Competition() {
                   }}
                   onClick={() => setSelectedWeekId(w.id)}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                     <strong>Week {w.week_number}</strong>
-                    <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                       {fmtDate(w.starts_at)} – {fmtDate(w.ends_at)}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                     <Badge variant={STATUS_BADGE[w.status] ?? 'muted'}>{w.status}</Badge>
-                    <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                       {w.playlist_count} playlist{w.playlist_count !== 1 ? 's' : ''}
                     </span>
                   </div>
@@ -411,9 +419,9 @@ export default function Competition() {
       {selectedWeek && (
         <div style={styles.section}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
               <h2 style={styles.sectionTitle}>Week {selectedWeek.week_number}</h2>
-              <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 {fmtDate(selectedWeek.starts_at)} – {fmtDate(selectedWeek.ends_at)}
               </span>
               <Badge variant={STATUS_BADGE[selectedWeek.status] ?? 'muted'}>{selectedWeek.status}</Badge>
@@ -435,7 +443,7 @@ export default function Competition() {
           {editing && (
             <div style={styles.form}>
               <div style={styles.row}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
                   <span style={styles.label}>Start date</span>
                   <input
                     type="date"
@@ -444,7 +452,7 @@ export default function Competition() {
                     onChange={e => setEditForm(f => ({ ...f, starts_at: e.target.value }))}
                   />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
                   <span style={styles.label}>End date</span>
                   <input
                     type="date"
@@ -453,7 +461,7 @@ export default function Competition() {
                     onChange={e => setEditForm(f => ({ ...f, ends_at: e.target.value }))}
                   />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
                   <span style={styles.label}>Status</span>
                   <select
                     style={styles.select}
@@ -474,22 +482,22 @@ export default function Competition() {
           )}
 
           {/* Playlist assignments */}
-          <h3 style={{ ...styles.sectionTitle, fontSize: 'var(--text-base)' }}>Playlists</h3>
+          <h3 style={{ ...styles.sectionTitle, fontSize: '1rem' }}>Playlists</h3>
 
           {weekPlaylists.length === 0 ? (
             <EmptyState message="No playlists assigned to this week." />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
               {weekPlaylists.map((wp, idx) => (
                 <div key={wp.id} style={styles.playlistItem}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                     <span style={{ color: 'var(--text-muted)', fontWeight: 600, minWidth: 24 }}>{wp.position}</span>
                     <span>{wp.playlist_name}</span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                       {Math.round(wp.interval_ms / 60_000)} min
                     </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
                     <button
                       style={styles.iconBtn}
                       disabled={idx === 0}

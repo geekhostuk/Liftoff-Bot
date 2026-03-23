@@ -136,7 +136,7 @@ export default function Chat() {
           type="checkbox"
           checked={info.getValue()}
           onChange={() => handleToggleEnabled(info.row.original)}
-          style={{ cursor: 'pointer', accentColor: 'var(--accent, #FF7A00)' }}
+          style={{ cursor: 'pointer', accentColor: 'var(--color-primary)' }}
         />
       ),
     }),
@@ -257,7 +257,7 @@ export default function Chat() {
                 type="checkbox"
                 checked={newTemplate.enabled}
                 onChange={(e) => setNewTemplate((p) => ({ ...p, enabled: e.target.checked }))}
-                style={{ accentColor: 'var(--accent, #FF7A00)', marginRight: 4 }}
+                style={{ accentColor: 'var(--color-primary)', marginRight: 4 }}
               />
               Enabled
             </label>
@@ -294,9 +294,9 @@ const styles = {
     margin: 0,
   },
   card: {
-    background: 'var(--surface)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius, 8px)',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--radius-md)',
     padding: '1.25rem 1.5rem',
   },
   cardTitle: {
@@ -314,8 +314,8 @@ const styles = {
     flexDirection: 'column',
     gap: '0.35rem',
     padding: '0.5rem',
-    background: 'var(--surface-alt, rgba(0,0,0,0.15))',
-    borderRadius: 'var(--radius, 8px)',
+    background: 'var(--bg-surface-alt)',
+    borderRadius: 'var(--radius-md)',
   },
   chatMessage: {
     display: 'flex',
@@ -330,7 +330,7 @@ const styles = {
     flexShrink: 0,
   },
   chatNick: {
-    color: 'var(--accent, #FF7A00)',
+    color: 'var(--color-primary)',
     fontWeight: 600,
     fontSize: '0.9rem',
     flexShrink: 0,
@@ -350,9 +350,9 @@ const styles = {
   input: {
     flex: 1,
     padding: '0.5rem 0.75rem',
-    background: 'var(--input-bg, var(--surface-alt, #1a1a1a))',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius, 8px)',
+    background: 'var(--bg-surface-alt)',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--radius-md)',
     color: 'var(--text-primary)',
     fontSize: '0.9rem',
     outline: 'none',
@@ -369,7 +369,7 @@ const styles = {
   addForm: {
     marginTop: '1.25rem',
     paddingTop: '1rem',
-    borderTop: '1px solid var(--border)',
+    borderTop: '1px solid var(--border-color)',
   },
   addFormTitle: {
     fontSize: '0.95rem',
@@ -385,9 +385,9 @@ const styles = {
   },
   select: {
     padding: '0.5rem 0.75rem',
-    background: 'var(--input-bg, var(--surface-alt, #1a1a1a))',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius, 8px)',
+    background: 'var(--bg-surface-alt)',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--radius-md)',
     color: 'var(--text-primary)',
     fontSize: '0.9rem',
     outline: 'none',

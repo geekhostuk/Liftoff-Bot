@@ -12,9 +12,9 @@ import { fmtMs, fmtCountdown } from '../lib/fmt.js';
 import { Tag, Plus, Trash2, Play, Square, SkipForward, Search, Check, X } from 'lucide-react';
 
 const cardStyle = {
-  background: 'var(--color-surface)',
+  background: 'var(--bg-surface)',
   borderRadius: 'var(--radius-md, 8px)',
-  border: '1px solid var(--color-border)',
+  border: '1px solid var(--border-color)',
   padding: '1rem',
   display: 'flex',
   flexDirection: 'column',
@@ -34,7 +34,7 @@ const inputStyle = {
   padding: '0.5rem 0.75rem',
   background: 'var(--color-input-bg, var(--color-bg))',
   color: 'var(--color-text)',
-  border: '1px solid var(--color-border)',
+  border: '1px solid var(--border-color)',
   borderRadius: 'var(--radius-sm, 4px)',
   fontSize: '0.875rem',
   outline: 'none'
@@ -45,7 +45,7 @@ const btnPrimary = {
   alignItems: 'center',
   gap: '0.375rem',
   padding: '0.5rem 0.75rem',
-  background: 'var(--color-accent, #FF7A00)',
+  background: 'var(--color-primary)',
   color: '#fff',
   border: 'none',
   borderRadius: 'var(--radius-sm, 4px)',
@@ -59,7 +59,7 @@ const btnOutline = {
   ...btnPrimary,
   background: 'var(--color-surface-hover, rgba(255,255,255,0.1))',
   color: 'var(--color-text)',
-  border: '1px solid var(--color-border)'
+  border: '1px solid var(--border-color)'
 };
 
 export default function Tags() {
@@ -350,7 +350,7 @@ export default function Tags() {
             flex: 1,
             maxHeight: 300,
             overflowY: 'auto',
-            border: '1px solid var(--color-border)',
+            border: '1px solid var(--border-color)',
             borderRadius: 'var(--radius-sm, 4px)'
           }}>
             {filteredTracks.length === 0 && <EmptyState message="No tracks found" />}
@@ -364,7 +364,7 @@ export default function Tags() {
                   fontSize: '0.875rem',
                   color: 'var(--color-text)',
                   background: t.id === selectedTrackId ? 'rgba(255,122,0,0.12)' : 'transparent',
-                  borderLeft: t.id === selectedTrackId ? '3px solid var(--color-accent, #FF7A00)' : '3px solid transparent',
+                  borderLeft: t.id === selectedTrackId ? '3px solid var(--color-primary)' : '3px solid transparent',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center'
@@ -391,7 +391,7 @@ export default function Tags() {
               flexDirection: 'column',
               gap: '0.75rem',
               padding: '0.75rem',
-              border: '1px solid var(--color-border)',
+              border: '1px solid var(--border-color)',
               borderRadius: 'var(--radius-sm, 4px)',
               background: 'var(--color-bg)'
             }}>
@@ -411,7 +411,7 @@ export default function Tags() {
                       type="checkbox"
                       checked={selectedTagIds.includes(t.id)}
                       onChange={() => toggleTagId(t.id)}
-                      style={{ accentColor: 'var(--color-accent, #FF7A00)' }}
+                      style={{ accentColor: 'var(--color-primary)' }}
                     />
                     {t.name}
                   </label>
@@ -477,9 +477,9 @@ export default function Tags() {
                   borderRadius: '999px',
                   fontSize: '0.8125rem',
                   cursor: 'pointer',
-                  border: active ? '1px solid var(--color-accent, #FF7A00)' : '1px solid var(--color-border)',
+                  border: active ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
                   background: active ? 'rgba(255,122,0,0.15)' : 'transparent',
-                  color: active ? 'var(--color-accent, #FF7A00)' : 'var(--color-text)'
+                  color: active ? 'var(--color-primary)' : 'var(--color-text)'
                 }}
               >
                 {t.name}
@@ -540,9 +540,9 @@ export default function Tags() {
               {voteState.options?.map((opt, i) => (
                 <div key={i} style={{
                   padding: '0.375rem 0.75rem',
-                  background: 'var(--color-surface)',
+                  background: 'var(--bg-surface)',
                   borderRadius: 'var(--radius-sm, 4px)',
-                  border: '1px solid var(--color-border)'
+                  border: '1px solid var(--border-color)'
                 }}>
                   <span style={{ fontWeight: 600 }}>{opt.name}</span>
                   <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-muted)' }}>{opt.votes} votes</span>
@@ -569,9 +569,9 @@ export default function Tags() {
                   borderRadius: '999px',
                   fontSize: '0.8125rem',
                   cursor: 'pointer',
-                  border: active ? '1px solid var(--color-accent, #FF7A00)' : '1px solid var(--color-border)',
+                  border: active ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
                   background: active ? 'rgba(255,122,0,0.15)' : 'transparent',
-                  color: active ? 'var(--color-accent, #FF7A00)' : 'var(--color-text)'
+                  color: active ? 'var(--color-primary)' : 'var(--color-text)'
                 }}
               >
                 {t.name}
