@@ -187,7 +187,7 @@ export default function Dashboard() {
   });
 
   const displayPlayers = useMemo(
-    () => players.filter((p) => p.actor !== 'jmt_bot').slice(0, 8),
+    () => players.filter((p) => String(p.nick || '').toLowerCase() !== 'jmt_bot').slice(0, 8),
     [players],
   );
 
@@ -202,7 +202,7 @@ export default function Dashboard() {
         <div style={styles.card}>
           <div style={styles.cardValue}>
             <Users size={24} style={styles.cardIcon} />
-            {players.filter((p) => p.actor !== 'jmt_bot').length}
+            {players.filter((p) => String(p.nick || '').toLowerCase() !== 'jmt_bot').length}
           </div>
           <div style={styles.cardLabel}>Players Online</div>
         </div>

@@ -38,7 +38,7 @@ export default function LiveStatus() {
         if (!HIDDEN_NICKS.includes(event.nick?.toLowerCase())) setPlayerCount(c => c + 1);
         break;
       case 'player_left':
-        setPlayerCount(c => Math.max(0, c - 1));
+        if (!HIDDEN_NICKS.includes(event.nick?.toLowerCase())) setPlayerCount(c => Math.max(0, c - 1));
         break;
     }
   }, []));
@@ -92,7 +92,7 @@ export default function LiveStatus() {
             <span className="live-status-item-label">Players</span>
             <span className="live-status-item-value">
               {playerCount}/8
-              {playerCount >= 8 && <Badge variant="warning">FULL</Badge>}
+              {playerCount >= 7 && <Badge variant="warning">FULL</Badge>}
             </span>
           </div>
         </div>
