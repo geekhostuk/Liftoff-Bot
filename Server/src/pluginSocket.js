@@ -6,6 +6,7 @@ const broadcast = require('./broadcast');
 const skipVote = require('./skipVote');
 const extendVote = require('./extendVote');
 const idleKick = require('./idleKick');
+const tagVote = require('./tagVote');
 const { validateEvent } = require('./contracts');
 
 const PLUGIN_API_KEY = process.env.PLUGIN_API_KEY || '';
@@ -117,14 +118,24 @@ async function createPluginSocketServer(httpServer) {
   // Initialise the vote modules with access to sendCommand
   skipVote.init(sendCommand);
   extendVote.init(sendCommand);
+  tagVote.init(sendCommand);
   await idleKick.init(sendCommand, sendCommandAwait);
 
-  // Cancel any active votes when the playlist stops so orphaned votes
+  // Cancel any active votes when the playlist or tag runner stops so orphaned votes
   // don't cause "No playlist is running" on the next attempt.
   const playlist = require('./playlistRunner');
   playlist.onStop(() => {
     skipVote.cancelSkipVote();
     extendVote.cancelExtendVote();
+    tagVote.cancelVote();
+    idleKick.resetAllTimers();
+  });
+
+  const tagRunner = require('./tagRunner');
+  tagRunner.onStop(() => {
+    skipVote.cancelSkipVote();
+    extendVote.cancelExtendVote();
+    tagVote.cancelVote();
     idleKick.resetAllTimers();
   });
 
@@ -225,10 +236,12 @@ const PUBLIC_EVENT_TYPES = new Set([
   'lap_recorded', 'race_reset', 'race_end',
   'player_entered', 'player_left', 'player_list',
   'track_changed', 'state_snapshot', 'playlist_state',
+  'tag_runner_state',
   'checkpoint', 'pilot_complete', 'pilot_reset', 'keepalive',
   'competition_week_started', 'competition_week_finalised',
   'competition_standings_update', 'competition_points_awarded',
   'competition_runner_state',
+  'tag_vote_state',
 ]);
 
 // Fields to strip from events before public broadcast
@@ -317,10 +330,16 @@ async function handlePluginEvent(jsonLine) {
     if (!state.areChatCommandsAllowed()) return;
     if (msg === '/info') {
       const playlist = require('./playlistRunner');
+      const tagRunnerMod = require('./tagRunner');
       const ps = playlist.getState();
+      const ts = tagRunnerMod.getState();
       let timeLeft = 'N/A';
-      if (ps.running && ps.next_change_at) {
-        const remainMs = new Date(ps.next_change_at).getTime() - Date.now();
+      let mode = '';
+      const nextChangeAt = ps.running ? ps.next_change_at : ts.running ? ts.next_change_at : null;
+      if (ps.running) mode = 'Playlist';
+      else if (ts.running) mode = `Tags: ${ts.tag_names.join(', ')}`;
+      if (nextChangeAt) {
+        const remainMs = new Date(nextChangeAt).getTime() - Date.now();
         if (remainMs > 0) {
           const m = Math.floor(remainMs / 60000);
           const s = Math.floor((remainMs % 60000) / 1000);
@@ -329,7 +348,8 @@ async function handlePluginEvent(jsonLine) {
           timeLeft = '0m 0s';
         }
       }
-      sendCommand({ cmd: 'send_chat', message: `<color=#00BFFF>COMMANDS</color> <color=#00FF00>/next</color> <color=#FFFF00>(skip)</color> <color=#00FF00>/extend</color> <color=#FFFF00>(+5 mins)</color> | <color=#00BFFF>Time left:</color> <color=#FFFF00>${timeLeft}</color>` });
+      const modeStr = mode ? ` | <color=#00BFFF>Mode:</color> <color=#FFFF00>${mode}</color>` : '';
+      sendCommand({ cmd: 'send_chat', message: `<color=#00BFFF>COMMANDS</color> <color=#00FF00>/next</color> <color=#FFFF00>(skip)</color> <color=#00FF00>/extend</color> <color=#FFFF00>(+5 mins)</color> | <color=#00BFFF>Time left:</color> <color=#FFFF00>${timeLeft}</color>${modeStr}` });
     } else if (msg === '/next') {
       // Use user_id (Steam ID) as the voter key — event.actor can be null if the
       // plugin couldn't resolve the Photon actor number, which causes all unresolved
@@ -344,6 +364,13 @@ async function handlePluginEvent(jsonLine) {
       } else {
         sendCommand({ cmd: 'send_chat', message: '<color=#FFFF00>No one is about to be kicked.</color>' });
       }
+    } else if (msg === '/tagvote') {
+      tagVote.handleTagVoteCommand(event.user_id || event.nick);
+    } else if (msg === '/tags') {
+      tagVote.handleTagsInfoCommand();
+    } else if (/^\/[1-4]$/.test(msg)) {
+      const optionIndex = parseInt(msg[1]) - 1;
+      tagVote.handleNumberedVote(optionIndex, event.user_id || event.nick);
     }
   }
 

@@ -170,6 +170,14 @@ function connectWs() {
       const event = JSON.parse(data);
       if (event.event_type === 'track_catalog') {
         loadCatalog();
+        loadTaggedTracks(); // refresh tracks table after catalog update
+      } else if (event.event_type === 'tag_runner_state') {
+        tagRunnerState = event;
+        renderTagRunnerBar();
+        updateTagRunnerButtons();
+      } else if (event.event_type === 'tag_vote_state') {
+        tagVoteState = event;
+        renderTagVoteStatus();
       } else if (event.event_type === 'playlist_state') {
         runnerState = event;
         renderRunnerBar();
@@ -639,6 +647,361 @@ function onPlEnvChange() {
   ).join('');
 }
 
+// ── Tags ────────────────────────────────────────────────────────────────────
+let allTags = [];
+let allTaggedTracks = [];
+let selectedTagTrackId = null;
+
+async function loadTags() {
+  try {
+    allTags = await apiFetch('GET', '/api/admin/tags');
+    renderTagList();
+    populateTagRunnerSelect();
+    populateTagVoteSelect();
+  } catch {}
+}
+
+async function loadTaggedTracks() {
+  try {
+    allTaggedTracks = await apiFetch('GET', '/api/admin/tracks');
+    // Re-filter if search is active
+    const searchInput = document.getElementById('tag-track-search');
+    if (searchInput && searchInput.value) filterTagTracks(searchInput.value);
+    // Re-render checkboxes if a track is selected
+    if (selectedTagTrackId) selectTagTrack(selectedTagTrackId);
+  } catch {}
+}
+
+function renderTagList() {
+  const el = document.getElementById('tag-list');
+  if (!allTags.length) {
+    el.innerHTML = '<div style="color:#444;font-size:0.8rem">No tags yet.</div>';
+    return;
+  }
+  el.innerHTML = allTags.map(t => `<div class="tag-list-item">
+    <span class="tag-name">${esc(t.name)}</span>
+    <button class="btn-secondary mini-btn" data-action="renameTag" data-id="${t.id}" data-name="${esc(t.name)}" title="Rename">&#9998;</button>
+    <button class="btn-danger mini-btn" data-action="deleteTag" data-id="${t.id}" data-name="${esc(t.name)}">&#10005;</button>
+  </div>`).join('');
+}
+
+async function createTag() {
+  const input = document.getElementById('new-tag-name');
+  const name = input.value.trim();
+  if (!name) return;
+  try {
+    await apiFetch('POST', '/api/admin/tags', { name });
+    input.value = '';
+    await loadTags();
+    toast(`Tag "${name}" created`);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function deleteTagById(id, name) {
+  if (!confirm(`Delete tag "${name}"? It will be removed from all tracks.`)) return;
+  try {
+    await apiFetch('DELETE', `/api/admin/tags/${id}`);
+    await loadTags();
+    if (selectedTagTrackId) await loadTrackTagDetails(selectedTagTrackId);
+    toast(`Tag "${name}" deleted`);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function renameTagById(id, currentName) {
+  const newName = prompt('Rename tag:', currentName);
+  if (!newName || newName.trim() === currentName) return;
+  try {
+    await apiFetch('PUT', `/api/admin/tags/${id}`, { name: newName.trim() });
+    await loadTags();
+    if (selectedTagTrackId) await loadTrackTagDetails(selectedTagTrackId);
+    toast(`Tag renamed to "${newName.trim()}"`);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+function filterTagTracks(query) {
+  const resultsEl = document.getElementById('tag-track-results');
+  if (!query.trim()) {
+    resultsEl.style.display = 'none';
+    return;
+  }
+  const q = query.toLowerCase();
+  const matches = allTaggedTracks
+    .filter(t => t.env.toLowerCase().includes(q) || t.track.toLowerCase().includes(q))
+    .sort((a, b) => a.env.localeCompare(b.env) || a.track.localeCompare(b.track));
+
+  if (!matches.length) {
+    resultsEl.style.display = 'block';
+    resultsEl.innerHTML = '<div style="padding:0.75rem;text-align:center;color:#444;font-size:0.82rem">No tracks match.</div>';
+    return;
+  }
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = matches.map(t => {
+    const tagStr = (t.tags || []).map(tg => tg.name).join(', ');
+    return `<div class="tag-result-item ${t.id === selectedTagTrackId ? 'active' : ''}" data-action="selectTagTrack" data-id="${t.id}">
+      <span>${esc(t.track)}${tagStr ? `<span class="tag-result-tags">[${esc(tagStr)}]</span>` : ''}</span>
+      <span class="tag-result-env">${esc(t.env)}</span>
+    </div>`;
+  }).join('');
+}
+
+async function selectTagTrack(trackId) {
+  selectedTagTrackId = trackId;
+  const track = allTaggedTracks.find(t => t.id === trackId);
+  if (!track) return;
+
+  document.getElementById('tag-track-selected-name').textContent = track.track;
+  document.getElementById('tag-track-selected-env').textContent = track.env;
+  document.getElementById('tag-track-details').style.display = 'block';
+  document.getElementById('tag-local-id').value = track.local_id || '';
+  document.getElementById('tag-steam-id').value = track.steam_id || '';
+  document.getElementById('tag-duration-mins').value = track.duration_ms ? (track.duration_ms / 60000) : '';
+
+  // Highlight in results list
+  document.querySelectorAll('.tag-result-item').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.id) === trackId);
+  });
+
+  // Fetch current tags and render checkboxes
+  try {
+    const trackTags = await apiFetch('GET', `/api/admin/tracks/${trackId}/tags`);
+    renderTagCheckboxes(trackTags);
+  } catch {}
+}
+
+function renderTagCheckboxes(trackTags) {
+  const el = document.getElementById('tag-checkboxes');
+  const assignedIds = new Set(trackTags.map(t => t.id));
+  if (!allTags.length) {
+    el.innerHTML = '<span style="color:#444;font-size:0.8rem">No tags defined yet.</span>';
+    return;
+  }
+  el.innerHTML = allTags.map(t =>
+    `<label class="tag-checkbox-item">
+      <input type="checkbox" data-action="toggleTrackTag" data-tag-id="${t.id}" ${assignedIds.has(t.id) ? 'checked' : ''}>
+      ${esc(t.name)}
+    </label>`
+  ).join('');
+}
+
+async function toggleTrackTag() {
+  if (!selectedTagTrackId) return;
+  const checkboxes = document.querySelectorAll('#tag-checkboxes input[type="checkbox"]');
+  const tag_ids = [...checkboxes].filter(cb => cb.checked).map(cb => parseInt(cb.dataset.tagId));
+  try {
+    await apiFetch('PUT', `/api/admin/tracks/${selectedTagTrackId}/tags`, { tag_ids });
+    await loadTaggedTracks();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function saveSteamId() {
+  if (!selectedTagTrackId) return;
+  const steam_id = document.getElementById('tag-steam-id').value.trim();
+  try {
+    await apiFetch('PUT', `/api/admin/tracks/${selectedTagTrackId}/steam-id`, { steam_id });
+    const track = allTaggedTracks.find(t => t.id === selectedTagTrackId);
+    if (track) track.steam_id = steam_id;
+    toast('Steam ID saved');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function saveDuration() {
+  if (!selectedTagTrackId) return;
+  const minsStr = document.getElementById('tag-duration-mins').value.trim();
+  const duration_ms = minsStr ? Math.round(parseFloat(minsStr) * 60000) : null;
+  if (minsStr && (isNaN(duration_ms) || duration_ms <= 0)) {
+    toast('Enter a valid number of minutes or leave blank for default', 'err');
+    return;
+  }
+  try {
+    await apiFetch('PUT', `/api/admin/tracks/${selectedTagTrackId}/duration`, { duration_ms });
+    const track = allTaggedTracks.find(t => t.id === selectedTagTrackId);
+    if (track) track.duration_ms = duration_ms;
+    toast(duration_ms ? `Duration set to ${minsStr} min` : 'Duration reset to default');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+// ── Tag Runner ──────────────────────────────────────────────────────────────
+let tagRunnerState = { running: false };
+let tagRunnerCountdownTimer = null;
+
+async function loadTagRunnerState() {
+  try {
+    tagRunnerState = await apiFetch('GET', '/api/admin/tag-runner/state');
+    renderTagRunnerBar();
+    updateTagRunnerButtons();
+  } catch {}
+}
+
+function renderTagRunnerBar() {
+  const bar = document.getElementById('tag-runner-bar');
+  const trackLabel = document.getElementById('tag-runner-track-label');
+  const nextLabel = document.getElementById('tag-runner-next-label');
+
+  clearInterval(tagRunnerCountdownTimer);
+
+  if (!tagRunnerState?.running) {
+    bar.className = 'runner-bar stopped';
+    bar.querySelector('.runner-label').textContent = 'Stopped';
+    trackLabel.textContent = '';
+    nextLabel.textContent = '';
+    return;
+  }
+
+  bar.className = 'runner-bar';
+  const tags = (tagRunnerState.tag_names || []).join(', ');
+  bar.querySelector('.runner-label').textContent = `▶ Tags: ${tags}`;
+  const t = tagRunnerState.current_track;
+  trackLabel.textContent = t ? `${t.env} / ${t.track}` : '';
+
+  tagRunnerCountdownTimer = setInterval(() => {
+    if (!tagRunnerState?.next_change_at) { nextLabel.textContent = ''; return; }
+    const diff = new Date(tagRunnerState.next_change_at) - Date.now();
+    if (diff <= 0) { nextLabel.textContent = 'changing…'; return; }
+    const m = Math.floor(diff / 60000);
+    const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+    nextLabel.textContent = `next in ${m}:${s}`;
+  }, 1000);
+}
+
+function updateTagRunnerButtons() {
+  const isRunning = tagRunnerState?.running;
+  document.getElementById('btn-start-tag-runner').style.display = isRunning ? 'none' : '';
+  document.getElementById('btn-stop-tag-runner').style.display = isRunning ? '' : 'none';
+  document.getElementById('btn-skip-tag-runner').style.display = isRunning ? '' : 'none';
+}
+
+function populateTagRunnerSelect() {
+  const sel = document.getElementById('tag-runner-tag-select');
+  sel.innerHTML = allTags.map(t => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('');
+}
+
+async function startTagRunner() {
+  const sel = document.getElementById('tag-runner-tag-select');
+  const tagNames = [...sel.selectedOptions].map(o => o.value);
+  if (tagNames.length === 0) { toast('Select at least one tag', 'err'); return; }
+  const mins = parseFloat(document.getElementById('tag-runner-interval').value) || 10;
+  const interval_ms = Math.round(mins * 60 * 1000);
+  try {
+    tagRunnerState = await apiFetch('POST', '/api/admin/tag-runner/start', { tag_names: tagNames, interval_ms });
+    renderTagRunnerBar();
+    updateTagRunnerButtons();
+    toast(`Tag runner started with [${tagNames.join(', ')}]`);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function stopTagRunner() {
+  try {
+    await apiFetch('POST', '/api/admin/tag-runner/stop');
+    tagRunnerState = { running: false };
+    renderTagRunnerBar();
+    updateTagRunnerButtons();
+    toast('Tag runner stopped');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function skipTagRunner() {
+  try {
+    tagRunnerState = await apiFetch('POST', '/api/admin/tag-runner/skip');
+    renderTagRunnerBar();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+// ── Tag Vote ────────────────────────────────────────────────────────────────
+let tagVoteState = { active: false, options: [], votes: {}, expires_at: null };
+let tagVoteCountdown = null;
+
+async function loadTagVoteState() {
+  try {
+    tagVoteState = await apiFetch('GET', '/api/admin/tag-vote/state');
+    renderTagVoteStatus();
+  } catch {}
+}
+
+function renderTagVoteStatus() {
+  const bar = document.getElementById('tag-vote-bar');
+  const statusEl = document.getElementById('tag-vote-status');
+  const timerEl = document.getElementById('tag-vote-timer');
+
+  if (tagVoteCountdown) { clearInterval(tagVoteCountdown); tagVoteCountdown = null; }
+
+  if (!tagVoteState.active) {
+    bar.className = 'runner-bar stopped';
+    statusEl.textContent = 'No active vote';
+    timerEl.textContent = '';
+    updateTagVoteButtons();
+    return;
+  }
+
+  bar.className = 'runner-bar';
+
+  // Build tally string
+  const tallies = tagVoteState.options.map(opt =>
+    `${esc(opt)}: ${tagVoteState.votes[opt] || 0}`
+  ).join(' · ');
+  statusEl.textContent = `Vote: ${tallies} (${tagVoteState.total_votes || 0} total)`;
+
+  // Countdown timer
+  if (tagVoteState.expires_at) {
+    const updateTimer = () => {
+      const remaining = new Date(tagVoteState.expires_at).getTime() - Date.now();
+      if (remaining <= 0) {
+        timerEl.textContent = 'Resolving…';
+        if (tagVoteCountdown) { clearInterval(tagVoteCountdown); tagVoteCountdown = null; }
+        return;
+      }
+      timerEl.textContent = `${Math.ceil(remaining / 1000)}s left`;
+    };
+    updateTimer();
+    tagVoteCountdown = setInterval(updateTimer, 1000);
+  }
+
+  updateTagVoteButtons();
+}
+
+function updateTagVoteButtons() {
+  const startBtn = document.getElementById('btn-start-tag-vote');
+  const cancelBtn = document.getElementById('btn-cancel-tag-vote');
+  if (tagVoteState.active) {
+    startBtn.style.display = 'none';
+    cancelBtn.style.display = '';
+  } else {
+    startBtn.style.display = '';
+    cancelBtn.style.display = 'none';
+  }
+}
+
+function populateTagVoteSelect() {
+  const sel = document.getElementById('tag-vote-tag-select');
+  sel.innerHTML = allTags.map(t =>
+    `<option value="${esc(t.name)}">${esc(t.name)}</option>`
+  ).join('');
+}
+
+async function startTagVote() {
+  const sel = document.getElementById('tag-vote-tag-select');
+  const selected = Array.from(sel.selectedOptions).map(o => o.value);
+  if (selected.length < 2) { toast('Select at least 2 tags', 'err'); return; }
+  if (selected.length > 4) { toast('Maximum 4 tags allowed', 'err'); return; }
+  const durSec = parseInt(document.getElementById('tag-vote-duration').value) || 120;
+  try {
+    tagVoteState = await apiFetch('POST', '/api/admin/tag-vote/start', {
+      tag_options: selected,
+      duration_ms: durSec * 1000,
+    });
+    renderTagVoteStatus();
+    toast('Tag vote started');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function cancelTagVote() {
+  try {
+    await apiFetch('POST', '/api/admin/tag-vote/cancel');
+    tagVoteState = { active: false, options: [], votes: {}, expires_at: null };
+    renderTagVoteStatus();
+    toast('Tag vote cancelled');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
 // ── Competition ─────────────────────────────────────────────────────────────
 let competitions = [];
 let selectedCompId = null;
@@ -910,6 +1273,10 @@ function init() {
   pollStatus();
   connectWs();
   loadCompetitions();
+  loadTags();
+  loadTaggedTracks();
+  loadTagRunnerState();
+  loadTagVoteState();
 }
 
 // ── DOM Ready: bind events & bootstrap ─────────────────────────────────────
@@ -938,6 +1305,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('env-select').addEventListener('change', onEnvChange);
   document.getElementById('pl-env-select').addEventListener('change', onPlEnvChange);
+
+  // Tags
+  document.getElementById('btn-create-tag').addEventListener('click', createTag);
+  document.getElementById('new-tag-name').addEventListener('keydown', e => { if (e.key === 'Enter') createTag(); });
+  document.getElementById('tag-track-search').addEventListener('input', e => filterTagTracks(e.target.value));
+  document.getElementById('tag-track-results').addEventListener('click', e => {
+    const target = e.target.closest('[data-action="selectTagTrack"]');
+    if (target) selectTagTrack(parseInt(target.dataset.id));
+  });
+  document.getElementById('tag-checkboxes').addEventListener('change', e => {
+    if (e.target.closest('[data-action="toggleTrackTag"]')) toggleTrackTag();
+  });
+  document.getElementById('btn-save-steam-id').addEventListener('click', saveSteamId);
+  document.getElementById('btn-save-duration').addEventListener('click', saveDuration);
+  document.getElementById('btn-start-tag-runner').addEventListener('click', startTagRunner);
+  document.getElementById('btn-stop-tag-runner').addEventListener('click', stopTagRunner);
+  document.getElementById('btn-skip-tag-runner').addEventListener('click', skipTagRunner);
+  document.getElementById('btn-start-tag-vote').addEventListener('click', startTagVote);
+  document.getElementById('btn-cancel-tag-vote').addEventListener('click', cancelTagVote);
 
   // Competition
   document.getElementById('btn-create-comp').addEventListener('click', createCompetition);
@@ -999,6 +1385,16 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (action === 'removeTrack') {
       removeTrack(id);
     }
+  });
+
+  // Tag list (rename/delete)
+  document.getElementById('tag-list').addEventListener('click', e => {
+    const target = e.target.closest('[data-action]');
+    if (!target) return;
+    const id = parseInt(target.dataset.id, 10);
+    const name = target.dataset.name;
+    if (target.dataset.action === 'deleteTag') deleteTagById(id, name);
+    else if (target.dataset.action === 'renameTag') renameTagById(id, name);
   });
 
   // Competition week list

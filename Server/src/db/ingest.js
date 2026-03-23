@@ -138,6 +138,16 @@ async function handleTrackCatalog(event) {
     INSERT INTO track_catalog (session_id, recorded_at, catalog_json)
     VALUES ($1, $2, $3)
   `, [event.session_id, event.timestamp_utc, JSON.stringify(event)]);
+
+  // Auto-populate the tracks table from catalog discovery
+  if (event.environments && event.environments.length > 0) {
+    const { upsertTracksFromCatalog } = require('./tags');
+    try {
+      await upsertTracksFromCatalog(event.environments);
+    } catch (err) {
+      console.error('[ingest] Failed to upsert tracks from catalog:', err.message);
+    }
+  }
 }
 
 async function ensureRaceExists(event) {

@@ -400,4 +400,142 @@ router.post('/competition/runner/auto', async (req, res) => {
   res.json(await rt.setCompetitionAutoManaged(!!req.body.enabled));
 });
 
+// ── Tags (direct DB) ────────────────────────────────────────────────────────
+
+router.get('/tags', async (req, res) => {
+  res.json(await db.getTags());
+});
+
+router.post('/tags', async (req, res) => {
+  const { name = '' } = req.body;
+  if (!name.trim()) return res.status(400).json({ error: 'name is required' });
+  try {
+    res.status(201).json(await db.createTag(name.trim()));
+  } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Tag already exists' });
+    throw err;
+  }
+});
+
+router.put('/tags/:id', async (req, res) => {
+  const { name = '' } = req.body;
+  if (!name.trim()) return res.status(400).json({ error: 'name is required' });
+  try {
+    const row = await db.renameTag(Number(req.params.id), name.trim());
+    if (!row) return res.status(404).json({ error: 'Tag not found' });
+    res.json(row);
+  } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Tag name already exists' });
+    throw err;
+  }
+});
+
+router.delete('/tags/:id', async (req, res) => {
+  await db.deleteTag(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+// ── Tracks (direct DB — catalog-discovered only) ─────────────────────────────
+
+router.get('/tracks', async (req, res) => {
+  res.json(await db.getTracks());
+});
+
+router.get('/tracks/:id/tags', async (req, res) => {
+  res.json(await db.getTagsForTrack(Number(req.params.id)));
+});
+
+router.put('/tracks/:id/tags', async (req, res) => {
+  const { tag_ids } = req.body;
+  if (!Array.isArray(tag_ids)) return res.status(400).json({ error: 'tag_ids must be an array' });
+  await db.setTrackTags(Number(req.params.id), tag_ids.map(Number));
+  res.json(await db.getTagsForTrack(Number(req.params.id)));
+});
+
+router.post('/tracks/:id/tags', async (req, res) => {
+  const { tag_id } = req.body;
+  if (!tag_id) return res.status(400).json({ error: 'tag_id is required' });
+  await db.addTagToTrack(Number(req.params.id), Number(tag_id));
+  res.json({ ok: true });
+});
+
+router.delete('/tracks/:id/tags/:tagId', async (req, res) => {
+  await db.removeTagFromTrack(Number(req.params.id), Number(req.params.tagId));
+  res.json({ ok: true });
+});
+
+router.put('/tracks/:id/steam-id', async (req, res) => {
+  const { steam_id } = req.body;
+  if (steam_id === undefined) return res.status(400).json({ error: 'steam_id is required' });
+  const row = await db.updateTrackSteamId(Number(req.params.id), steam_id);
+  if (!row) return res.status(404).json({ error: 'Track not found' });
+  res.json(row);
+});
+
+router.put('/tracks/:id/duration', async (req, res) => {
+  const { duration_ms } = req.body;
+  const value = duration_ms === null || duration_ms === undefined ? null : Number(duration_ms);
+  if (value !== null && (isNaN(value) || value < 0)) return res.status(400).json({ error: 'duration_ms must be a positive number or null' });
+  const row = await db.updateTrackDuration(Number(req.params.id), value);
+  if (!row) return res.status(404).json({ error: 'Track not found' });
+  res.json(row);
+});
+
+router.get('/tracks/by-tag/:tagId', async (req, res) => {
+  res.json(await db.getTracksForTag(Number(req.params.tagId)));
+});
+
+// ── Tag runner (via realtime) ────────────────────────────────────────────────
+
+router.post('/tag-runner/start', strictLimiter, async (req, res) => {
+  const { tag_names, interval_ms } = req.body;
+  if (!Array.isArray(tag_names) || tag_names.length === 0) {
+    return res.status(400).json({ error: 'tag_names must be a non-empty array' });
+  }
+  const intervalMs = Math.max(5000, Number(interval_ms) || 10 * 60 * 1000);
+  try {
+    res.json(await rt.startTagRunner(tag_names, intervalMs));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/tag-runner/stop', async (req, res) => {
+  res.json(await rt.stopTagRunner());
+});
+
+router.post('/tag-runner/skip', async (req, res) => {
+  res.json(await rt.skipTagRunner());
+});
+
+router.get('/tag-runner/state', async (req, res) => {
+  res.json(await rt.getTagRunnerState());
+});
+
+// ── Tag vote (via realtime) ──────────────────────────────────────────────────
+
+router.post('/tag-vote/start', strictLimiter, async (req, res) => {
+  const { tag_options, duration_ms } = req.body;
+  if (!Array.isArray(tag_options) || tag_options.length < 2) {
+    return res.status(400).json({ error: 'tag_options must be an array with at least 2 tags' });
+  }
+  if (tag_options.length > 4) {
+    return res.status(400).json({ error: 'Maximum 4 tag options allowed' });
+  }
+  const durationMs = Math.max(10000, Number(duration_ms) || 120000);
+  try {
+    res.json(await rt.startTagVote(tag_options, durationMs));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/tag-vote/cancel', async (req, res) => {
+  res.json(await rt.cancelTagVote());
+});
+
+router.get('/tag-vote/state', async (req, res) => {
+  res.json(await rt.getTagVoteState());
+});
+
 module.exports = router;

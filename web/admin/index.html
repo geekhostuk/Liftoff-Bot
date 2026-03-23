@@ -169,6 +169,51 @@
     .interval-row label { margin: 0; color: #888; }
     .mini-btn { padding: 0.25rem 0.6rem; font-size: 0.75rem; }
 
+    /* Tags */
+    .tag-chip {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      background: #1e1e28; border: 1px solid #333; border-radius: 12px;
+      padding: 0.2rem 0.6rem; font-size: 0.78rem; color: #e0e0e0;
+    }
+    .tag-chip .tag-remove {
+      cursor: pointer; color: #666; font-size: 0.7rem; line-height: 1;
+    }
+    .tag-chip .tag-remove:hover { color: #ef4444; }
+    .tag-list-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.4rem 0; border-bottom: 1px solid #18181e; font-size: 0.85rem;
+    }
+    .tag-list-item:last-child { border-bottom: none; }
+    .tag-list-item .tag-name { flex: 1; color: #e0e0e0; }
+    .tag-list-item .tag-count { font-size: 0.75rem; color: #555; }
+    .tags-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; min-height: 1.5rem; }
+
+    /* Tag track search results */
+    .tag-result-item {
+      padding: 0.45rem 0.75rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border-bottom: 1px solid #18181e;
+      display: flex;
+      justify-content: space-between;
+    }
+    .tag-result-item:last-child { border-bottom: none; }
+    .tag-result-item:hover { background: #16181f; }
+    .tag-result-item.active { background: #1a1008; border-left: 2px solid #f97316; }
+    .tag-result-env { color: #555; font-size: 0.78rem; }
+    .tag-result-tags { color: #666; font-size: 0.72rem; margin-left: 0.5rem; }
+
+    /* Tag checkboxes */
+    .tag-checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .tag-checkbox-item input[type="checkbox"] { width: auto; accent-color: #f97316; cursor: pointer; }
+    .tag-checkbox-item label { margin: 0; color: #e0e0e0; cursor: pointer; }
+
     /* Chat log */
     .chat-log {
       list-style: none;
@@ -476,6 +521,137 @@
               <button class="btn-secondary mini-btn" id="btn-add-wp">+ Add</button>
             </div>
           </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Tags -->
+  <section>
+    <h2>Track Tags</h2>
+    <div class="section-body">
+
+      <!-- Tag management -->
+      <div>
+        <label style="margin-bottom:0.5rem">Manage Tags</label>
+        <div id="tag-list" style="margin-bottom:0.5rem">
+          <div style="color:#444;font-size:0.8rem">No tags yet.</div>
+        </div>
+        <div style="display:flex;gap:0.5rem">
+          <input type="text" id="new-tag-name" placeholder="New tag name…" style="flex:1;font-size:0.85rem">
+          <button class="btn-secondary mini-btn" id="btn-create-tag">+ Add Tag</button>
+        </div>
+      </div>
+
+      <!-- Track tagging -->
+      <div style="border-top:1px solid #1e1e24;padding-top:1rem">
+        <label style="margin-bottom:0.5rem">Tag a Track</label>
+        <div>
+          <label>Search tracks</label>
+          <input type="text" id="tag-track-search" placeholder="Type to filter by environment or track name…" autocomplete="off">
+        </div>
+
+        <!-- Filtered results list -->
+        <div id="tag-track-results" style="max-height:200px;overflow-y:auto;border:1px solid #2a2a32;border-radius:5px;background:#0d0d0f;display:none;margin-top:0.5rem">
+        </div>
+
+        <!-- Track details (shown when a track is selected) -->
+        <div id="tag-track-details" style="display:none;margin-top:0.75rem">
+          <div style="margin-bottom:0.75rem">
+            <span id="tag-track-selected-name" style="font-weight:600;font-size:0.9rem;color:#e0e0e0"></span>
+            <span id="tag-track-selected-env" style="font-size:0.8rem;color:#555;margin-left:0.5rem"></span>
+          </div>
+
+          <div>
+            <label>Tags</label>
+            <div id="tag-checkboxes" style="display:flex;flex-wrap:wrap;gap:0.5rem 1rem;margin-top:0.3rem"></div>
+          </div>
+
+          <div style="margin-top:0.75rem">
+            <label>Local ID <span style="color:#555;font-size:0.7rem">(from catalog)</span></label>
+            <input type="text" id="tag-local-id" readonly style="font-size:0.85rem;background:#0a0a0c;color:#666;cursor:default;width:100%">
+          </div>
+          <div class="row" style="margin-top:0.75rem">
+            <div>
+              <label>Steam ID</label>
+              <div style="display:flex;gap:0.5rem">
+                <input type="text" id="tag-steam-id" placeholder="e.g. 1234567890" style="flex:1;font-size:0.85rem">
+                <button class="btn-secondary mini-btn" id="btn-save-steam-id">Save</button>
+              </div>
+            </div>
+            <div>
+              <label>Duration Override (mins) <span style="color:#555;font-size:0.7rem">blank = default</span></label>
+              <div style="display:flex;gap:0.5rem">
+                <input type="number" id="tag-duration-mins" placeholder="e.g. 10" min="1" style="flex:1;font-size:0.85rem">
+                <button class="btn-secondary mini-btn" id="btn-save-duration">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag runner controls -->
+      <div style="border-top:1px solid #1e1e24;padding-top:1rem">
+        <label style="margin-bottom:0.5rem">Tag Runner</label>
+
+        <!-- Runner status bar -->
+        <div id="tag-runner-bar" class="runner-bar stopped" style="margin-bottom:0.75rem">
+          <span class="runner-label" id="tag-runner-label">Stopped</span>
+          <span class="runner-track" id="tag-runner-track-label"></span>
+          <span class="runner-next" id="tag-runner-next-label"></span>
+        </div>
+
+        <div id="tag-runner-comp-warning" style="display:none;color:#f97316;font-size:0.8rem;margin-bottom:0.5rem">
+          Competition is auto-managed — tag runner is disabled.
+        </div>
+
+        <div id="tag-runner-controls">
+          <div class="row" style="align-items:end;margin-bottom:0.5rem">
+            <div>
+              <label>Tags to include</label>
+              <select id="tag-runner-tag-select" multiple size="4" style="width:100%;min-height:80px">
+              </select>
+              <span style="font-size:0.7rem;color:#555">Hold Ctrl/Cmd to select multiple</span>
+            </div>
+            <div>
+              <label>Default Interval (mins)</label>
+              <input type="number" id="tag-runner-interval" value="10" min="1" style="width:100%">
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary mini-btn" id="btn-start-tag-runner">▶ Start Tag Runner</button>
+            <button class="btn-danger mini-btn" id="btn-stop-tag-runner" style="display:none">■ Stop</button>
+            <button class="btn-secondary mini-btn" id="btn-skip-tag-runner" style="display:none">⏭ Skip</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag vote controls -->
+      <div style="border-top:1px solid #1e1e24;padding-top:1rem">
+        <label style="margin-bottom:0.5rem">Tag Vote</label>
+
+        <!-- Vote status bar -->
+        <div id="tag-vote-bar" class="runner-bar stopped" style="margin-bottom:0.75rem">
+          <span class="runner-label" id="tag-vote-status">No active vote</span>
+          <span class="runner-next" id="tag-vote-timer"></span>
+        </div>
+
+        <div class="row" style="align-items:end;margin-bottom:0.5rem">
+          <div>
+            <label>Tag options (select 2–4)</label>
+            <select id="tag-vote-tag-select" multiple size="4" style="width:100%;min-height:80px">
+            </select>
+            <span style="font-size:0.7rem;color:#555">Hold Ctrl/Cmd to select multiple</span>
+          </div>
+          <div>
+            <label>Vote Duration (seconds)</label>
+            <input type="number" id="tag-vote-duration" value="120" min="10" style="width:100%">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-primary mini-btn" id="btn-start-tag-vote">▶ Start Vote</button>
+          <button class="btn-danger mini-btn" id="btn-cancel-tag-vote" style="display:none">✕ Cancel Vote</button>
         </div>
       </div>
 
