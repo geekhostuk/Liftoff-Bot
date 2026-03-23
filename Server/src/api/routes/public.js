@@ -127,4 +127,65 @@ router.get('/competition/race/:raceId/results', async (req, res) => {
   res.json(await db.getRaceResultsWithPoints(req.params.raceId));
 });
 
+// ── Tracks page ────────────────────────────────────────────────────────────
+
+router.get('/tracks', async (req, res) => {
+  const [rtInfo, recentTracks] = await Promise.all([
+    rt.getTracksInfo(),
+    db.getRecentTracks(10),
+  ]);
+
+  const { playlist, competition } = rtInfo;
+
+  // Build active playlists array
+  const activePlaylists = [];
+
+  if (competition.current_week_id) {
+    // Competition mode: show all playlists assigned to the active week
+    const weekPlaylists = await db.getWeekPlaylists(competition.current_week_id);
+    for (const wp of weekPlaylists) {
+      const isCurrentlyRunning = playlist.running && playlist.playlist_id === wp.playlist_id;
+      const tracks = isCurrentlyRunning ? playlist.tracks : await db.getPlaylistTracks(wp.playlist_id);
+      activePlaylists.push({
+        playlist_id: wp.playlist_id,
+        playlist_name: wp.playlist_name,
+        interval_ms: wp.interval_ms,
+        is_current: isCurrentlyRunning,
+        current_index: isCurrentlyRunning ? playlist.current_index : null,
+        next_change_at: isCurrentlyRunning ? playlist.next_change_at : null,
+        tracks,
+      });
+    }
+  } else if (playlist.running) {
+    // Standalone playlist mode (no competition)
+    activePlaylists.push({
+      playlist_id: playlist.playlist_id,
+      playlist_name: playlist.playlist_name,
+      interval_ms: playlist.interval_ms,
+      is_current: true,
+      current_index: playlist.current_index,
+      next_change_at: playlist.next_change_at,
+      tracks: playlist.tracks,
+    });
+  }
+
+  // Derive upcoming tracks from the currently running playlist
+  const upcoming = [];
+  if (playlist.running && playlist.tracks.length > 0) {
+    const count = Math.min(5, playlist.tracks.length - 1);
+    for (let i = 1; i <= count; i++) {
+      const idx = (playlist.current_index + i) % playlist.tracks.length;
+      upcoming.push(playlist.tracks[idx]);
+    }
+  }
+
+  res.json({
+    active_playlists: activePlaylists,
+    recent_tracks: recentTracks,
+    upcoming,
+    current_track: playlist.current_track,
+    next_change_at: playlist.next_change_at,
+  });
+});
+
 module.exports = router;

@@ -20,6 +20,17 @@
   font-weight: 700;
   color: var(--text-primary);
   margin-bottom: var(--space-xs);
+  display: block;
+}
+
+.playlist-bar-link {
+  text-decoration: none;
+  color: inherit;
+  transition: color var(--transition-fast);
+}
+
+.playlist-bar-link:hover {
+  color: var(--color-primary);
 }
 
 .playlist-bar-info {

@@ -62,6 +62,12 @@ export function getCatalog() {
   return get('/api/catalog');
 }
 
+// ── Tracks ──────────────────────────────────────────────────────────────
+
+export function getTracks() {
+  return get('/api/tracks');
+}
+
 // ── Leaderboard ──────────────────────────────────────────────────────────
 
 export function getTrackLeaderboard(env, track) {

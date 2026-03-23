@@ -210,6 +210,18 @@ async function getOverallStats() {
   return row;
 }
 
+async function getRecentTracks(limit = 10) {
+  const { rows } = await getPool().query(`
+    SELECT env, track, MAX(started_at) AS last_played
+    FROM races
+    WHERE env IS NOT NULL AND track IS NOT NULL AND env != '' AND track != ''
+    GROUP BY env, track
+    ORDER BY last_played DESC
+    LIMIT $1
+  `, [limit]);
+  return rows;
+}
+
 module.exports = {
   getRaces,
   getRaceById,
@@ -223,4 +235,5 @@ module.exports = {
   browseLaps,
   getFilterOptions,
   getOverallStats,
+  getRecentTracks,
 };

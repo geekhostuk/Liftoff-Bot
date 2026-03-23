@@ -10,6 +10,7 @@ export default function Footer() {
           <span className="footer-logo-text">FPV League</span>
         </div>
         <nav className="footer-links">
+          <Link to="/tracks">Tracks</Link>
           <Link to="/competition">Competition</Link>
           <Link to="/pilots">Pilots</Link>
           <Link to="/how-it-works">How It Works</Link>

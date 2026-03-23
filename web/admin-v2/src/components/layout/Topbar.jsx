@@ -6,16 +6,16 @@ import Fuse from 'fuse.js';
 import './Topbar.css';
 
 const staticActions = [
-  { name: 'Kick player', category: 'Action', path: '/admin-v2/players' },
-  { name: 'Send chat message', category: 'Action', path: '/admin-v2/chat' },
-  { name: 'Refresh catalog', category: 'Action', path: '/admin-v2/tracks' },
-  { name: 'Create playlist', category: 'Action', path: '/admin-v2/playlists' },
-  { name: 'Create tag', category: 'Action', path: '/admin-v2/tags' },
-  { name: 'Create competition', category: 'Action', path: '/admin-v2/competition' },
-  { name: 'Set track', category: 'Action', path: '/admin-v2/tracks' },
-  { name: 'Start playlist', category: 'Action', path: '/admin-v2/playlists' },
-  { name: 'Start tag runner', category: 'Action', path: '/admin-v2/tags' },
-  { name: 'Start tag vote', category: 'Action', path: '/admin-v2/tags' },
+  { name: 'Kick player', category: 'Action', path: '/admin/players' },
+  { name: 'Send chat message', category: 'Action', path: '/admin/chat' },
+  { name: 'Refresh catalog', category: 'Action', path: '/admin/tracks' },
+  { name: 'Create playlist', category: 'Action', path: '/admin/playlists' },
+  { name: 'Create tag', category: 'Action', path: '/admin/tags' },
+  { name: 'Create competition', category: 'Action', path: '/admin/competition' },
+  { name: 'Set track', category: 'Action', path: '/admin/tracks' },
+  { name: 'Start playlist', category: 'Action', path: '/admin/playlists' },
+  { name: 'Start tag runner', category: 'Action', path: '/admin/tags' },
+  { name: 'Start tag vote', category: 'Action', path: '/admin/tags' },
 ];
 
 export default function Topbar({ title, searchItems = [], onMobileMenuToggle }) {

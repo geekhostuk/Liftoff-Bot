@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracks · Liftoff Competition</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d0d0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #111318;
+      border-bottom: 2px solid #f97316;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.4rem; color: #f97316; letter-spacing: 0.05em; }
+    header a {
+      font-size: 0.85rem; color: #888; text-decoration: none; transition: color 0.2s;
+    }
+    header a:hover { color: #f97316; }
+    .header-links { margin-left: auto; display: flex; gap: 1.25rem; }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; display: grid; gap: 2rem; }
+
+    /* Now-playing banner */
+    .now-playing {
+      background: linear-gradient(135deg, #1a1008 0%, #111318 100%);
+      border: 1px solid #f97316;
+      border-radius: 8px;
+      padding: 1.5rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+    .now-playing-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #888;
+      margin-bottom: 0.25rem;
+    }
+    .now-playing-track {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #f97316;
+    }
+    .now-playing-env {
+      font-size: 0.85rem;
+      color: #666;
+      margin-top: 0.2rem;
+    }
+    .now-playing-timer {
+      margin-left: auto;
+      text-align: right;
+    }
+    .now-playing-countdown {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #f97316;
+      font-variant-numeric: tabular-nums;
+    }
+    .now-playing-countdown-label {
+      font-size: 0.75rem;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    /* Sections */
+    section {
+      background: #111318;
+      border: 1px solid #222;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    section h2 {
+      padding: 0.75rem 1.25rem;
+      background: #16181f;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #f97316;
+      border-bottom: 1px solid #222;
+    }
+
+    /* Playlist card */
+    .playlist-card {
+      border-bottom: 1px solid #1e1e24;
+    }
+    .playlist-card:last-child { border-bottom: none; }
+    .playlist-header {
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .playlist-header:hover { background: #16181f; }
+    .playlist-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .playlist-badge {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      background: #f97316;
+      color: #0d0d0f;
+      font-weight: 700;
+    }
+    .playlist-track-count {
+      margin-left: auto;
+      font-size: 0.8rem;
+      color: #555;
+    }
+    .playlist-chevron {
+      color: #555;
+      font-size: 0.75rem;
+      transition: transform 0.2s;
+    }
+    .playlist-card.open .playlist-chevron { transform: rotate(90deg); }
+    .playlist-tracks {
+      display: none;
+    }
+    .playlist-card.open .playlist-tracks { display: block; }
+
+    /* Track list */
+    .track-list { list-style: none; }
+    .track-item {
+      padding: 0.5rem 1.25rem 0.5rem 2.5rem;
+      font-size: 0.88rem;
+      border-top: 1px solid #18181e;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .track-item:hover { background: #16181f; }
+    .track-index {
+      color: #555;
+      font-size: 0.8rem;
+      width: 1.5rem;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .track-name { color: #e0e0e0; }
+    .track-env {
+      font-size: 0.8rem;
+      color: #555;
+      margin-left: auto;
+    }
+    .track-item.current {
+      background: rgba(249, 115, 22, 0.08);
+      border-left: 3px solid #f97316;
+      padding-left: calc(2.5rem - 3px);
+    }
+    .track-item.current .track-name { color: #f97316; font-weight: 600; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      padding: 0.6rem 1rem;
+      text-align: left;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #666;
+      border-bottom: 1px solid #1e1e24;
+    }
+    td {
+      padding: 0.65rem 1rem;
+      font-size: 0.9rem;
+      border-bottom: 1px solid #18181e;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #16181f; }
+
+    .empty { padding: 2rem; text-align: center; color: #444; font-size: 0.9rem; }
+
+    .time-ago { color: #555; font-size: 0.82rem; }
+
+    /* Two-column layout for upcoming + recent */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+
+    @media (max-width: 768px) {
+      header { flex-wrap: wrap; padding: 1rem; }
+      .header-links { width: 100%; justify-content: flex-end; }
+      .now-playing { flex-direction: column; text-align: center; }
+      .now-playing-timer { margin-left: 0; }
+      .two-col { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tracks</h1>
+  <div class="header-links">
+    <a href="/">Live Race</a>
+    <a href="/competition.html">Competition</a>
+    <a href="/stats.html">Stats</a>
+    <a href="/about.html">About</a>
+  </div>
+</header>
+
+<main>
+  <!-- Now Playing -->
+  <div class="now-playing" id="now-playing">
+    <div>
+      <div class="now-playing-label">Now Playing</div>
+      <div class="now-playing-track" id="np-track">—</div>
+      <div class="now-playing-env" id="np-env"></div>
+    </div>
+    <div class="now-playing-timer">
+      <div class="now-playing-countdown" id="np-countdown">—</div>
+      <div class="now-playing-countdown-label">until next track</div>
+    </div>
+  </div>
+
+  <!-- Active Playlists -->
+  <section id="playlists-section">
+    <h2>Active Playlists</h2>
+    <div id="playlists-container">
+      <div class="empty">No active playlists</div>
+    </div>
+  </section>
+
+  <!-- Upcoming + Recent side by side -->
+  <div class="two-col">
+    <section id="upcoming-section">
+      <h2>Coming Up Next</h2>
+      <div id="upcoming-container">
+        <div class="empty">No upcoming tracks</div>
+      </div>
+    </section>
+
+    <section id="recent-section">
+      <h2>Recently Played</h2>
+      <div id="recent-container">
+        <div class="empty">No recent tracks</div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script type="module" src="/src/tracks.js"></script>
+</body>
+</html>
