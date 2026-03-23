@@ -49,6 +49,7 @@ router.get('/status', async (req, res) => {
     track_since: rtState.track_since,
     latest_race: race,
     online_players: rtState.online_players,
+    playlist: rtState.playlist || null,
   });
 });
 

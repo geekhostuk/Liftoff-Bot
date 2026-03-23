@@ -6,6 +6,7 @@ import Competition from './pages/Competition';
 import Pilots from './pages/Pilots';
 import HowItWorks from './pages/HowItWorks';
 import About from './pages/About';
+import Live from './pages/Live';
 import useLobbyCount from './hooks/useLobbyCount';
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
       <main className="main-content">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/live" element={<Live />} />
           <Route path="/competition" element={<Competition />} />
           <Route path="/pilots" element={<Pilots />} />
           <Route path="/how-it-works" element={<HowItWorks />} />

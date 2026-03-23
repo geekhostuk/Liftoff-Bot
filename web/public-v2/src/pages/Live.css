@@ -1,0 +1,41 @@
+.live-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-md);
+}
+
+.live-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    "status   status"
+    "track    playlist"
+    "race     race"
+    "players  feed"
+    "comp     activity";
+  gap: var(--space-lg);
+}
+
+.live-area-status   { grid-area: status; }
+.live-area-track    { grid-area: track; }
+.live-area-playlist { grid-area: playlist; }
+.live-area-race     { grid-area: race; }
+.live-area-players  { grid-area: players; }
+.live-area-feed     { grid-area: feed; }
+.live-area-comp     { grid-area: comp; }
+.live-area-activity { grid-area: activity; }
+
+@media (max-width: 768px) {
+  .live-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "status"
+      "track"
+      "playlist"
+      "race"
+      "players"
+      "feed"
+      "comp"
+      "activity";
+  }
+}

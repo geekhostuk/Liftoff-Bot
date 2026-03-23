@@ -166,6 +166,7 @@ async function main() {
       current_track: state.getCurrentTrack(),
       track_since: state.getCurrentTrackSince(),
       online_players: state.getOnlinePlayers(),
+      playlist: playlistRunner.getState(),
     });
   });
 

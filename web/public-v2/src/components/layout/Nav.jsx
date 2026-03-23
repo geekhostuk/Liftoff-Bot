@@ -5,6 +5,7 @@ import './Nav.css';
 
 const links = [
   { to: '/', label: 'Home' },
+  { to: '/live', label: 'Live' },
   { to: '/competition', label: 'Competition' },
   { to: '/pilots', label: 'Pilots' },
   { to: '/how-it-works', label: 'How It Works' },

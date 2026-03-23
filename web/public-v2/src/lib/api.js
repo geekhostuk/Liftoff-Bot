@@ -61,3 +61,9 @@ export function getFilters() {
 export function getCatalog() {
   return get('/api/catalog');
 }
+
+// ── Leaderboard ──────────────────────────────────────────────────────────
+
+export function getTrackLeaderboard(env, track) {
+  return get(`/api/leaderboard/track?env=${encodeURIComponent(env)}&track=${encodeURIComponent(track)}`);
+}
