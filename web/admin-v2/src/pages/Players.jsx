@@ -57,7 +57,7 @@ function idleColor(ms, isWarned) {
 }
 
 export default function Players() {
-  const { apiCall } = useApi();
+  const { apiFetch, apiCall } = useApi();
   const { toast } = useToast();
 
   const [players, setPlayers] = useState([]);
@@ -69,7 +69,7 @@ export default function Players() {
   // Fetch status data
   const fetchStatus = useCallback(async () => {
     try {
-      const status = await apiCall('/api/status');
+      const status = await apiFetch('GET', '/api/status');
       setPlayers(status.online_players || []);
     } catch {
       // handled by apiCall
@@ -78,7 +78,7 @@ export default function Players() {
 
   const fetchIdleStatus = useCallback(async () => {
     try {
-      const data = await apiCall('/api/admin/idle-kick/status');
+      const data = await apiFetch('GET', '/api/admin/idle-kick/status');
       setIdleTimes(data.idleTimes || {});
       setWarned(data.warned || []);
       setWhitelist(data.whitelist || []);
@@ -130,40 +130,25 @@ export default function Players() {
   // Actions
   const handleKick = useCallback(async (actor) => {
     try {
-      await apiCall('/api/admin/players/kick', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actor }),
-      });
-      toast('Kick request sent', 'success');
+      await apiCall('POST', '/api/admin/players/kick', { actor }, 'Kick request sent');
     } catch {
       // handled by apiCall
     }
-  }, [apiCall, toast]);
+  }, [apiCall]);
 
   const handleWhitelistToggle = useCallback(async (nick, isWhitelisted) => {
     try {
       if (isWhitelisted) {
-        await apiCall('/api/admin/idle-kick/whitelist', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nick }),
-        });
+        await apiCall('DELETE', '/api/admin/idle-kick/whitelist', { nick }, `Removed ${nick} from whitelist`);
         setWhitelist((prev) => prev.filter((n) => n.toLowerCase() !== nick.toLowerCase()));
-        toast(`Removed ${nick} from whitelist`, 'success');
       } else {
-        await apiCall('/api/admin/idle-kick/whitelist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nick }),
-        });
+        await apiCall('POST', '/api/admin/idle-kick/whitelist', { nick }, `Added ${nick} to whitelist`);
         setWhitelist((prev) => [...prev, nick]);
-        toast(`Added ${nick} to whitelist`, 'success');
       }
     } catch {
       // handled by apiCall
     }
-  }, [apiCall, toast]);
+  }, [apiCall]);
 
   // Filter out jmt_bot, sort by actor
   const displayPlayers = useMemo(() => {

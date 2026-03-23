@@ -124,7 +124,7 @@ const styles = {
 };
 
 export default function Dashboard() {
-  const { apiCall } = useApi();
+  const { apiFetch } = useApi();
 
   const [pluginConnected, setPluginConnected] = useState(false);
   const [players, setPlayers] = useState([]);
@@ -136,10 +136,10 @@ export default function Dashboard() {
   const fetchAll = useCallback(async () => {
     try {
       const [status, playlist, tagRunner, idleStatus] = await Promise.all([
-        apiCall('/api/status'),
-        apiCall('/api/admin/playlist/state'),
-        apiCall('/api/admin/tag-runner/state').catch(() => null),
-        apiCall('/api/admin/idle-kick/status'),
+        apiFetch('GET', '/api/status'),
+        apiFetch('GET', '/api/admin/playlist/state'),
+        apiFetch('GET', '/api/admin/tag-runner/state').catch(() => null),
+        apiFetch('GET', '/api/admin/idle-kick/status'),
       ]);
       setPluginConnected(status.plugin_connected);
       setPlayers(status.online_players || []);
