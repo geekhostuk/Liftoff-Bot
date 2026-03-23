@@ -33,7 +33,7 @@ export default function RunnerBar({ state, label = 'Runner' }) {
       <span className="runner-bar__label">{label}</span>
       <span className="runner-bar__status">
         {state.playlist_name || state.tag_names?.join(', ') || 'Running'}
-        {state.current_index != null && state.total != null && ` (${state.current_index + 1}/${state.total})`}
+        {state.current_index != null && (state.track_count ?? state.total) != null && ` (${state.current_index + 1}/${state.track_count ?? state.total})`}
       </span>
       {trackLabel && <span className="runner-bar__track">{trackLabel}</span>}
       {countdown && <span className="runner-bar__countdown">next in {countdown}</span>}

@@ -286,7 +286,7 @@ export default function Dashboard() {
             state={playlistState.running ? 'running' : 'stopped'}
             label={
               playlistState.running
-                ? `Playlist: ${playlistState.playlist_name || 'Unknown'} (${playlistState.current_index + 1}/${playlistState.total})`
+                ? `Playlist: ${playlistState.playlist_name || 'Unknown'} (${playlistState.current_index + 1}/${playlistState.track_count})`
                 : 'Playlist: Stopped'
             }
           />

@@ -144,7 +144,7 @@ export default function Playlists() {
 
   // --- Runner bar label ---
   const runnerLabel = runnerState.running
-    ? `Playing: ${runnerState.playlist_name} — Track ${(runnerState.current_index ?? 0) + 1}/${runnerState.total} — ${runnerState.current_track?.env}/${runnerState.current_track?.track}${runnerState.next_change_at ? ` — Next in ${fmtCountdown(runnerState.next_change_at)}` : ''}`
+    ? `Playing: ${runnerState.playlist_name} — Track ${(runnerState.current_index ?? 0) + 1}/${runnerState.track_count} — ${runnerState.current_track?.env}/${runnerState.current_track?.track}${runnerState.next_change_at ? ` — Next in ${fmtCountdown(runnerState.next_change_at)}` : ''}`
     : 'Playlist runner idle';
 
   const isRunning = runnerState.running;
