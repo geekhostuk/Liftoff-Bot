@@ -3,8 +3,11 @@ import './PlayersPanel.css';
 
 const MAX_PLAYERS = 8;
 
+const HIDDEN_NICKS = ['JMT_Bot'];
+
 export default function PlayersPanel({ players, playerStats }) {
-  const onlineCount = players.filter(p => p.status !== 'leaving').length;
+  const visible = players.filter(p => !HIDDEN_NICKS.includes(p.nick));
+  const onlineCount = visible.filter(p => p.status !== 'leaving').length;
 
   return (
     <div className="players-panel card">
@@ -15,11 +18,11 @@ export default function PlayersPanel({ players, playerStats }) {
         </span>
       </div>
 
-      {players.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="players-panel-empty">No players in lobby</p>
       ) : (
         <div className="players-panel-list">
-          {players.map(p => {
+          {visible.map(p => {
             const stats = playerStats?.[p.nick];
             return (
               <div
