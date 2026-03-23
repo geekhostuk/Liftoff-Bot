@@ -200,10 +200,13 @@ function reducer(state, action) {
     case 'SET_STATUS': {
       const d = action.payload;
       const updates = { pluginConnected: d.plugin_connected ?? null };
-      // Use REST status as fallback if WS snapshot hasn't provided track yet
-      if (!state.currentTrack && d.current_track?.track) {
+      // Use REST status as fallback if WS snapshot hasn't provided data yet
+      if ((!state.currentTrack || !state.currentTrack.track) && d.current_track?.track) {
         updates.currentTrack = d.current_track;
         updates.trackSince = d.track_since || null;
+      }
+      if (!state.playlist && d.playlist) {
+        updates.playlist = d.playlist;
       }
       return { ...state, ...updates };
     }
