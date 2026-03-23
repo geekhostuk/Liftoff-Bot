@@ -223,6 +223,10 @@
   gap: var(--space-xl);
 }
 
+.tracks-two-col {
+  margin-bottom: var(--space-xl);
+}
+
 .tracks-two-col .tracks-section {
   margin-bottom: 0;
 }
