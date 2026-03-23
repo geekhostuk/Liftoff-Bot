@@ -320,7 +320,7 @@ async function _loadTrackFromTag(tagName) {
         env: track.env,
         track: track.track,
         race: 'InfiniteRace',
-        workshop_id: track.workshop_id || '',
+        workshop_id: track.local_id || '',
       });
       setCurrentTrack({ env: track.env, track: track.track, race: 'InfiniteRace' });
       broadcast.broadcastAll({
@@ -358,7 +358,7 @@ async function _loadTrackFromTag(tagName) {
       env: track.env,
       track: track.track,
       race: 'InfiniteRace',
-      workshop_id: track.workshop_id || '',
+      workshop_id: track.local_id || '',
     });
     setCurrentTrack({ env: track.env, track: track.track, race: 'InfiniteRace' });
     broadcast.broadcastAll({

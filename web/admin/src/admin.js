@@ -752,7 +752,8 @@ async function selectTagTrack(trackId) {
   document.getElementById('tag-track-selected-name').textContent = track.track;
   document.getElementById('tag-track-selected-env').textContent = track.env;
   document.getElementById('tag-track-details').style.display = 'block';
-  document.getElementById('tag-workshop-id').value = track.workshop_id || '';
+  document.getElementById('tag-local-id').value = track.local_id || '';
+  document.getElementById('tag-steam-id').value = track.steam_id || '';
   document.getElementById('tag-duration-mins').value = track.duration_ms ? (track.duration_ms / 60000) : '';
 
   // Highlight in results list
@@ -792,14 +793,14 @@ async function toggleTrackTag() {
   } catch (err) { toast(err.message, 'err'); }
 }
 
-async function saveWorkshopId() {
+async function saveSteamId() {
   if (!selectedTagTrackId) return;
-  const workshop_id = document.getElementById('tag-workshop-id').value.trim();
+  const steam_id = document.getElementById('tag-steam-id').value.trim();
   try {
-    await apiFetch('PUT', `/api/admin/tracks/${selectedTagTrackId}/workshop-id`, { workshop_id });
+    await apiFetch('PUT', `/api/admin/tracks/${selectedTagTrackId}/steam-id`, { steam_id });
     const track = allTaggedTracks.find(t => t.id === selectedTagTrackId);
-    if (track) track.workshop_id = workshop_id;
-    toast('Workshop ID saved');
+    if (track) track.steam_id = steam_id;
+    toast('Steam ID saved');
   } catch (err) { toast(err.message, 'err'); }
 }
 
@@ -1316,7 +1317,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tag-checkboxes').addEventListener('change', e => {
     if (e.target.closest('[data-action="toggleTrackTag"]')) toggleTrackTag();
   });
-  document.getElementById('btn-save-workshop-id').addEventListener('click', saveWorkshopId);
+  document.getElementById('btn-save-steam-id').addEventListener('click', saveSteamId);
   document.getElementById('btn-save-duration').addEventListener('click', saveDuration);
   document.getElementById('btn-start-tag-runner').addEventListener('click', startTagRunner);
   document.getElementById('btn-stop-tag-runner').addEventListener('click', stopTagRunner);

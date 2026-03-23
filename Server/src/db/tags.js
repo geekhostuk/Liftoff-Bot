@@ -56,16 +56,16 @@ async function getTrackByEnvTrack(env, track) {
   return row || null;
 }
 
-async function upsertTrack(env, track, workshop_id = '') {
+async function upsertTrack(env, track, local_id = '') {
   const { rows: [row] } = await getPool().query(`
-    INSERT INTO tracks (env, track, workshop_id)
+    INSERT INTO tracks (env, track, local_id)
     VALUES ($1, $2, $3)
-    ON CONFLICT (env, track) DO UPDATE SET workshop_id = CASE
-      WHEN tracks.workshop_id = '' AND EXCLUDED.workshop_id <> '' THEN EXCLUDED.workshop_id
-      ELSE tracks.workshop_id
+    ON CONFLICT (env, track) DO UPDATE SET local_id = CASE
+      WHEN tracks.local_id = '' AND EXCLUDED.local_id <> '' THEN EXCLUDED.local_id
+      ELSE tracks.local_id
     END
     RETURNING *
-  `, [env, track, workshop_id]);
+  `, [env, track, local_id]);
   return row;
 }
 
@@ -79,21 +79,29 @@ async function upsertTracksFromCatalog(environments) {
       const trackName = t.name || '';
       if (!trackName) continue;
       await pool.query(`
-        INSERT INTO tracks (env, track, workshop_id)
+        INSERT INTO tracks (env, track, local_id)
         VALUES ($1, $2, $3)
-        ON CONFLICT (env, track) DO UPDATE SET workshop_id = CASE
-          WHEN tracks.workshop_id = '' AND EXCLUDED.workshop_id <> '' THEN EXCLUDED.workshop_id
-          ELSE tracks.workshop_id
+        ON CONFLICT (env, track) DO UPDATE SET local_id = CASE
+          WHEN tracks.local_id = '' AND EXCLUDED.local_id <> '' THEN EXCLUDED.local_id
+          ELSE tracks.local_id
         END
-      `, [envName, trackName, t.workshop_id || t.track_dependency || '']);
+      `, [envName, trackName, t.local_id || t.track_dependency || '']);
     }
   }
 }
 
-async function updateTrackWorkshopId(trackId, workshop_id) {
+async function updateTrackLocalId(trackId, local_id) {
   const { rows: [row] } = await getPool().query(
-    'UPDATE tracks SET workshop_id = $1 WHERE id = $2 RETURNING *',
-    [workshop_id, trackId]
+    'UPDATE tracks SET local_id = $1 WHERE id = $2 RETURNING *',
+    [local_id, trackId]
+  );
+  return row || null;
+}
+
+async function updateTrackSteamId(trackId, steam_id) {
+  const { rows: [row] } = await getPool().query(
+    'UPDATE tracks SET steam_id = $1 WHERE id = $2 RETURNING *',
+    [steam_id, trackId]
   );
   return row || null;
 }
@@ -259,7 +267,8 @@ module.exports = {
   getTrackByEnvTrack,
   upsertTrack,
   upsertTracksFromCatalog,
-  updateTrackWorkshopId,
+  updateTrackLocalId,
+  updateTrackSteamId,
   updateTrackDuration,
   // Track-tag assignment
   getTagsForTrack,

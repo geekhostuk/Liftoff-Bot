@@ -25,7 +25,7 @@ const state = {
   running: false,
   tagNames: [],
   defaultIntervalMs: DEFAULT_INTERVAL_MS,
-  currentTrack: null,     // { id, env, track, workshop_id, duration_ms }
+  currentTrack: null,     // { id, env, track, local_id, steam_id, duration_ms }
   currentIntervalMs: 0,   // actual interval for current track (may differ from default)
   nextChangeAt: null,     // Date
   recentHistory: [],      // last N { env, track } pairs
@@ -45,7 +45,8 @@ function getState() {
     current_track: state.currentTrack ? {
       env: state.currentTrack.env,
       track: state.currentTrack.track,
-      workshop_id: state.currentTrack.workshop_id,
+      local_id: state.currentTrack.local_id,
+      steam_id: state.currentTrack.steam_id,
       duration_ms: state.currentTrack.duration_ms,
     } : null,
     current_interval_ms: state.currentIntervalMs,
@@ -228,7 +229,7 @@ async function _pickAndApplyTrack() {
     env: track.env,
     track: track.track,
     race: RACE_MODE,
-    workshop_id: track.workshop_id || '',
+    workshop_id: track.local_id || '',
   });
   setCurrentTrack({ env: track.env, track: track.track, race: RACE_MODE });
 

@@ -464,10 +464,10 @@ router.delete('/tracks/:id/tags/:tagId', async (req, res) => {
   res.json({ ok: true });
 });
 
-router.put('/tracks/:id/workshop-id', async (req, res) => {
-  const { workshop_id } = req.body;
-  if (workshop_id === undefined) return res.status(400).json({ error: 'workshop_id is required' });
-  const row = await db.updateTrackWorkshopId(Number(req.params.id), workshop_id);
+router.put('/tracks/:id/steam-id', async (req, res) => {
+  const { steam_id } = req.body;
+  if (steam_id === undefined) return res.status(400).json({ error: 'steam_id is required' });
+  const row = await db.updateTrackSteamId(Number(req.params.id), steam_id);
   if (!row) return res.status(404).json({ error: 'Track not found' });
   res.json(row);
 });
