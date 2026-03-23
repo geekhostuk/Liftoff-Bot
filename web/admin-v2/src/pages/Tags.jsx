@@ -128,7 +128,7 @@ export default function Tags() {
 
   // --- Fuse search ---
   const fuse = useMemo(() => new Fuse(allTracks, {
-    keys: ['track_name', 'environment'],
+    keys: ['track', 'env'],
     threshold: 0.35
   }), [allTracks]);
 
@@ -372,7 +372,7 @@ export default function Tags() {
                   alignItems: 'center'
                 }}
               >
-                <span>{t.environment} / {t.track_name}</span>
+                <span>{t.env} / {t.track}</span>
                 {t.tags?.length > 0 && (
                   <span style={{ display: 'flex', gap: '0.25rem' }}>
                     {t.tags.map(tg => (
@@ -398,10 +398,10 @@ export default function Tags() {
               background: 'var(--color-bg)'
             }}>
               <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--color-text)' }}>
-                {selectedTrack.track_name}
+                {selectedTrack.track}
               </div>
               <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                Environment: {selectedTrack.environment}
+                Environment: {selectedTrack.env}
               </div>
 
               {/* Tag checkboxes */}
