@@ -656,7 +656,6 @@ async function loadTags() {
   try {
     allTags = await apiFetch('GET', '/api/admin/tags');
     renderTagList();
-    populateTagAssignSelect();
     populateTagRunnerSelect();
     populateTagVoteSelect();
   } catch {}
@@ -665,7 +664,11 @@ async function loadTags() {
 async function loadTaggedTracks() {
   try {
     allTaggedTracks = await apiFetch('GET', '/api/admin/tracks');
-    populateTagEnvSelect();
+    // Re-filter if search is active
+    const searchInput = document.getElementById('tag-track-search');
+    if (searchInput && searchInput.value) filterTagTracks(searchInput.value);
+    // Re-render checkboxes if a track is selected
+    if (selectedTagTrackId) selectTagTrack(selectedTagTrackId);
   } catch {}
 }
 
@@ -715,90 +718,76 @@ async function renameTagById(id, currentName) {
   } catch (err) { toast(err.message, 'err'); }
 }
 
-function populateTagEnvSelect() {
-  const envSel = document.getElementById('tag-env-select');
-  const envs = [...new Set(allTaggedTracks.map(t => t.env))].sort();
-  envSel.innerHTML = '<option value="">— Select environment —</option>' +
-    envs.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
-}
-
-function onTagEnvChange() {
-  const envKey = document.getElementById('tag-env-select').value;
-  const trackSel = document.getElementById('tag-track-select');
-  trackSel.innerHTML = '<option value="">—</option>';
-  document.getElementById('tag-track-details').style.display = 'none';
-  selectedTagTrackId = null;
-  if (!envKey) return;
-  const tracks = allTaggedTracks.filter(t => t.env === envKey).sort((a, b) => a.track.localeCompare(b.track));
-  trackSel.innerHTML += tracks.map(t =>
-    `<option value="${t.id}">${esc(t.track)}</option>`
-  ).join('');
-}
-
-async function onTagTrackChange() {
-  const trackId = parseInt(document.getElementById('tag-track-select').value);
-  if (!trackId) {
-    document.getElementById('tag-track-details').style.display = 'none';
-    selectedTagTrackId = null;
+function filterTagTracks(query) {
+  const resultsEl = document.getElementById('tag-track-results');
+  if (!query.trim()) {
+    resultsEl.style.display = 'none';
     return;
   }
-  selectedTagTrackId = trackId;
-  document.getElementById('tag-track-details').style.display = 'block';
-  await loadTrackTagDetails(trackId);
+  const q = query.toLowerCase();
+  const matches = allTaggedTracks
+    .filter(t => t.env.toLowerCase().includes(q) || t.track.toLowerCase().includes(q))
+    .sort((a, b) => a.env.localeCompare(b.env) || a.track.localeCompare(b.track));
+
+  if (!matches.length) {
+    resultsEl.style.display = 'block';
+    resultsEl.innerHTML = '<div style="padding:0.75rem;text-align:center;color:#444;font-size:0.82rem">No tracks match.</div>';
+    return;
+  }
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = matches.map(t => {
+    const tagStr = (t.tags || []).map(tg => tg.name).join(', ');
+    return `<div class="tag-result-item ${t.id === selectedTagTrackId ? 'active' : ''}" data-action="selectTagTrack" data-id="${t.id}">
+      <span>${esc(t.track)}${tagStr ? `<span class="tag-result-tags">[${esc(tagStr)}]</span>` : ''}</span>
+      <span class="tag-result-env">${esc(t.env)}</span>
+    </div>`;
+  }).join('');
 }
 
-async function loadTrackTagDetails(trackId) {
+async function selectTagTrack(trackId) {
+  selectedTagTrackId = trackId;
   const track = allTaggedTracks.find(t => t.id === trackId);
   if (!track) return;
 
-  // Workshop ID
+  document.getElementById('tag-track-selected-name').textContent = track.track;
+  document.getElementById('tag-track-selected-env').textContent = track.env;
+  document.getElementById('tag-track-details').style.display = 'block';
   document.getElementById('tag-workshop-id').value = track.workshop_id || '';
+  document.getElementById('tag-duration-mins').value = track.duration_ms ? (track.duration_ms / 60000) : '';
 
-  // Duration
-  const durInput = document.getElementById('tag-duration-mins');
-  durInput.value = track.duration_ms ? (track.duration_ms / 60000) : '';
+  // Highlight in results list
+  document.querySelectorAll('.tag-result-item').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.id) === trackId);
+  });
 
-  // Tags
+  // Fetch current tags and render checkboxes
   try {
     const trackTags = await apiFetch('GET', `/api/admin/tracks/${trackId}/tags`);
-    renderTrackTagChips(trackId, trackTags);
+    renderTagCheckboxes(trackTags);
   } catch {}
 }
 
-function renderTrackTagChips(trackId, trackTags) {
-  const el = document.getElementById('tag-track-chips');
-  if (!trackTags.length) {
-    el.innerHTML = '<span style="color:#444;font-size:0.8rem">No tags assigned.</span>';
+function renderTagCheckboxes(trackTags) {
+  const el = document.getElementById('tag-checkboxes');
+  const assignedIds = new Set(trackTags.map(t => t.id));
+  if (!allTags.length) {
+    el.innerHTML = '<span style="color:#444;font-size:0.8rem">No tags defined yet.</span>';
     return;
   }
-  el.innerHTML = trackTags.map(t =>
-    `<span class="tag-chip">${esc(t.name)}<span class="tag-remove" data-action="unassignTag" data-track-id="${trackId}" data-tag-id="${t.id}" title="Remove">&times;</span></span>`
+  el.innerHTML = allTags.map(t =>
+    `<label class="tag-checkbox-item">
+      <input type="checkbox" data-action="toggleTrackTag" data-tag-id="${t.id}" ${assignedIds.has(t.id) ? 'checked' : ''}>
+      ${esc(t.name)}
+    </label>`
   ).join('');
 }
 
-function populateTagAssignSelect() {
-  const sel = document.getElementById('tag-assign-select');
-  sel.innerHTML = '<option value="">— Select tag —</option>' +
-    allTags.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
-}
-
-async function assignTag() {
+async function toggleTrackTag() {
   if (!selectedTagTrackId) return;
-  const tagId = parseInt(document.getElementById('tag-assign-select').value);
-  if (!tagId) { toast('Select a tag first', 'err'); return; }
+  const checkboxes = document.querySelectorAll('#tag-checkboxes input[type="checkbox"]');
+  const tag_ids = [...checkboxes].filter(cb => cb.checked).map(cb => parseInt(cb.dataset.tagId));
   try {
-    await apiFetch('POST', `/api/admin/tracks/${selectedTagTrackId}/tags`, { tag_id: tagId });
-    document.getElementById('tag-assign-select').value = '';
-    await loadTrackTagDetails(selectedTagTrackId);
-    await loadTaggedTracks();
-    toast('Tag assigned');
-  } catch (err) { toast(err.message, 'err'); }
-}
-
-async function unassignTag(trackId, tagId) {
-  try {
-    await apiFetch('DELETE', `/api/admin/tracks/${trackId}/tags/${tagId}`);
-    await loadTrackTagDetails(trackId);
+    await apiFetch('PUT', `/api/admin/tracks/${selectedTagTrackId}/tags`, { tag_ids });
     await loadTaggedTracks();
   } catch (err) { toast(err.message, 'err'); }
 }
@@ -1319,9 +1308,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tags
   document.getElementById('btn-create-tag').addEventListener('click', createTag);
   document.getElementById('new-tag-name').addEventListener('keydown', e => { if (e.key === 'Enter') createTag(); });
-  document.getElementById('tag-env-select').addEventListener('change', onTagEnvChange);
-  document.getElementById('tag-track-select').addEventListener('change', onTagTrackChange);
-  document.getElementById('btn-assign-tag').addEventListener('click', assignTag);
+  document.getElementById('tag-track-search').addEventListener('input', e => filterTagTracks(e.target.value));
+  document.getElementById('tag-track-results').addEventListener('click', e => {
+    const target = e.target.closest('[data-action="selectTagTrack"]');
+    if (target) selectTagTrack(parseInt(target.dataset.id));
+  });
+  document.getElementById('tag-checkboxes').addEventListener('change', e => {
+    if (e.target.closest('[data-action="toggleTrackTag"]')) toggleTrackTag();
+  });
   document.getElementById('btn-save-workshop-id').addEventListener('click', saveWorkshopId);
   document.getElementById('btn-save-duration').addEventListener('click', saveDuration);
   document.getElementById('btn-start-tag-runner').addEventListener('click', startTagRunner);
@@ -1400,15 +1394,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const name = target.dataset.name;
     if (target.dataset.action === 'deleteTag') deleteTagById(id, name);
     else if (target.dataset.action === 'renameTag') renameTagById(id, name);
-  });
-
-  // Tag chips (unassign)
-  document.getElementById('tag-track-chips').addEventListener('click', e => {
-    const target = e.target.closest('[data-action]');
-    if (!target) return;
-    if (target.dataset.action === 'unassignTag') {
-      unassignTag(parseInt(target.dataset.trackId, 10), parseInt(target.dataset.tagId, 10));
-    }
   });
 
   // Competition week list

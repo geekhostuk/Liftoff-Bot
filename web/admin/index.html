@@ -188,6 +188,32 @@
     .tag-list-item .tag-count { font-size: 0.75rem; color: #555; }
     .tags-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; min-height: 1.5rem; }
 
+    /* Tag track search results */
+    .tag-result-item {
+      padding: 0.45rem 0.75rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border-bottom: 1px solid #18181e;
+      display: flex;
+      justify-content: space-between;
+    }
+    .tag-result-item:last-child { border-bottom: none; }
+    .tag-result-item:hover { background: #16181f; }
+    .tag-result-item.active { background: #1a1008; border-left: 2px solid #f97316; }
+    .tag-result-env { color: #555; font-size: 0.78rem; }
+    .tag-result-tags { color: #666; font-size: 0.72rem; margin-left: 0.5rem; }
+
+    /* Tag checkboxes */
+    .tag-checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .tag-checkbox-item input[type="checkbox"] { width: auto; accent-color: #f97316; cursor: pointer; }
+    .tag-checkbox-item label { margin: 0; color: #e0e0e0; cursor: pointer; }
+
     /* Chat log */
     .chat-log {
       list-style: none;
@@ -521,37 +547,25 @@
       <!-- Track tagging -->
       <div style="border-top:1px solid #1e1e24;padding-top:1rem">
         <label style="margin-bottom:0.5rem">Tag a Track</label>
-        <div class="row">
-          <div>
-            <label>Environment</label>
-            <select id="tag-env-select">
-              <option value="">— Select environment —</option>
-            </select>
-          </div>
-          <div>
-            <label>Track</label>
-            <select id="tag-track-select">
-              <option value="">—</option>
-            </select>
-          </div>
+        <div>
+          <label>Search tracks</label>
+          <input type="text" id="tag-track-search" placeholder="Type to filter by environment or track name…" autocomplete="off">
+        </div>
+
+        <!-- Filtered results list -->
+        <div id="tag-track-results" style="max-height:200px;overflow-y:auto;border:1px solid #2a2a32;border-radius:5px;background:#0d0d0f;display:none;margin-top:0.5rem">
         </div>
 
         <!-- Track details (shown when a track is selected) -->
         <div id="tag-track-details" style="display:none;margin-top:0.75rem">
-          <div style="margin-bottom:0.5rem">
-            <label>Current Tags</label>
-            <div id="tag-track-chips" class="tags-chips">
-              <span style="color:#444;font-size:0.8rem">No tags assigned.</span>
-            </div>
+          <div style="margin-bottom:0.75rem">
+            <span id="tag-track-selected-name" style="font-weight:600;font-size:0.9rem;color:#e0e0e0"></span>
+            <span id="tag-track-selected-env" style="font-size:0.8rem;color:#555;margin-left:0.5rem"></span>
           </div>
-          <div style="display:flex;gap:0.5rem;align-items:end">
-            <div style="flex:1">
-              <label>Add Tag</label>
-              <select id="tag-assign-select">
-                <option value="">— Select tag —</option>
-              </select>
-            </div>
-            <button class="btn-secondary mini-btn" id="btn-assign-tag">+ Assign</button>
+
+          <div>
+            <label>Tags</label>
+            <div id="tag-checkboxes" style="display:flex;flex-wrap:wrap;gap:0.5rem 1rem;margin-top:0.3rem"></div>
           </div>
 
           <div class="row" style="margin-top:0.75rem">
