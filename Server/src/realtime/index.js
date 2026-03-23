@@ -21,6 +21,8 @@ const state = require('../state');
 const playlistRunner = require('../playlistRunner');
 const competitionRunner = require('../competitionRunner');
 const idleKick = require('../idleKick');
+const tagRunner = require('../tagRunner');
+const tagVote = require('../tagVote');
 
 async function main() {
   // ── Database ──────────────────────────────────────────────────────────────
@@ -42,6 +44,9 @@ async function main() {
   broadcast.onBroadcast((msg) => {
     if (msg.event_type === 'playlist_state') competitionRunner.onPlaylistStateChange(msg);
   });
+
+  // Try resuming tag runner from persisted config (only if competition isn't managing playlists)
+  await tagRunner.tryResume();
 
   const WS_PORT = process.env.WS_PORT || 3000;
   wsServer.listen(WS_PORT, () => {
@@ -109,6 +114,51 @@ async function main() {
     res.json(playlistRunner.getState());
   });
 
+  // ── Tag runner ──────────────────────────────────────────────────────────
+  internal.post('/internal/tag-runner/start', async (req, res) => {
+    try {
+      const { tag_names, interval_ms } = req.body;
+      await tagRunner.startTagRunner(tag_names, interval_ms);
+      res.json(tagRunner.getState());
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.post('/internal/tag-runner/stop', (req, res) => {
+    tagRunner.stopTagRunner();
+    res.json({ ok: true });
+  });
+
+  internal.post('/internal/tag-runner/skip', async (req, res) => {
+    await tagRunner.skipToNext();
+    res.json(tagRunner.getState());
+  });
+
+  internal.get('/internal/tag-runner/state', (req, res) => {
+    res.json(tagRunner.getState());
+  });
+
+  // ── Tag vote ──────────────────────────────────────────────────────────────
+  internal.post('/internal/tag-vote/start', (req, res) => {
+    try {
+      const { tag_options, duration_ms } = req.body;
+      tagVote.startVote(tag_options, duration_ms, 'admin');
+      res.json(tagVote.getState());
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.post('/internal/tag-vote/cancel', (req, res) => {
+    tagVote.cancelVote();
+    res.json({ ok: true });
+  });
+
+  internal.get('/internal/tag-vote/state', (req, res) => {
+    res.json(tagVote.getState());
+  });
+
   // ── Competition runner ────────────────────────────────────────────────────
   internal.get('/internal/competition/runner/state', (req, res) => {
     res.json(competitionRunner.getState());
@@ -167,6 +217,8 @@ async function main() {
       track_since: state.getCurrentTrackSince(),
       online_players: state.getOnlinePlayers(),
       playlist: playlistRunner.getState(),
+      tag_runner: tagRunner.getState(),
+      tag_vote: tagVote.getState(),
     });
   });
 

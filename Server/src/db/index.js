@@ -9,4 +9,5 @@ module.exports = {
   ...require('./adminUsers'),
   ...require('./competition'),
   ...require('./whitelist'),
+  ...require('./tags'),
 };

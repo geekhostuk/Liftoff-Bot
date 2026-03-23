@@ -60,6 +60,12 @@ async function startPlaylist(playlistId, intervalMs, startIndex = 0) {
 
   const idx = Math.max(0, Math.min(startIndex, tracks.length - 1));
 
+  // Mutual exclusion: stop tag runner if running
+  try {
+    const tagRunner = require('./tagRunner');
+    tagRunner.stopTagRunner();
+  } catch {}
+
   stopPlaylist();
 
   state.running = true;
@@ -193,6 +199,12 @@ async function resumePlaylist(playlistId, intervalMs, startIndex, remainingMs, f
   if (tracks.length === 0) throw new Error('Playlist is empty — add tracks first');
 
   const idx = Math.max(0, Math.min(startIndex, tracks.length - 1));
+
+  // Mutual exclusion: stop tag runner if running
+  try {
+    const tagRunner = require('./tagRunner');
+    tagRunner.stopTagRunner();
+  } catch {}
 
   stopPlaylist();
 

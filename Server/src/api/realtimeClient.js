@@ -71,6 +71,38 @@ async function getPlaylistState() {
   return get('/internal/playlist/state');
 }
 
+// ── Tag runner ─────────────────────────────────────────────────────────
+
+async function startTagRunner(tagNames, intervalMs) {
+  return post('/internal/tag-runner/start', { tag_names: tagNames, interval_ms: intervalMs });
+}
+
+async function stopTagRunner() {
+  return post('/internal/tag-runner/stop');
+}
+
+async function skipTagRunner() {
+  return post('/internal/tag-runner/skip');
+}
+
+async function getTagRunnerState() {
+  return get('/internal/tag-runner/state');
+}
+
+// ── Tag vote ─────────────────────────────────────────────────────────
+
+async function startTagVote(tagOptions, durationMs) {
+  return post('/internal/tag-vote/start', { tag_options: tagOptions, duration_ms: durationMs });
+}
+
+async function cancelTagVote() {
+  return post('/internal/tag-vote/cancel');
+}
+
+async function getTagVoteState() {
+  return get('/internal/tag-vote/state');
+}
+
 // ── Competition runner ──────────────────────────────────────────────────────
 
 async function getCompetitionRunnerState() {
@@ -130,6 +162,13 @@ module.exports = {
   stopPlaylist,
   skipPlaylist,
   getPlaylistState,
+  startTagRunner,
+  stopTagRunner,
+  skipTagRunner,
+  getTagRunnerState,
+  startTagVote,
+  cancelTagVote,
+  getTagVoteState,
   getCompetitionRunnerState,
   setCompetitionAutoManaged,
   getIdleKickStatus,

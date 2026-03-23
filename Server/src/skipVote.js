@@ -44,10 +44,18 @@ function getSkipVoteInfo() {
   return { realPlayers, needed };
 }
 
+function _getActiveRunner() {
+  const playlist = require('./playlistRunner');
+  const tagRunner = require('./tagRunner');
+  if (playlist.getState().running) return { type: 'playlist', runner: playlist };
+  if (tagRunner.getState().running) return { type: 'tag', runner: tagRunner };
+  return null;
+}
+
 function handleSkipVoteCommand(voterId) {
-  const { skipToNext, getState: getPlaylistState } = require('./playlistRunner');
-  if (!getPlaylistState().running) {
-    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>No playlist is running — nothing to skip.</color>' });
+  const active = _getActiveRunner();
+  if (!active) {
+    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>No playlist or tag runner is running — nothing to skip.</color>' });
     return;
   }
 
@@ -88,15 +96,16 @@ function checkSkipVoteThreshold() {
   if (realPlayers === 0) return;
   if (skipVote.voters.size >= needed) {
     cancelSkipVote();
-    const { skipToNext, getState: getPlaylistState } = require('./playlistRunner');
-    if (!getPlaylistState().running) {
-      _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>Vote passed but playlist has stopped.</color>' });
+    const active = _getActiveRunner();
+    if (!active) {
+      _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>Vote passed but nothing is running.</color>' });
       return;
     }
     _sendCommand({ cmd: 'send_chat', message: '<color=#00FF00>VOTE PASSED</color> <color=#FFFF00>Track will change in 10 seconds...</color>' });
     setTimeout(() => {
-      if (!getPlaylistState().running) return;
-      skipToNext();
+      const current = _getActiveRunner();
+      if (!current) return;
+      current.runner.skipToNext();
     }, 10_000);
   }
 }
