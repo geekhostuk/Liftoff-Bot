@@ -1,0 +1,16 @@
+.server-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  flex-wrap: wrap;
+}
+
+.server-status-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}

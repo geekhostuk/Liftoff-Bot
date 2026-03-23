@@ -1,0 +1,76 @@
+.track-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.track-panel-title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.track-panel-track {
+  margin-bottom: var(--space-md);
+}
+
+.track-panel-env {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.track-panel-name {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.track-panel-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.track-panel-elapsed {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.track-panel-elapsed::before {
+  content: '\23F1\FE0F ';
+}
+
+.track-panel-record {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 0.875rem;
+}
+
+.track-panel-record-nick {
+  color: var(--text-secondary);
+}
+
+.track-panel-record-time {
+  color: var(--color-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-panel-empty {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0;
+}
