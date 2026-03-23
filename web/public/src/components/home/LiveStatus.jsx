@@ -6,20 +6,21 @@ import { getStatus } from '../../lib/api';
 import Badge from '../ui/Badge';
 import './LiveStatus.css';
 
-const HIDDEN_NICKS = ['jmt_bot'];
+const isBot = (nick) => String(nick || '').toLowerCase() === 'jmt_bot';
 
 export default function LiveStatus() {
   const [track, setTrack] = useState(null);
-  const [playerCount, setPlayerCount] = useState(0);
+  const [players, setPlayers] = useState([]);
   const [playlist, setPlaylist] = useState(null);
   const [pluginConnected, setPluginConnected] = useState(null);
+
+  const playerCount = players.filter(p => !isBot(p.nick)).length;
 
   const { connected } = useWebSocket(useCallback((event) => {
     switch (event.event_type) {
       case 'state_snapshot': {
         if (event.current_track?.track) setTrack(event.current_track);
-        const players = (event.online_players || []).filter(p => !HIDDEN_NICKS.includes(p.nick?.toLowerCase()));
-        setPlayerCount(players.length);
+        setPlayers(event.online_players || []);
         if (event.playlist?.running) setPlaylist(event.playlist);
         break;
       }
@@ -29,16 +30,17 @@ export default function LiveStatus() {
       case 'playlist_state':
         setPlaylist(event.running ? event : null);
         break;
-      case 'player_list': {
-        const players = (event.players || []).filter(p => !HIDDEN_NICKS.includes(p.nick?.toLowerCase()));
-        setPlayerCount(players.length);
+      case 'player_list':
+        setPlayers(event.players || []);
         break;
-      }
       case 'player_entered':
-        if (!HIDDEN_NICKS.includes(event.nick?.toLowerCase())) setPlayerCount(c => c + 1);
+        setPlayers(prev => {
+          if (prev.some(p => p.actor === event.actor)) return prev;
+          return [...prev, { actor: event.actor, nick: event.nick }];
+        });
         break;
       case 'player_left':
-        if (!HIDDEN_NICKS.includes(event.nick?.toLowerCase())) setPlayerCount(c => Math.max(0, c - 1));
+        setPlayers(prev => prev.filter(p => p.actor !== event.actor));
         break;
     }
   }, []));
