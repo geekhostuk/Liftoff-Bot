@@ -126,16 +126,14 @@ export default function Tags() {
   useWsEvent('tag_runner_state', (data) => setTagRunnerState(data));
   useWsEvent('tag_vote_state', (data) => setVoteState(data));
 
-  // --- Fuse search ---
-  const fuse = useMemo(() => new Fuse(allTracks, {
-    keys: ['track', 'env'],
-    threshold: 0.35
-  }), [allTracks]);
-
+  // --- Track search (substring, case-insensitive) ---
   const filteredTracks = useMemo(() => {
-    if (!trackSearch.trim()) return allTracks;
-    return fuse.search(trackSearch).map(r => r.item);
-  }, [trackSearch, fuse, allTracks]);
+    const q = trackSearch.trim().toLowerCase();
+    if (!q) return allTracks;
+    return allTracks.filter(t =>
+      t.track.toLowerCase().includes(q) || t.env.toLowerCase().includes(q)
+    );
+  }, [trackSearch, allTracks]);
 
   const selectedTrack = allTracks.find(t => t.id === selectedTrackId);
 
