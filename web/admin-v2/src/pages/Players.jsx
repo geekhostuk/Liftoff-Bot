@@ -154,7 +154,7 @@ export default function Players() {
   const displayPlayers = useMemo(() => {
     return players
       .filter((p) => p.actor !== 'jmt_bot')
-      .sort((a, b) => a.actor.localeCompare(b.actor));
+      .sort((a, b) => a.actor - b.actor);
   }, [players]);
 
   const whitelistLower = useMemo(
