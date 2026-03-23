@@ -153,7 +153,7 @@ export default function Players() {
   // Filter out jmt_bot, sort by actor
   const displayPlayers = useMemo(() => {
     return players
-      .filter((p) => String(p.actor).toLowerCase() !== 'jmt_bot')
+      .filter((p) => String(p.nick || '').toLowerCase() !== 'jmt_bot')
       .sort((a, b) => a.actor - b.actor);
   }, [players]);
 
