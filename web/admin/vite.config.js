@@ -1,18 +1,11 @@
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  base: './',
-  root: '.',
-  build: {
-    outDir: 'dist',
-    rollupOptions: {
-      input: {
-        index: resolve(__dirname, 'index.html'),
-      },
-    },
-  },
+  base: '/admin/',
+  plugins: [react()],
   server: {
+    port: 5175,
     proxy: {
       '/api': 'http://localhost:3000',
       '/ws': {
@@ -20,5 +13,8 @@ export default defineConfig({
         ws: true,
       },
     },
+  },
+  build: {
+    outDir: 'dist',
   },
 });

@@ -1,21 +1,11 @@
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  root: '.',
-  build: {
-    outDir: 'dist',
-    rollupOptions: {
-      input: {
-        index: resolve(__dirname, 'index.html'),
-        competition: resolve(__dirname, 'competition.html'),
-        stats: resolve(__dirname, 'stats.html'),
-        about: resolve(__dirname, 'about.html'),
-        tracks: resolve(__dirname, 'tracks.html'),
-      },
-    },
-  },
+  base: '/',
+  plugins: [react()],
   server: {
+    port: 5174,
     proxy: {
       '/api': 'http://localhost:3000',
       '/ws': {
@@ -23,5 +13,8 @@ export default defineConfig({
         ws: true,
       },
     },
+  },
+  build: {
+    outDir: 'dist',
   },
 });
