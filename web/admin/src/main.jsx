@@ -15,7 +15,7 @@ class ErrorBoundary extends Component {
     if (this.state.error) {
       return (
         <div style={{ padding: '2rem', color: '#ef4444', fontFamily: 'monospace', background: '#0B0F14', minHeight: '100vh' }}>
-          <h1 style={{ color: '#FF7A00' }}>Admin V2 — Startup Error</h1>
+          <h1 style={{ color: '#FF7A00' }}>Admin — Startup Error</h1>
           <pre style={{ marginTop: '1rem', whiteSpace: 'pre-wrap', color: '#F8FAFC' }}>{this.state.error.message}</pre>
           <pre style={{ marginTop: '0.5rem', color: '#6B7A8D', fontSize: '0.8rem' }}>{this.state.error.stack}</pre>
         </div>

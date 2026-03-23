@@ -53,16 +53,16 @@ services:
       realtime:
         condition: service_started
 
-  public-v2-web:
+  public-web:
     build:
-      context: ../web/public-v2
+      context: ../web/public
     restart: unless-stopped
     networks:
       - internal
 
-  admin-v2-web:
+  admin-web:
     build:
-      context: ../web/admin-v2
+      context: ../web/admin
     restart: unless-stopped
     networks:
       - internal
@@ -83,8 +83,8 @@ services:
     depends_on:
       - api
       - realtime
-      - public-v2-web
-      - admin-v2-web
+      - public-web
+      - admin-web
 
 networks:
   internal:
