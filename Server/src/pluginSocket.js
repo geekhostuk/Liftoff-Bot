@@ -348,8 +348,8 @@ async function handlePluginEvent(jsonLine) {
           timeLeft = '0m 0s';
         }
       }
-      const modeStr = mode ? ` | <color=#00BFFF>Mode:</color> <color=#FFFF00>${mode}</color>` : '';
-      sendCommand({ cmd: 'send_chat', message: `<color=#00BFFF>COMMANDS</color> <color=#00FF00>/next</color> <color=#FFFF00>(skip)</color> <color=#00FF00>/extend</color> <color=#FFFF00>(+5 mins)</color> | <color=#00BFFF>Time left:</color> <color=#FFFF00>${timeLeft}</color>${modeStr}` });
+      const modeStr = mode ? ` | <color=#00BFFF>Mode:</color> ${mode}` : '';
+      sendCommand({ cmd: 'send_chat', message: `<color=#00BFFF>Cmds:</color> <color=#00FF00>/next</color> skip <color=#00FF00>/extend</color> +5m | <color=#00BFFF>Time:</color> <color=#FFFF00>${timeLeft}</color>${modeStr}` });
     } else if (msg === '/next') {
       // Use user_id (Steam ID) as the voter key — event.actor can be null if the
       // plugin couldn't resolve the Photon actor number, which causes all unresolved
