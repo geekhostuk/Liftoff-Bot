@@ -212,7 +212,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 | Database | PostgreSQL 16 |
 | Validation | AJV (JSON Schema) |
 | Frontend Build | Vite |
-| Frontend | Vanilla JS (ES modules), HTML, CSS |
+| Frontend | React 19, React Router 7 |
 | Infrastructure | Docker, Docker Compose, Nginx, Let's Encrypt |
 | Tests | Vitest |
 
@@ -233,25 +233,26 @@ Liftoff/
 │   └── set_track.json
 │
 ├── web/
-│   ├── public/                         # Public frontend (Vite)
-│   │   ├── index.html                  # Live view
-│   │   ├── competition.html            # Competition league tables
-│   │   ├── stats.html                  # Player statistics
-│   │   ├── about.html                  # About page
+│   ├── public/                         # Public frontend (React + Vite)
 │   │   ├── src/
-│   │   │   ├── public.js               # Live view frontend
-│   │   │   ├── competition.js          # Competition page frontend
-│   │   │   ├── stats.js                # Stats page frontend
-│   │   │   └── shared.js               # Shared helpers
+│   │   │   ├── pages/                  # Page components (Home, Live, Tracks, Competition, etc.)
+│   │   │   ├── components/             # Shared UI + layout components
+│   │   │   ├── hooks/                  # Custom React hooks
+│   │   │   ├── lib/                    # API client, formatters, utilities
+│   │   │   ├── App.jsx                 # Router + layout
+│   │   │   └── main.jsx                # Entry point
 │   │   ├── vite.config.js
 │   │   ├── Dockerfile
 │   │   └── nginx.conf                  # Container-level nginx config
 │   │
-│   └── admin/                          # Admin frontend (Vite)
-│       ├── index.html                  # Admin dashboard
+│   └── admin/                          # Admin frontend (React + Vite)
 │       ├── src/
-│       │   ├── admin.js                # Admin dashboard frontend
-│       │   └── shared.js               # Shared helpers
+│       │   ├── pages/                  # Page components
+│       │   ├── components/             # Shared UI + layout components
+│       │   ├── hooks/                  # Custom React hooks
+│       │   ├── lib/                    # API client, utilities
+│       │   ├── App.jsx                 # Router + layout
+│       │   └── main.jsx                # Entry point
 │       ├── vite.config.js
 │       ├── Dockerfile
 │       └── nginx.conf                  # Container-level nginx config
@@ -306,7 +307,7 @@ Liftoff/
 │   │
 │   ├── nginx/
 │   │   └── nginx.conf                  # Reverse proxy config (4 upstreams)
-│   ├── docker-compose.yml              # 6 services: api, realtime, postgres, public-web, admin-web, nginx
+│   ├── docker-compose.yml              # 5 services: api, realtime, postgres, public-web, admin-web + nginx
 │   ├── Dockerfile
 │   └── .env.example
 │
@@ -346,7 +347,7 @@ Liftoff/
    docker compose up -d --build
    ```
 
-   This starts 6 containers: API server, realtime server, PostgreSQL, public web, admin web, and nginx.
+   This starts 5 containers plus nginx: API server, realtime server, PostgreSQL, public web, and admin web.
 
    Or **run locally** (PostgreSQL and both servers needed):
    ```bash
@@ -374,10 +375,8 @@ Liftoff/
 5. **Access the interfaces:**
 
    With Docker (via nginx):
-   - Live view: `https://yourdomain/`
-   - Competition: `https://yourdomain/competition.html`
-   - Stats: `https://yourdomain/stats.html`
-   - Admin panel: `https://yourdomain/admin/` (Basic Auth)
+   - Public site: `https://yourdomain/`
+   - Admin panel: `https://yourdomain/admin/`
 
 ### Frontend Development
 

@@ -236,7 +236,7 @@ export default function Dashboard() {
         <div style={styles.panel}>
           <div style={styles.panelHeader}>
             <span style={styles.panelTitle}>Players Online</span>
-            <Link to="/admin-v2/players" style={styles.panelLink}>
+            <Link to="/admin/players" style={styles.panelLink}>
               View all &rarr;
             </Link>
           </div>
