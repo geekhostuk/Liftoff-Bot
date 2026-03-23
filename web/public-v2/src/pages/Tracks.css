@@ -1,0 +1,282 @@
+.tracks-page {
+  max-width: 900px;
+}
+
+.tracks-title {
+  margin-bottom: var(--space-sm);
+}
+
+.tracks-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: var(--space-xl);
+}
+
+/* ── Now Playing Banner ────────────────────────────────────────────────── */
+
+.now-playing-banner {
+  background: var(--bg-surface);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.now-playing-info {
+  flex: 1;
+}
+
+.now-playing-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  margin-bottom: var(--space-xs);
+}
+
+.now-playing-track {
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.now-playing-env {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.now-playing-timer {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.now-playing-countdown {
+  font-family: var(--font-mono);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.now-playing-timer-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
+/* ── Section Cards ─────────────────────────────────────────────────────── */
+
+.tracks-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: var(--space-xl);
+}
+
+.tracks-section-header {
+  padding: 0.75rem var(--space-lg);
+  background: var(--bg-surface-alt);
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tracks-empty {
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+/* ── Playlist Accordion ────────────────────────────────────────────────── */
+
+.playlist-card {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.playlist-card:last-child {
+  border-bottom: none;
+}
+
+.playlist-header {
+  padding: 0.75rem var(--space-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.playlist-header:hover {
+  background: var(--bg-hover);
+}
+
+.playlist-chevron {
+  color: var(--text-dim);
+  font-size: 0.65rem;
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.playlist-card.open .playlist-chevron {
+  transform: rotate(90deg);
+}
+
+.playlist-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.playlist-badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--bg-primary);
+  font-weight: 700;
+}
+
+.playlist-track-count {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.playlist-tracks {
+  display: none;
+}
+
+.playlist-card.open .playlist-tracks {
+  display: block;
+}
+
+/* ── Track List ────────────────────────────────────────────────────────── */
+
+.track-list {
+  list-style: none;
+}
+
+.track-item {
+  padding: 0.5rem var(--space-lg) 0.5rem 2.5rem;
+  font-size: 0.88rem;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  transition: background var(--transition-fast);
+}
+
+.track-item:hover {
+  background: var(--bg-hover);
+}
+
+.track-index {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  width: 1.5rem;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-name {
+  color: var(--text-primary);
+}
+
+.track-env {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.track-item.current {
+  background: var(--color-primary-muted);
+  border-left: 3px solid var(--color-primary);
+  padding-left: calc(2.5rem - 3px);
+}
+
+.track-item.current .track-name {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* ── Two Column ────────────────────────────────────────────────────────── */
+
+.tracks-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xl);
+}
+
+.tracks-two-col .tracks-section {
+  margin-bottom: 0;
+}
+
+/* ── Recent Tracks Table ───────────────────────────────────────────────── */
+
+.recent-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.recent-table th {
+  padding: 0.6rem var(--space-lg);
+  text-align: left;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.recent-table td {
+  padding: 0.6rem var(--space-lg);
+  font-size: 0.88rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.recent-table tr:last-child td {
+  border-bottom: none;
+}
+
+.recent-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+.time-ago {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .now-playing-banner {
+    flex-direction: column;
+    text-align: center;
+    gap: var(--space-md);
+  }
+
+  .now-playing-timer {
+    text-align: center;
+  }
+
+  .tracks-two-col {
+    grid-template-columns: 1fr;
+  }
+}
