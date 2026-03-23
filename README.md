@@ -1,6 +1,6 @@
 # Liftoff Competition
 
-Competition management platform for Liftoff FPV Simulator. Remotely control your lobby — change tracks, kick players, run playlists with scheduled rotations, and let pilots vote to skip or extend. Run weekly competitions with automatic scoring, league tables, and a playlist calendar that auto-rotates tracks all week. Includes a Node.js backend, live spectator view, competition page, and admin dashboard. Turn casual lobbies into league nights.
+Competition management platform for Liftoff FPV Simulator. Remotely control your lobby — change tracks, kick players, run playlists with scheduled rotations, tag tracks by category and run random tag-based rotations, and let pilots vote to skip, extend, or choose a track category. Run weekly competitions with automatic scoring, league tables, and a playlist calendar that auto-rotates tracks all week. Includes a Node.js backend, live spectator view, competition page, and admin dashboard. Turn casual lobbies into league nights.
 
 > **BepInEx game plugin** — the plugin that runs inside Liftoff lives in its own repo: [liftoff-plugin](https://github.com/geekhostuk/liftoff-plugin) (private).
 
@@ -38,7 +38,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 | **public-web** | Serves the public HTML/JS/CSS (live view, competition, stats, about) | `/*` |
 | **admin-web** | Serves the admin dashboard HTML/JS/CSS | `/admin/*` (Basic Auth) |
 | **api** | Express REST API — public + admin routes, auth, DB reads/writes | `/api/*` |
-| **realtime** | WebSocket servers, plugin ingestion, domain services (playlists, competitions, idle kick, skip/extend vote), internal API | `/ws/*` |
+| **realtime** | WebSocket servers, plugin ingestion, domain services (playlists, tag runner, competitions, idle kick, skip/extend vote, tag vote), internal API | `/ws/*` |
 | **postgres** | PostgreSQL 16 database — stores all race data, competitions, playlists, and admin users | Port 5432 (internal) |
 | **nginx** | TLS termination, path-based routing, Basic Auth for admin | Ports 80/443 |
 
@@ -68,6 +68,33 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Resume mid-playlist after server reboot with correct remaining time
 - Ideal for league nights, qualifying sessions, tournaments, and curated race events
 
+### Track Tagging & Tag Runner
+
+- Tag tracks with categories (e.g. `honk`, `technical`, `short`, `sg_playlist`)
+- Managed tag list — admins create, rename, and delete tags
+- Tracks are auto-discovered from the in-game track catalog (no manual entry)
+- Search and filter tracks, assign multiple tags per track via checkboxes
+- Per-track duration override — set a custom rotation time for individual tracks
+- Local ID auto-populated from catalog; Steam ID editable for future Steam API lookups
+- **Tag Runner** — standalone mode that randomly selects tracks matching one or more tags
+  - Mutually exclusive with playlist runner (starting one stops the other)
+  - Avoids recently played tracks (circular buffer of last 5)
+  - Only selects tracks present in the current in-game catalog
+  - Persists config to database — auto-resumes after server restart
+  - Blocked when competition runner is auto-managed
+
+### Tag Voting
+
+- Chat-based category voting — players or admins can trigger a vote between tag options
+- Players type `/tagvote` in game chat to start a vote with up to 4 random tags
+- Vote by typing `/1`, `/2`, `/3`, or `/4` in chat
+- Live tally displayed in chat after each new vote
+- When the timer expires, the winning tag loads a random track
+- Random tiebreak if multiple tags share the top vote count
+- Admin-triggered votes via dashboard with custom tag selection and duration
+- 5-minute cooldown between player-triggered votes
+- `/tags` command lists all available tags in chat
+
 ### Vote to Skip
 - Players type `/next` in game chat to start a skip vote (3-minute timer)
 - Additional players type `/next` to add their vote
@@ -89,10 +116,14 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Only active when a playlist is running — free lobbies are unaffected
 
 ### Player Commands
-- `/info` — shows available player commands
+
+- `/info` — shows available player commands, current mode, and time remaining
 - `/next` — vote to skip the current track
 - `/extend` — vote to extend the current track by 5 minutes
 - `/stay` — reset your idle timer (prevents auto-kick)
+- `/tagvote` — start a tag category vote (up to 4 random tags)
+- `/1` `/2` `/3` `/4` — cast your vote during an active tag vote
+- `/tags` — list all available track tags
 
 ### Competition System
 
@@ -140,6 +171,9 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Real-time player monitoring with kick controls, idle time display, and whitelist toggle
 - Track catalog browsing, selection, and manual track control
 - Playlist creation, management, and automated rotation with configurable intervals
+- **Track tagging** — search tracks, assign tags via checkboxes, edit Steam IDs and per-track durations
+- **Tag runner** — start/stop/skip random tag-based rotation with tag multi-select and interval config
+- **Tag voting** — trigger category votes with custom tag options and duration
 - Automated chat templates triggered by track changes, race starts, and race ends
 - **Competition management** — create seasons, generate weeks, assign playlist calendars, recalculate points
 - **Competition runner** — automatic week lifecycle, playlist rotation, and reboot-resilient state recovery
@@ -242,6 +276,8 @@ Liftoff/
 │   │   ├── competitionScoring.js       # Points engine (real-time + batch)
 │   │   ├── state.js                    # In-memory state
 │   │   ├── auth.js                     # Password hashing & session store
+│   │   ├── tagRunner.js                # Tag-based random track rotation
+│   │   ├── tagVote.js                  # Chat-based tag category voting
 │   │   ├── idleKick.js                 # Auto-kick idle pilots
 │   │   ├── skipVote.js                 # Vote-to-skip logic
 │   │   ├── extendVote.js               # Vote-to-extend logic
@@ -256,13 +292,17 @@ Liftoff/
 │   │       ├── connection.js           # PostgreSQL connection pool + migration runner
 │   │       ├── migrations/             # Numbered SQL migration files
 │   │       │   ├── 001_initial.sql
-│   │       │   └── 002_competition.sql
+│   │       │   ├── 002_competition.sql
+│   │       │   ├── 003_whitelist.sql
+│   │       │   ├── 004_tags.sql
+│   │       │   └── 005_track_ids.sql
 │   │       ├── competition.js          # Competition queries
 │   │       ├── ingest.js               # Event ingestion
 │   │       ├── queries.js              # Public data queries
 │   │       ├── adminUsers.js           # Admin user management
 │   │       ├── chatTemplates.js        # Chat template CRUD
-│   │       └── playlists.js            # Playlist CRUD
+│   │       ├── playlists.js            # Playlist CRUD
+│   │       └── tags.js                 # Tag, track, and track-tag CRUD
 │   │
 │   ├── nginx/
 │   │   └── nginx.conf                  # Reverse proxy config (4 upstreams)
@@ -381,13 +421,13 @@ The server is split into two processes that communicate via an internal HTTP API
 
 **API Server** — Handles all REST endpoints, admin authentication, and database CRUD. When an admin action needs the game plugin or a domain service (playlists, competitions, idle kick), it forwards the request to the realtime server.
 
-**Realtime Server** — Owns all WebSocket connections (plugin, live view, admin), in-memory state, event ingestion, and domain services (playlist runner, competition runner, idle kick, skip/extend vote). Exposes an internal API for the API server to call.
+**Realtime Server** — Owns all WebSocket connections (plugin, live view, admin), in-memory state, event ingestion, and domain services (playlist runner, tag runner, competition runner, idle kick, skip/extend vote, tag vote). Exposes an internal API for the API server to call.
 
 Both servers share the same PostgreSQL database. The database layer uses the `pg` connection pool with parameterized queries throughout — no ORM.
 
 ### Database Migrations
 
-Schema changes are managed via numbered SQL files in `Server/src/db/migrations/`. The migration runner executes them in order on startup and tracks applied migrations in a `_migrations` table. To add a new migration, create a file like `003_your_change.sql` in the migrations directory. The schema uses the `citext` PostgreSQL extension for case-insensitive admin usernames.
+Schema changes are managed via numbered SQL files in `Server/src/db/migrations/`. The migration runner executes them in order on startup and tracks applied migrations in a `_migrations` table. To add a new migration, create a file like `003_your_change.sql` in the migrations directory. The schema uses the `citext` PostgreSQL extension for case-insensitive admin usernames and tag names.
 
 ### SQLite to PostgreSQL Migration
 
