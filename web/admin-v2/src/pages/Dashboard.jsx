@@ -282,24 +282,10 @@ export default function Dashboard() {
       {/* Runner bars */}
       <div style={styles.runnerSection}>
         {playlistState && (
-          <RunnerBar
-            state={playlistState.running ? 'running' : 'stopped'}
-            label={
-              playlistState.running
-                ? `Playlist: ${playlistState.playlist_name || 'Unknown'} (${playlistState.current_index + 1}/${playlistState.track_count})`
-                : 'Playlist: Stopped'
-            }
-          />
+          <RunnerBar state={playlistState} label="Playlist" />
         )}
         {tagRunnerState && (
-          <RunnerBar
-            state={tagRunnerState.running ? 'running' : 'stopped'}
-            label={
-              tagRunnerState.running
-                ? `Tag Runner: ${(tagRunnerState.tag_names || []).join(', ')}`
-                : 'Tag Runner: Stopped'
-            }
-          />
+          <RunnerBar state={tagRunnerState} label="Tag Runner" />
         )}
       </div>
     </div>

@@ -142,18 +142,13 @@ export default function Playlists() {
     loadPlaylists();
   };
 
-  // --- Runner bar label ---
-  const runnerLabel = runnerState.running
-    ? `Playing: ${runnerState.playlist_name} — Track ${(runnerState.current_index ?? 0) + 1}/${runnerState.track_count} — ${runnerState.current_track?.env}/${runnerState.current_track?.track}${runnerState.next_change_at ? ` — Next in ${fmtCountdown(runnerState.next_change_at)}` : ''}`
-    : 'Playlist runner idle';
-
   const isRunning = runnerState.running;
   const runningPlaylistId = runnerState.playlist_id;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem' }}>
       {/* Runner bar */}
-      <RunnerBar state={isRunning ? 'running' : 'idle'} label={runnerLabel} />
+      <RunnerBar state={runnerState} label="Playlist" />
 
       <div style={{ display: 'flex', flex: 1, gap: '1rem', minHeight: 0 }}>
         {/* Left column: Playlist list */}

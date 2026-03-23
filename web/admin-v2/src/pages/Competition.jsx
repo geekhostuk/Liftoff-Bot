@@ -296,8 +296,8 @@ export default function Competition() {
       {runner && (
         <RunnerBar
           label="Competition Runner"
-          running={runner.running}
-          extra={`Week ${runner.week_id ?? '—'}  ·  Playlist ${runner.playlist_index ?? 0}/${runner.playlist_count ?? 0}  ·  Auto: ${runner.auto_managed ? 'ON' : 'OFF'}`}
+          state={{ running: runner.running }}
+          extra={`Week ${runner.week_id ?? '—'}  ·  Playlist ${(runner.playlist_index ?? 0) + 1}/${runner.playlist_count ?? 0}  ·  Auto: ${runner.auto_managed ? 'ON' : 'OFF'}`}
           actions={
             <button style={styles.btn} onClick={toggleAuto}>
               {runner.auto_managed ? <Square size={14} /> : <Play size={14} />}

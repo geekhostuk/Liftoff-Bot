@@ -40,9 +40,18 @@
   color: var(--text-secondary);
 }
 
+.runner-bar__extra {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
 .runner-bar__countdown {
   color: var(--color-primary);
   font-family: var(--font-mono);
   font-size: 0.8rem;
+  margin-left: auto;
+}
+
+.runner-bar__actions {
   margin-left: auto;
 }
