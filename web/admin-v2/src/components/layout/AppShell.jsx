@@ -6,13 +6,13 @@ import { useWsEvent } from '../../context/WebSocketContext.jsx';
 import './AppShell.css';
 
 const routeTitles = {
-  '/admin-v2': 'Dashboard',
-  '/admin-v2/players': 'Players',
-  '/admin-v2/tracks': 'Tracks',
-  '/admin-v2/chat': 'Chat',
-  '/admin-v2/playlists': 'Playlists',
-  '/admin-v2/tags': 'Tags',
-  '/admin-v2/competition': 'Competition',
+  '/admin': 'Dashboard',
+  '/admin/players': 'Players',
+  '/admin/tracks': 'Tracks',
+  '/admin/chat': 'Chat',
+  '/admin/playlists': 'Playlists',
+  '/admin/tags': 'Tags',
+  '/admin/competition': 'Competition',
 };
 
 export default function AppShell() {
@@ -51,7 +51,7 @@ export default function AppShell() {
           items.push({
             name: `${env.display_name || env.caption} / ${t.name}`,
             category: 'Track',
-            path: '/admin-v2/tracks',
+            path: '/admin/tracks',
           });
         }
       }

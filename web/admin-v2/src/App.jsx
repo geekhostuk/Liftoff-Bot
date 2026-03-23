@@ -28,13 +28,13 @@ export default function App() {
             <WebSocketProvider>
               <Routes>
                 <Route element={<AppShell />}>
-                  <Route path="/admin-v2" element={<Dashboard />} />
-                  <Route path="/admin-v2/players" element={<Players />} />
-                  <Route path="/admin-v2/tracks" element={<Tracks />} />
-                  <Route path="/admin-v2/chat" element={<Chat />} />
-                  <Route path="/admin-v2/playlists" element={<Playlists />} />
-                  <Route path="/admin-v2/tags" element={<Tags />} />
-                  <Route path="/admin-v2/competition" element={<Competition />} />
+                  <Route path="/admin" element={<Dashboard />} />
+                  <Route path="/admin/players" element={<Players />} />
+                  <Route path="/admin/tracks" element={<Tracks />} />
+                  <Route path="/admin/chat" element={<Chat />} />
+                  <Route path="/admin/playlists" element={<Playlists />} />
+                  <Route path="/admin/tags" element={<Tags />} />
+                  <Route path="/admin/competition" element={<Competition />} />
                 </Route>
               </Routes>
             </WebSocketProvider>

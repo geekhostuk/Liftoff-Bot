@@ -5,13 +5,13 @@ import StatusDot from '../feedback/StatusDot.jsx';
 import './Sidebar.css';
 
 const navItems = [
-  { to: '/admin-v2', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  { to: '/admin-v2/players', icon: Users, label: 'Players' },
-  { to: '/admin-v2/tracks', icon: Map, label: 'Tracks' },
-  { to: '/admin-v2/chat', icon: MessageSquare, label: 'Chat' },
-  { to: '/admin-v2/playlists', icon: ListMusic, label: 'Playlists' },
-  { to: '/admin-v2/tags', icon: Tag, label: 'Tags' },
-  { to: '/admin-v2/competition', icon: Trophy, label: 'Competition' },
+  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/admin/players', icon: Users, label: 'Players' },
+  { to: '/admin/tracks', icon: Map, label: 'Tracks' },
+  { to: '/admin/chat', icon: MessageSquare, label: 'Chat' },
+  { to: '/admin/playlists', icon: ListMusic, label: 'Playlists' },
+  { to: '/admin/tags', icon: Tag, label: 'Tags' },
+  { to: '/admin/competition', icon: Trophy, label: 'Competition' },
 ];
 
 export default function Sidebar({ collapsed, onToggle, pluginConnected }) {
