@@ -147,9 +147,9 @@ export default function Dashboard() {
       setTagRunnerState(tagRunner);
       setIdleTimes(idleStatus?.idleTimes || {});
     } catch {
-      // toast handled by apiCall
+      // errors silenced — dashboard is best-effort
     }
-  }, [apiCall]);
+  }, [apiFetch]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
