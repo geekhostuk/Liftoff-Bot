@@ -43,21 +43,6 @@ export default function Tracks() {
 
       <NowPlaying track={data.current_track} nextChangeAt={data.next_change_at} />
 
-      <div className="tracks-section">
-        <div className="tracks-section-header">Active Playlists</div>
-        {data.active_playlists.length === 0 ? (
-          <div className="tracks-empty">No active playlists</div>
-        ) : (
-          data.active_playlists.map((pl, i) => (
-            <PlaylistCard
-              key={pl.playlist_id}
-              playlist={pl}
-              defaultOpen={pl.is_current || (i === 0 && !data.active_playlists.some(p => p.is_current))}
-            />
-          ))
-        )}
-      </div>
-
       <div className="tracks-two-col">
         <div className="tracks-section">
           <div className="tracks-section-header">Coming Up Next</div>
@@ -97,6 +82,21 @@ export default function Tracks() {
             </table>
           )}
         </div>
+      </div>
+
+      <div className="tracks-section">
+        <div className="tracks-section-header">Active Playlists</div>
+        {data.active_playlists.length === 0 ? (
+          <div className="tracks-empty">No active playlists</div>
+        ) : (
+          data.active_playlists.map((pl) => (
+            <PlaylistCard
+              key={pl.playlist_id}
+              playlist={pl}
+              defaultOpen={false}
+            />
+          ))
+        )}
       </div>
     </div>
   );
