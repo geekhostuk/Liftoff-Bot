@@ -3,10 +3,10 @@ import './PlayersPanel.css';
 
 const MAX_PLAYERS = 8;
 
-const HIDDEN_NICKS = ['JMT_Bot'];
+const HIDDEN_NICKS = ['jmt_bot'];
 
 export default function PlayersPanel({ players, playerStats }) {
-  const visible = players.filter(p => !HIDDEN_NICKS.includes(p.nick));
+  const visible = players.filter(p => !HIDDEN_NICKS.includes(p.nick.toLowerCase()));
   const onlineCount = visible.filter(p => p.status !== 'leaving').length;
 
   return (
