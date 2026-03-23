@@ -35,6 +35,16 @@
   line-height: 1.2;
 }
 
+.track-panel-link {
+  text-decoration: none;
+  color: inherit;
+  transition: color var(--transition-fast);
+}
+
+.track-panel-link:hover {
+  color: var(--color-primary);
+}
+
 .track-panel-meta {
   display: flex;
   align-items: center;

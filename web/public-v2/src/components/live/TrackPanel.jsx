@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import RankMedal from '../ui/RankMedal';
 import Badge from '../ui/Badge';
 import { fmtMs } from '../../lib/fmt';
@@ -47,7 +48,7 @@ export default function TrackPanel({ currentTrack, trackSince, trackRecord }) {
       </div>
       <div className="track-panel-track">
         {env && <span className="track-panel-env">{env}</span>}
-        <span className="track-panel-name">{track}</span>
+        <Link to="/tracks" className="track-panel-name track-panel-link">{track}</Link>
       </div>
       <div className="track-panel-meta">
         {elapsed && (

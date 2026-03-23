@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import Badge from '../ui/Badge';
 import useCountdown from '../../hooks/useCountdown';
 import './PlaylistBar.css';
@@ -35,7 +36,7 @@ export default function PlaylistBar({ playlist }) {
         <h3 className="playlist-bar-title">Playlist</h3>
         <Badge variant="success">Active</Badge>
       </div>
-      <div className="playlist-bar-name">{playlist_name}</div>
+      <Link to="/tracks" className="playlist-bar-name playlist-bar-link">{playlist_name}</Link>
       <div className="playlist-bar-info">
         <span className="playlist-bar-progress">
           Track {trackNum} of {track_count}
