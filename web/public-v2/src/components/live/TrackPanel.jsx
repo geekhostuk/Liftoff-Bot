@@ -51,16 +51,19 @@ export default function TrackPanel({ currentTrack, trackSince, trackRecord }) {
       </div>
       <div className="track-panel-meta">
         {elapsed && (
-          <span className="track-panel-elapsed" title="Time on this track">
-            {elapsed}
-          </span>
+          <div className="track-panel-stat">
+            <span className="track-panel-stat-label">Active for</span>
+            <span className="track-panel-elapsed">{elapsed}</span>
+          </div>
         )}
         {record && (
-          <span className="track-panel-record" title="Track record">
-            <RankMedal rank={1} />
-            <span className="track-panel-record-nick">{record.nick}</span>
-            <span className="track-panel-record-time">{fmtMs(record.best_lap_ms || record.lap_ms)}</span>
-          </span>
+          <div className="track-panel-stat">
+            <span className="track-panel-stat-label">Track Record</span>
+            <span className="track-panel-record">
+              <span className="track-panel-record-nick">{record.nick}</span>
+              <span className="track-panel-record-time">{fmtMs(record.best_lap_ms || record.lap_ms)}</span>
+            </span>
+          </div>
         )}
       </div>
     </div>

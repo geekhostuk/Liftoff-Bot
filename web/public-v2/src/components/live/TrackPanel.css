@@ -37,19 +37,27 @@
 
 .track-panel-meta {
   display: flex;
-  align-items: center;
   gap: var(--space-lg);
   flex-wrap: wrap;
+}
+
+.track-panel-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.track-panel-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .track-panel-elapsed {
   font-size: 0.875rem;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
-}
-
-.track-panel-elapsed::before {
-  content: '\23F1\FE0F ';
 }
 
 .track-panel-record {
