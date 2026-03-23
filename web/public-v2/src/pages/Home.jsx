@@ -1,6 +1,7 @@
 import useApi from '../hooks/useApi';
 import { getCompetitionCurrent, getSeasonStandings, getCurrentWeekStandings } from '../lib/api';
 import Hero from '../components/home/Hero';
+import LiveStatus from '../components/home/LiveStatus';
 import CompSummary from '../components/home/CompSummary';
 import TopPilots from '../components/home/TopPilots';
 import WeekHighlights from '../components/home/WeekHighlights';
@@ -18,6 +19,7 @@ export default function Home() {
   return (
     <div className="home-page">
       <Hero />
+      <LiveStatus />
       <CompSummary competition={competition} currentWeek={currentWeek} />
       <TopPilots standings={seasonStandings} />
       <WeekHighlights standings={weekStandings} />
