@@ -92,7 +92,8 @@ export default function PlaylistsBeta() {
 
   // Catalog search (right panel)
   const [catalogFilter, setCatalogFilter] = useState('');
-  const [catalogMode, setCatalogMode] = useState('');
+  const [catalogMode, setCatalogMode] = useState('InfiniteRace');
+  const [selectedCatalogTrack, setSelectedCatalogTrack] = useState(null);
 
   // Busy states
   const [duplicating, setDuplicating] = useState(null);
@@ -184,7 +185,7 @@ export default function PlaylistsBeta() {
   }, [catalog]);
 
   const filteredCatalog = useMemo(() => {
-    if (!catalogFilter.trim()) return catalogTracks;
+    if (!catalogFilter.trim()) return [];
     const q = catalogFilter.toLowerCase();
     return catalogTracks.filter(t =>
       t.track.toLowerCase().includes(q) ||
@@ -754,81 +755,99 @@ export default function PlaylistsBeta() {
               />
             </div>
 
-            {/* Browsable track list */}
+            {/* Search results */}
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              {filteredCatalog.length === 0 && (
-                <EmptyState message={catalogFilter ? 'No tracks match your search' : 'No catalog loaded'} />
+              {!catalogFilter.trim() && !selectedCatalogTrack && (
+                <EmptyState message="Type to search for tracks" />
               )}
-              {filteredCatalog.map((ct, idx) => (
-                <div
-                  key={`${ct.env}-${ct.track}-${idx}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.5rem 0.75rem',
-                    borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.06))'
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                    <div style={{
-                      fontSize: '0.875rem',
-                      fontWeight: 500,
-                      color: 'var(--color-text)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {ct.track}
-                    </div>
-                    <div style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--color-text-muted)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {ct.envDisplay}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => addTrackDirect(ct.env, ct.track, catalogMode)}
-                    title="Add to playlist"
+              {catalogFilter.trim() && filteredCatalog.length === 0 && (
+                <EmptyState message="No tracks match your search" />
+              )}
+              {filteredCatalog.map((ct, idx) => {
+                const isSelected = selectedCatalogTrack
+                  && selectedCatalogTrack.env === ct.env
+                  && selectedCatalogTrack.track === ct.track;
+                return (
+                  <div
+                    key={`${ct.env}-${ct.track}-${idx}`}
+                    onClick={() => setSelectedCatalogTrack(isSelected ? null : ct)}
                     style={{
-                      ...btnIcon,
-                      color: 'var(--color-primary)',
-                      flexShrink: 0
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      cursor: 'pointer',
+                      background: isSelected ? 'rgba(255, 122, 0, 0.1)' : 'transparent',
+                      borderLeft: isSelected ? '3px solid var(--color-primary)' : '3px solid transparent',
+                      borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.06))',
+                      transition: 'background 0.15s'
                     }}
                   >
-                    <Plus size={18} />
-                  </button>
-                </div>
-              ))}
+                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                      <div style={{
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        color: 'var(--color-text)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {ct.track}
+                      </div>
+                      <div style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--color-text-muted)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {ct.envDisplay}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
-            {/* Game mode selector at bottom */}
-            {gameModes.length > 0 && (
+            {/* Selected track: race mode + add button */}
+            {selectedCatalogTrack && (
               <div style={{
-                padding: '0.5rem 0.75rem',
+                padding: '0.75rem',
                 borderTop: '1px solid var(--border-color)',
-                fontSize: '0.8125rem',
-                color: 'var(--color-text-muted)'
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+                background: 'var(--bg-surface-alt, var(--bg-surface))'
               }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                  Game mode:
+                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text)', fontWeight: 500 }}>
+                  {selectedCatalogTrack.track}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                  {selectedCatalogTrack.envDisplay}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                  Race mode:
                   <select
-                    id="catalog-mode"
                     className="form-select"
                     style={{ flex: 1, fontSize: '0.8125rem' }}
                     value={catalogMode}
                     onChange={e => setCatalogMode(e.target.value)}
                   >
-                    <option value="">Any</option>
                     {gameModes.map(m => (
                       <option key={m.name} value={m.name}>{m.name}</option>
                     ))}
+                    <option value="">None</option>
                   </select>
                 </label>
+                <button
+                  onClick={async () => {
+                    await addTrackDirect(selectedCatalogTrack.env, selectedCatalogTrack.track, catalogMode);
+                    setSelectedCatalogTrack(null);
+                  }}
+                  style={{ ...btnPrimary, justifyContent: 'center' }}
+                >
+                  <Plus size={14} /> Add to Playlist
+                </button>
               </div>
             )}
           </div>
