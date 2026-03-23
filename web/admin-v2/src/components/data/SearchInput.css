@@ -1,0 +1,33 @@
+.search-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input-icon {
+  position: absolute;
+  left: var(--space-sm);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.search-input {
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+}
+
+.search-input-clear {
+  position: absolute;
+  right: var(--space-sm);
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.search-input-clear:hover {
+  color: var(--text-secondary);
+}

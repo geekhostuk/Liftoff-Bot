@@ -1,0 +1,57 @@
+.runner-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.runner-bar--stopped {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.runner-bar--active {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.runner-bar__label {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.runner-bar__status {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.runner-bar--active .runner-bar__status {
+  color: var(--color-success);
+}
+
+.runner-bar__track {
+  color: var(--text-secondary);
+}
+
+.runner-bar__extra {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.runner-bar__countdown {
+  color: var(--color-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  margin-left: auto;
+}
+
+.runner-bar__actions {
+  margin-left: auto;
+}
