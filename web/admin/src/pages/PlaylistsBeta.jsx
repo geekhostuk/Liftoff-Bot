@@ -4,7 +4,6 @@ import { useToast } from '../components/feedback/Toast.jsx';
 import { useWsEvent } from '../context/WebSocketContext.jsx';
 import RunnerBar from '../components/feedback/RunnerBar.jsx';
 import Badge from '../components/feedback/Badge.jsx';
-import CascadeSelect from '../components/form/CascadeSelect.jsx';
 import ConfirmButton from '../components/form/ConfirmButton.jsx';
 import EmptyState from '../components/data/EmptyState.jsx';
 import SearchInput from '../components/data/SearchInput.jsx';
@@ -91,6 +90,10 @@ export default function PlaylistsBeta() {
   // Track search
   const [trackFilter, setTrackFilter] = useState('');
 
+  // Catalog search (right panel)
+  const [catalogFilter, setCatalogFilter] = useState('');
+  const [catalogMode, setCatalogMode] = useState('');
+
   // Busy states
   const [duplicating, setDuplicating] = useState(null);
   const [movingTrack, setMovingTrack] = useState(null);
@@ -160,6 +163,34 @@ export default function PlaylistsBeta() {
       t.race.toLowerCase().includes(q)
     );
   }, [tracks, trackFilter]);
+
+  // Flatten catalog into searchable track list for right panel
+  const catalogTracks = useMemo(() => {
+    if (!catalog?.environments) return [];
+    const items = [];
+    for (const env of catalog.environments) {
+      const envName = env.internal_name || env.caption;
+      const envDisplay = env.display_name || env.caption;
+      for (const t of (env.tracks || [])) {
+        items.push({ env: envName, envDisplay, track: t.name });
+      }
+    }
+    return items;
+  }, [catalog]);
+
+  const gameModes = useMemo(() => {
+    if (!catalog?.game_modes) return [];
+    return catalog.game_modes.filter(m => m.name !== 'None');
+  }, [catalog]);
+
+  const filteredCatalog = useMemo(() => {
+    if (!catalogFilter.trim()) return catalogTracks;
+    const q = catalogFilter.toLowerCase();
+    return catalogTracks.filter(t =>
+      t.track.toLowerCase().includes(q) ||
+      t.envDisplay.toLowerCase().includes(q)
+    );
+  }, [catalogTracks, catalogFilter]);
 
   /* ── Actions ──────────────────────────────────────────── */
   const createPlaylist = async () => {
@@ -258,12 +289,10 @@ export default function PlaylistsBeta() {
     loadPlaylists();
   };
 
-  const addTrack = async (selection) => {
-    if (!selectedId || !selection) return;
+  const addTrackDirect = async (env, track, race = '') => {
+    if (!selectedId) return;
     await apiCall('POST', `/api/admin/playlists/${selectedId}/tracks`, {
-      env: selection.env,
-      track: selection.track,
-      race: selection.race
+      env, track, race
     }, 'Track added');
     loadTracks(selectedId);
     loadPlaylists();
@@ -391,6 +420,19 @@ export default function PlaylistsBeta() {
                         {pl.name}
                       </span>
                       <Badge>{pl.track_count}</Badge>
+
+                      {/* Rename */}
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          setEditingId(pl.id);
+                          setEditingName(pl.name);
+                        }}
+                        title="Rename playlist"
+                        style={{ ...btnIcon, color: 'var(--color-text-muted)' }}
+                      >
+                        <Pencil size={14} />
+                      </button>
 
                       {/* Duplicate */}
                       <button
@@ -545,7 +587,7 @@ export default function PlaylistsBeta() {
               {/* Track list */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
                 {tracks.length === 0 && (
-                  <EmptyState message="This playlist has no tracks. Use the selector below to add some." />
+                  <EmptyState message="This playlist has no tracks. Use the Add Tracks panel on the right." />
                 )}
                 {tracks.length > 0 && filteredTracks.length === 0 && (
                   <EmptyState message="No tracks match your filter" />
@@ -671,31 +713,126 @@ export default function PlaylistsBeta() {
                 })}
               </div>
 
-              {/* Add track form */}
-              <div style={{
-                padding: '0.75rem 1rem',
-                borderTop: '1px solid var(--border-color)',
+            </>
+          )}
+        </div>
+
+        {/* ─── Right panel: Add Tracks ─── */}
+        {selectedPlaylist && (
+          <div style={{
+            width: 320,
+            minWidth: 320,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--bg-surface)',
+            borderRadius: 'var(--radius-md, 8px)',
+            border: '1px solid var(--border-color)',
+            overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '0.75rem',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem'
+            }}>
+              <h3 style={{
+                margin: 0,
+                fontSize: '0.9375rem',
+                color: 'var(--color-text)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem'
               }}>
-                <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                  <Plus size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                  Add track:
-                </span>
-                <div style={{ flex: 1 }}>
-                  {catalog && (
-                    <CascadeSelect
-                      catalog={catalog}
-                      onSelect={addTrack}
-                      showMode
-                    />
-                  )}
+                <Plus size={18} /> Add Tracks
+              </h3>
+              <SearchInput
+                value={catalogFilter}
+                onChange={setCatalogFilter}
+                placeholder="Search tracks..."
+              />
+            </div>
+
+            {/* Browsable track list */}
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {filteredCatalog.length === 0 && (
+                <EmptyState message={catalogFilter ? 'No tracks match your search' : 'No catalog loaded'} />
+              )}
+              {filteredCatalog.map((ct, idx) => (
+                <div
+                  key={`${ct.env}-${ct.track}-${idx}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.5rem 0.75rem',
+                    borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.06))'
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                    <div style={{
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      color: 'var(--color-text)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {ct.track}
+                    </div>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--color-text-muted)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {ct.envDisplay}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => addTrackDirect(ct.env, ct.track, catalogMode)}
+                    title="Add to playlist"
+                    style={{
+                      ...btnIcon,
+                      color: 'var(--color-primary)',
+                      flexShrink: 0
+                    }}
+                  >
+                    <Plus size={18} />
+                  </button>
                 </div>
+              ))}
+            </div>
+
+            {/* Game mode selector at bottom */}
+            {gameModes.length > 0 && (
+              <div style={{
+                padding: '0.5rem 0.75rem',
+                borderTop: '1px solid var(--border-color)',
+                fontSize: '0.8125rem',
+                color: 'var(--color-text-muted)'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                  Game mode:
+                  <select
+                    id="catalog-mode"
+                    className="form-select"
+                    style={{ flex: 1, fontSize: '0.8125rem' }}
+                    value={catalogMode}
+                    onChange={e => setCatalogMode(e.target.value)}
+                  >
+                    <option value="">Any</option>
+                    {gameModes.map(m => (
+                      <option key={m.name} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
-            </>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Pulse animation for the "Now playing" dot */}
