@@ -11,6 +11,7 @@ export default defineConfig({
         competition: resolve(__dirname, 'competition.html'),
         stats: resolve(__dirname, 'stats.html'),
         about: resolve(__dirname, 'about.html'),
+        tracks: resolve(__dirname, 'tracks.html'),
       },
     },
   },

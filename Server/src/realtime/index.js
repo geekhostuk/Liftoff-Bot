@@ -210,6 +210,14 @@ async function main() {
     res.json({ ok: true });
   });
 
+  // ── Tracks info (public tracks page) ─────────────────────────────────────
+  internal.get('/internal/tracks/info', (req, res) => {
+    res.json({
+      playlist: playlistRunner.getState(),
+      competition: competitionRunner.getState(),
+    });
+  });
+
   // ── State ─────────────────────────────────────────────────────────────────
   internal.get('/internal/state', (req, res) => {
     res.json({

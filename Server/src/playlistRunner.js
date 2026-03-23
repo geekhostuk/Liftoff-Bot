@@ -47,6 +47,7 @@ function getState() {
     interval_ms: state.intervalMs,
     current_track: state.tracks[state.currentIndex] || null,
     track_count: state.tracks.length,
+    tracks: state.tracks,
     next_change_at: state.nextChangeAt ? state.nextChangeAt.toISOString() : null,
   };
 }

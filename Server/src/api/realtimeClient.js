@@ -147,6 +147,12 @@ async function broadcast(event) {
   return post('/internal/broadcast', event);
 }
 
+// ── Tracks info ─────────────────────────────────────────────────────────────
+
+async function getTracksInfo() {
+  return get('/internal/tracks/info');
+}
+
 // ── State ───────────────────────────────────────────────────────────────────
 
 async function getState() {
@@ -178,5 +184,6 @@ module.exports = {
   syncSession,
   destroyRemoteSession,
   broadcast,
+  getTracksInfo,
   getState,
 };
