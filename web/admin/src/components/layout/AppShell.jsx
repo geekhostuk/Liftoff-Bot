@@ -11,6 +11,7 @@ const routeTitles = {
   '/admin/tracks': 'Tracks',
   '/admin/chat': 'Chat',
   '/admin/playlists': 'Playlists',
+  '/admin/playlists-beta': 'Playlists (beta)',
   '/admin/tags': 'Tags',
   '/admin/competition': 'Competition',
 };
