@@ -96,7 +96,7 @@ function reducer(state, action) {
     // websocket events
     case 'state_snapshot': {
       const e = action.payload;
-      const currentTrack = e.current_track || state.currentTrack;
+      const currentTrack = (e.current_track && e.current_track.track) ? e.current_track : state.currentTrack;
       const trackSince = e.track_since || state.trackSince;
       const players = (e.online_players || []).map(p => ({ actor: p.actor, nick: p.nick, status: 'online' }));
       const pilots = buildPilotsFromSnapshot(e.race, trackSince);
@@ -197,8 +197,16 @@ function reducer(state, action) {
       return state; // informational only
 
     // REST data
-    case 'SET_STATUS':
-      return { ...state, pluginConnected: action.payload.plugin_connected ?? null };
+    case 'SET_STATUS': {
+      const d = action.payload;
+      const updates = { pluginConnected: d.plugin_connected ?? null };
+      // Use REST status as fallback if WS snapshot hasn't provided track yet
+      if (!state.currentTrack && d.current_track?.track) {
+        updates.currentTrack = d.current_track;
+        updates.trackSince = d.track_since || null;
+      }
+      return { ...state, ...updates };
+    }
 
     case 'SET_PILOT_ACTIVITY':
       return { ...state, pilotActivity: action.payload };
