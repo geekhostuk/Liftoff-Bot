@@ -253,6 +253,8 @@ const TEMPLATE_VARIABLES = [
   { key: '2nd', description: '2nd place pilot (weekly standings)', triggers: ['*'] },
   { key: '3rd', description: '3rd place pilot (weekly standings)', triggers: ['*'] },
   { key: 'playlist', description: 'Current playlist name', triggers: ['*'] },
+  { key: 'player_points', description: "Player's weekly competition points", triggers: ['player_joined', 'player_new', 'player_returned'] },
+  { key: 'player_position', description: "Player's weekly competition rank (or 'unranked')", triggers: ['player_joined', 'player_new', 'player_returned'] },
 ];
 
 router.get('/chat/template-variables', (req, res) => {

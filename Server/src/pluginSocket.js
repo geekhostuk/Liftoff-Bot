@@ -222,6 +222,14 @@ async function buildTemplateVars(baseVars = {}) {
       enriched['1st'] ??= standings[0]?.display_name ?? '';
       enriched['2nd'] ??= standings[1]?.display_name ?? '';
       enriched['3rd'] ??= standings[2]?.display_name ?? '';
+
+      // Player-specific standings (when nick is available)
+      if (enriched.nick) {
+        const nickLower = enriched.nick.toLowerCase();
+        const player = standings.find(r => r.display_name.toLowerCase() === nickLower);
+        enriched.player_points ??= player ? String(player.total_points) : '0';
+        enriched.player_position ??= player ? String(player.rank) : 'unranked';
+      }
     }
   } catch {}
   return enriched;
