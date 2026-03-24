@@ -236,6 +236,14 @@ a:hover {
   color: var(--color-muted);
 }
 
+.badge-beta {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
