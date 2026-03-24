@@ -147,6 +147,7 @@ async function generateDaySchedule(weekId, dayNumber, weekPlaylists, intervalMs)
         race: t.race || '',
         workshop_id: t.workshop_id || '',
         source_playlist_id: wp.playlist_id,
+        source_playlist_name: wp.playlist_name,
       });
     }
   }
