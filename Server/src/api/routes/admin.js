@@ -378,7 +378,7 @@ router.get('/competition/:id/weeks', async (req, res) => {
 });
 
 router.put('/competition/week/:id', async (req, res) => {
-  const { status, starts_at, ends_at, week_number } = req.body;
+  const { status, starts_at, ends_at, week_number, interval_ms } = req.body;
   if (status && !['scheduled', 'active', 'finalised'].includes(status)) {
     return res.status(400).json({ error: 'status must be scheduled, active, or finalised' });
   }
@@ -387,6 +387,10 @@ router.put('/competition/week/:id', async (req, res) => {
   if (starts_at) fields.starts_at = starts_at;
   if (ends_at) fields.ends_at = ends_at;
   if (week_number !== undefined) fields.week_number = Number(week_number);
+  if (interval_ms !== undefined) {
+    fields.interval_ms = Math.max(60000, Number(interval_ms));
+    await db.deleteWeekSchedules(Number(req.params.id)); // invalidate on interval change
+  }
   await db.updateWeek(Number(req.params.id), fields);
   res.json({ ok: true });
 });
@@ -403,11 +407,16 @@ router.get('/competition/week/:id/playlists', async (req, res) => {
 router.post('/competition/week/:id/playlists', async (req, res) => {
   const { playlist_id, interval_ms = 900000 } = req.body;
   if (!playlist_id) return res.status(400).json({ error: 'playlist_id is required' });
-  res.status(201).json(await db.addWeekPlaylist(Number(req.params.id), Number(playlist_id), Number(interval_ms)));
+  const weekId = Number(req.params.id);
+  const row = await db.addWeekPlaylist(weekId, Number(playlist_id), Number(interval_ms));
+  await db.deleteWeekSchedules(weekId); // invalidate cached schedules
+  res.status(201).json(row);
 });
 
 router.delete('/competition/week/:weekId/playlists/:wpId', async (req, res) => {
+  const weekId = Number(req.params.weekId);
   await db.removeWeekPlaylist(Number(req.params.wpId));
+  await db.deleteWeekSchedules(weekId); // invalidate cached schedules
   res.json({ ok: true });
 });
 
@@ -416,6 +425,12 @@ router.post('/competition/week/:weekId/playlists/:wpId/move', async (req, res) =
   if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'direction must be up or down' });
   await db.moveWeekPlaylist(Number(req.params.wpId), direction);
   res.json({ ok: true });
+});
+
+router.post('/competition/week/:id/regenerate-schedule', async (req, res) => {
+  const weekId = Number(req.params.id);
+  await db.deleteWeekSchedules(weekId);
+  res.json({ ok: true, message: 'Schedules cleared — will regenerate on next tick' });
 });
 
 router.post('/competition/recalculate/:weekId', strictLimiter, async (req, res) => {

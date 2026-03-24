@@ -1,13 +1,13 @@
 # Admin Dashboard
 
-The admin dashboard (`/admin.html`) is a browser-based control panel that gives event organisers full remote control over a Liftoff multiplayer lobby. It connects to the server via both REST API calls and a persistent WebSocket (`/ws/admin`) for real-time updates.
+The admin dashboard (`/admin/`) is a React SPA that gives event organisers full remote control over a Liftoff multiplayer lobby. It connects to the server via both REST API calls and a persistent WebSocket (`/ws/admin`) for real-time updates.
 
 ---
 
 ## Authentication
 
 - **Cookie-based sessions** — logging in sets an `httpOnly` cookie (`liftoff_admin`) that authenticates all subsequent requests and the WebSocket connection.
-- **Multi-user support** — each admin has their own username and password, stored as bcrypt hashes in the `admin_users` SQLite table.
+- **Multi-user support** — each admin has their own username and password, stored as bcrypt hashes in the `admin_users` PostgreSQL table.
 - **Legacy token access** — the `ADMIN_TOKEN` environment variable can still be used for API/script access via a Bearer header.
 - **Rate limiting** — 60 requests/minute for general endpoints, 10 requests/minute for sensitive operations (login, user creation).
 
@@ -17,7 +17,7 @@ Admin users are created either via `ADMIN_USER`/`ADMIN_PASS` environment variabl
 
 ## Dashboard Sections
 
-The dashboard is divided into six main sections, each controlling a different aspect of the lobby.
+The dashboard is divided into eight main sections, each controlling a different aspect of the lobby.
 
 ### 1. Players Online
 
@@ -120,6 +120,9 @@ Templates are pre-configured messages that fire automatically when specific even
   - `track_change` — when the track changes
   - `race_start` — when a race begins
   - `race_end` — when a race finishes
+  - `player_joined` — when any player enters the lobby
+  - `player_new` — when a first-time player enters (no race history)
+  - `player_returned` — when a returning player enters (has race history)
 - **Template text** — the message body, which can include variables
 - **Delay** — milliseconds after the event to send the message
   - Positive values: fire after the event (e.g., `5000` = 5 seconds after)
@@ -127,20 +130,51 @@ Templates are pre-configured messages that fire automatically when specific even
 - **Enabled toggle** — enable or disable without deleting
 
 **Template variables:**
+
 | Variable | Description | Available on |
 |----------|-------------|--------------|
-| `{env}` | Environment name | All triggers |
-| `{track}` | Track name | All triggers |
-| `{race}` | Game mode | All triggers |
+| `{env}` | Environment name | `track_change` |
+| `{track}` | Track name | `track_change` |
+| `{race}` | Game mode | `track_change` |
 | `{mins}` | Minutes until next change | `track_change` (negative delay) |
+| `{race_id}` | Race ID (first 8 chars) | `race_start` |
 | `{winner}` | Winner's nickname | `race_end` |
 | `{time}` | Winner's best time | `race_end` |
+| `{nick}` | Player nickname | `player_joined`, `player_new`, `player_returned` |
+| `{1st}` | 1st place pilot (weekly standings) | All triggers |
+| `{2nd}` | 2nd place pilot (weekly standings) | All triggers |
+| `{3rd}` | 3rd place pilot (weekly standings) | All triggers |
+| `{playlist}` | Current playlist name (source playlist during competition) | All triggers |
+| `{player_points}` | Player's weekly competition points | Player triggers |
+| `{player_position}` | Player's weekly competition rank (or "unranked") | Player triggers |
 
 **API endpoints:**
 - `GET /api/admin/chat/templates` — list all templates
 - `POST /api/admin/chat/templates` — create a template
 - `PUT /api/admin/chat/templates/:id` — update a template
 - `DELETE /api/admin/chat/templates/:id` — delete a template
+- `GET /api/admin/chat/template-variables` — list all available variables with descriptions
+- `POST /api/admin/chat/template-preview` — resolve a template against live data (without sending)
+
+### 4a. Chat Beta
+
+Redesigned chat interface available alongside the original.
+
+- **Filterable chat log** — search/filter messages by nick or content in real-time
+- **Enhanced send message** — textarea with character counter (255-char in-game limit), colour-coded warnings at 200/240/255 chars
+- **Variable insertion chips** — clickable buttons that insert `{variable}` at cursor position
+- **Live preview** — resolve the message against current server data before sending
+- Variables fetched dynamically from the template-variables API
+
+### 4b. Auto Messages Beta
+
+Dedicated automated message management page, separate from the chat log.
+
+- **Template list** — DataTable with trigger, message, delay (human-readable), enabled toggle, edit/test/delete actions
+- **Add/Edit form** — trigger dropdown, template textarea, delay input, enabled checkbox
+- **Variable reference panel** — collapsible section showing available variables filtered by selected trigger, clickable to insert
+- **Live preview** — debounced preview showing resolved text and character count with colour-coded limit indicator
+- **Test button** — preview any existing template against live data without sending
 
 ### 5. Competition Management
 
@@ -163,31 +197,47 @@ Each competition is divided into weekly periods that progress through a lifecycl
 
 #### Playlist Assignment
 
-Each week can have multiple playlists assigned to it. These playlists run back-to-back and repeat for the entire week.
+Each week can have multiple playlists assigned to it. Tracks from all playlists are pooled and shuffled into a fair daily schedule.
 
-- **Assign playlist** — add a playlist to a week with a configurable interval (`POST /api/admin/competition/week/:id/playlists`)
+- **Assign playlist** — add a playlist to a week (`POST /api/admin/competition/week/:id/playlists`)
 - **Remove playlist** — unassign a playlist from a week (`DELETE /api/admin/competition/week/:weekId/playlists/:wpId`)
-- **Reorder** — change the order playlists run in (`POST /api/admin/competition/week/:weekId/playlists/:wpId/move`)
+- **Reorder** — change playlist order (`POST /api/admin/competition/week/:weekId/playlists/:wpId/move`)
+- **Track interval** — set per-week (e.g. 15 minutes per track), configured via week edit form (`PUT /api/admin/competition/week/:id` with `interval_ms`)
+- **Regenerate schedule** — clear cached schedules and regenerate on next tick (`POST /api/admin/competition/week/:id/regenerate-schedule`). Use after modifying playlists on an active week.
+
+#### Interleaved Schedule Generation
+
+When a week is active, the competition runner generates a daily schedule:
+
+1. **Pool all tracks** from every playlist assigned to the week
+2. **Shuffle** using a deterministic seeded PRNG (seed = `weekId × 1000 + dayNumber`) — different order each day, reproducible on reboot
+3. **Build rounds** — each round contains every track exactly once (fair distribution)
+4. **Repeat rounds** to fill 24 hours
+5. **Persist** the schedule to the `week_schedules` database table
+
+This means every track gets equal play time per day regardless of which playlist it belongs to.
 
 #### Competition Runner
 
 The competition runner (`competitionRunner.js`) is a server-side lifecycle manager that automates the entire weekly competition flow.
 
 **Controls:**
-- **View state** — see the active week, current playlist position, and auto-management status (`GET /api/admin/competition/runner/state`)
-- **Toggle auto-management** — enable or disable automatic week activation and playlist rotation (`POST /api/admin/competition/runner/auto`)
+- **View state** — see the active week, current day number, and auto-management status (`GET /api/admin/competition/runner/state`)
+- **Toggle auto-management** — enable or disable automatic week activation and schedule rotation (`POST /api/admin/competition/runner/auto`)
 
 **How it works:**
 1. The runner watches for scheduled weeks whose start time has arrived.
-2. When a week becomes active, it starts running the assigned playlists in order.
-3. Each playlist runs for its configured interval per track, then advances to the next playlist.
-4. After the last playlist completes, the sequence wraps and repeats.
+2. When a week becomes active, it generates a daily interleaved schedule from all assigned playlists and starts playing it.
+3. Each track plays for the week's configured interval, then advances to the next track in the shuffled schedule.
+4. On day rollover, a new shuffled schedule is generated for the new day.
 5. When a week's end time is reached, the runner finalises it (triggering batch scoring) and activates the next scheduled week.
-6. **Reboot resilience** — after a server restart, the runner uses deterministic time-based calculation to figure out exactly which playlist and track should be active, resumes from the correct position, and verifies the in-game track matches what's expected.
+6. **Reboot resilience** — schedules are persisted in the database. After a restart, the runner loads the current day's schedule and calculates the correct position from elapsed time.
+7. Schedules are automatically invalidated when playlists are added, removed, or the track interval changes.
 
 **Status bar** (visible when a competition is running):
 - Active week number
-- Current playlist position
+- Current day number
+- Number of playlists
 - Whether auto-management is on or off
 
 ### 6. Status & Monitoring
@@ -256,6 +306,8 @@ All admin endpoints are prefixed with `/api/admin/` and require authentication.
 | `POST` | `/chat/templates` | Create a new template |
 | `PUT` | `/chat/templates/:id` | Update a template |
 | `DELETE` | `/chat/templates/:id` | Delete a template |
+| `GET` | `/chat/template-variables` | List available template variables with descriptions |
+| `POST` | `/chat/template-preview` | Resolve a template against live data (without sending) |
 
 ### Playlists
 | Method | Endpoint | Description |
@@ -287,6 +339,7 @@ All admin endpoints are prefixed with `/api/admin/` and require authentication.
 | `POST` | `/competition/week/:id/playlists` | Assign a playlist to a week |
 | `DELETE` | `/competition/week/:weekId/playlists/:wpId` | Remove a playlist from a week |
 | `POST` | `/competition/week/:weekId/playlists/:wpId/move` | Reorder a playlist in a week |
+| `POST` | `/competition/week/:id/regenerate-schedule` | Clear cached schedules (regenerates on next tick) |
 | `POST` | `/competition/recalculate/:weekId` | Recalculate points for a week |
 | `GET` | `/competition/runner/state` | Get competition runner state |
 | `POST` | `/competition/runner/auto` | Toggle auto-management |
@@ -304,14 +357,19 @@ All admin endpoints are prefixed with `/api/admin/` and require authentication.
 
 | File | Purpose |
 |------|---------|
-| `Server/public/admin.html` | Dashboard UI markup and styling |
-| `Server/public/js/admin.js` | Client-side logic (event handling, API calls, UI updates) |
-| `Server/src/routes/admin.js` | All REST API endpoint handlers |
+| `web/admin/src/pages/Dashboard.jsx` | Admin dashboard home page |
+| `web/admin/src/pages/Chat.jsx` | Original chat page |
+| `web/admin/src/pages/ChatBeta.jsx` | Redesigned chat page (Beta) |
+| `web/admin/src/pages/AutoMessages.jsx` | Dedicated auto messages page (Beta) |
+| `web/admin/src/pages/Competition.jsx` | Competition management page |
+| `Server/src/api/routes/admin.js` | Admin REST API endpoint handlers |
+| `Server/src/pluginSocket.js` | Plugin WebSocket server, template firing, variable enrichment |
 | `Server/src/playlistRunner.js` | Playlist auto-advance state machine |
-| `Server/src/competitionRunner.js` | Weekly competition lifecycle manager |
+| `Server/src/competitionRunner.js` | Weekly competition lifecycle, interleaved schedule generation |
+| `Server/src/competitionScoring.js` | Points engine (real-time + batch) |
 | `Server/src/idleKick.js` | Idle detection, warnings, and auto-kick |
 | `Server/src/broadcast.js` | Event dispatch to WebSocket clients |
 | `Server/src/liveSocket.js` | WebSocket server setup (admin + public) |
 | `Server/src/auth.js` | Password hashing and session management |
-| `Server/src/db/adminUsers.js` | Admin user database queries |
-| `Server/src/db/connection.js` | SQLite schema and connection |
+| `Server/src/db/connection.js` | PostgreSQL connection pool and migration runner |
+| `Server/src/db/competition.js` | Competition, standings, schedule, and runner state queries |

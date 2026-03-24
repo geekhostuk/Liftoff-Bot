@@ -212,7 +212,9 @@ async function buildTemplateVars(baseVars = {}) {
   try {
     const pl = require('./playlistRunner');
     const s = pl.getState();
-    if (s.playlist_name) enriched.playlist ??= s.playlist_name;
+    // Prefer the source playlist name from the current track (competition schedule)
+    const currentTrackPlaylist = s.current_track?.source_playlist_name;
+    enriched.playlist ??= currentTrackPlaylist || s.playlist_name || '';
   } catch {}
   try {
     const cr = require('./competitionRunner');
