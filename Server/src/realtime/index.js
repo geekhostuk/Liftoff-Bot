@@ -45,6 +45,9 @@ async function main() {
     if (msg.event_type === 'playlist_state') competitionRunner.onPlaylistStateChange(msg);
   });
 
+  // Try resuming playlist runner from persisted state (skipped if competition runner already started one)
+  await playlistRunner.tryResume();
+
   // Try resuming tag runner from persisted config (only if competition isn't managing playlists)
   await tagRunner.tryResume();
 
