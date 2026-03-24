@@ -129,9 +129,12 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 - Create seasons with weekly competition weeks
 - Automatic weekly lifecycle: `scheduled → active → finalised`
-- **Playlist calendar** — assign multiple playlists per week; they run back-to-back and repeat for the entire week
+- **Interleaved multi-playlist rotation** — assign multiple playlists per week; tracks from all playlists are pooled and shuffled into a fair daily schedule where every track appears once per round
+- Configurable track interval per week (e.g. 15 minutes per track)
+- Daily schedules use deterministic seeded shuffle — different order each day, same order on reboot
 - Playlists auto-start when a week begins, no manual intervention needed
-- **Reboot resilient** — deterministic time-based calculation resumes at the correct playlist and track after a server restart, verifying and correcting the in-game track if needed
+- **Reboot resilient** — schedules persist in the database; position is recalculated from the clock after a server restart
+- Regenerate schedule button in admin for mid-week playlist changes
 - Real-time scoring on every race close, plus batch scoring at week finalisation
 
 ### Points & Scoring
@@ -174,9 +177,11 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - **Track tagging** — search tracks, assign tags via checkboxes, edit Steam IDs and per-track durations
 - **Tag runner** — start/stop/skip random tag-based rotation with tag multi-select and interval config
 - **Tag voting** — trigger category votes with custom tag options and duration
-- Automated chat templates triggered by track changes, race starts, and race ends
-- **Competition management** — create seasons, generate weeks, assign playlist calendars, recalculate points
-- **Competition runner** — automatic week lifecycle, playlist rotation, and reboot-resilient state recovery
+- Automated chat templates triggered by track changes, race starts, race ends, and player joins (new/returning)
+- **Chat Beta** — redesigned chat with filterable log, character counter, variable chips, and live preview
+- **Auto Messages Beta** — dedicated template manager with edit/test, trigger-filtered variables, and live preview
+- **Competition management** — create seasons, generate weeks, assign playlists, set track interval, regenerate schedules, recalculate points
+- **Competition runner** — automatic week lifecycle, interleaved multi-playlist rotation with daily shuffled schedules, reboot-resilient state recovery
 - Live chat log and manual messaging into the game
 - Persistent WebSocket connection for real-time status updates across all sections
 
@@ -185,12 +190,20 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 ### Chat System
 - View in-game chat live in the admin panel
 - Send messages directly into the game from the browser
+- **Chat Beta** — redesigned chat page with filterable log, character counter (255-char limit), variable insertion chips, and live template preview
+- **Auto Messages Beta** — dedicated template management page with edit/test actions, trigger-filtered variable chips, live preview, and collapsible variable reference
 - Automated message templates triggered by events:
   - `track_change` — announce the next track
   - `race_start` — notify players a race has begun
   - `race_end` — congratulate the winner
-- Template variables: `{env}`, `{track}`, `{race}`, `{mins}`, `{winner}`, `{time}`
+  - `player_joined` — any player enters the lobby
+  - `player_new` — first-time player (never raced before)
+  - `player_returned` — returning player with race history
+- Template variables:
+  - **Trigger-specific:** `{env}`, `{track}`, `{race}`, `{mins}`, `{winner}`, `{time}`, `{race_id}`, `{nick}`
+  - **Universal:** `{1st}`, `{2nd}`, `{3rd}` (weekly competition standings), `{playlist}` (source playlist name), `{player_points}`, `{player_position}` (player's weekly rank/points)
 - Schedule warning messages before track rotation
+- Live preview resolves variables against current server data
 
 ### Race Data
 
@@ -296,7 +309,8 @@ Liftoff/
 │   │       │   ├── 002_competition.sql
 │   │       │   ├── 003_whitelist.sql
 │   │       │   ├── 004_tags.sql
-│   │       │   └── 005_track_ids.sql
+│   │       │   ├── 005_track_ids.sql
+│   │       │   └── 006_week_schedules.sql
 │   │       ├── competition.js          # Competition queries
 │   │       ├── ingest.js               # Event ingestion
 │   │       ├── queries.js              # Public data queries
