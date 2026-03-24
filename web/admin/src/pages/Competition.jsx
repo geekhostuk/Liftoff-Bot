@@ -222,7 +222,7 @@ export default function Competition() {
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   async function toggleAuto() {
-    await apiCall('POST', '/api/admin/competition/runner/auto', null, 'Runner auto toggled');
+    await apiCall('POST', '/api/admin/competition/runner/auto', { enabled: !runner?.auto_managed }, 'Runner auto toggled');
     loadRunner();
   }
 

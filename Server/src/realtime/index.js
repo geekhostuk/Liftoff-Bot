@@ -14,7 +14,7 @@ require('dotenv').config();
 const http = require('http');
 const express = require('express');
 const { initDatabase } = require('../database');
-const { createPluginSocketServer, sendCommand, sendCommandAwait, getPluginSocket, setCurrentTrack, fireTemplates } = require('../pluginSocket');
+const { createPluginSocketServer, sendCommand, sendCommandAwait, getPluginSocket, setCurrentTrack, fireTemplates, buildTemplateVars } = require('../pluginSocket');
 const { createLiveSocketServer } = require('../liveSocket');
 const broadcast = require('../broadcast');
 const state = require('../state');
@@ -41,6 +41,9 @@ async function main() {
 
   // Start competition runner (week lifecycle + interleaved schedule)
   await competitionRunner.start();
+
+  // Try resuming playlist runner from persisted state (skipped if competition runner already started one)
+  await playlistRunner.tryResume();
 
   // Try resuming tag runner from persisted config (only if competition isn't managing playlists)
   await tagRunner.tryResume();
@@ -213,6 +216,19 @@ async function main() {
       playlist: playlistRunner.getState(),
       competition: competitionRunner.getState(),
     });
+  });
+
+  // ── Chat template preview ────────────────────────────────────────────────
+  internal.post('/internal/chat/template-preview', async (req, res) => {
+    const { template = '' } = req.body;
+    if (!template.trim()) return res.status(400).json({ error: 'template is required' });
+    const vars = await buildTemplateVars();
+    let resolved = template;
+    for (const [key, val] of Object.entries(vars)) {
+      resolved = resolved.replaceAll(`{${key}}`, val ?? '');
+    }
+    resolved = resolved.trim();
+    res.json({ resolved, length: resolved.length });
   });
 
   // ── State ─────────────────────────────────────────────────────────────────

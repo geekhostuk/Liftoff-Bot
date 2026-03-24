@@ -222,6 +222,14 @@ async function getRecentTracks(limit = 10) {
   return rows;
 }
 
+async function isKnownPilot(nick) {
+  const { rows: [{ exists }] } = await getPool().query(
+    `SELECT EXISTS(SELECT 1 FROM laps WHERE LOWER(nick) = LOWER($1)) AS exists`,
+    [nick]
+  );
+  return exists;
+}
+
 module.exports = {
   getRaces,
   getRaceById,
@@ -236,4 +244,5 @@ module.exports = {
   getFilterOptions,
   getOverallStats,
   getRecentTracks,
+  isKnownPilot,
 };

@@ -514,6 +514,37 @@ async function deleteWeekSchedules(weekId) {
   await getPool().query('DELETE FROM week_schedules WHERE week_id = $1', [weekId]);
 }
 
+// ── Playlist Runner State ─────────────────────────────────────────────────
+
+async function savePlaylistRunnerState(plState) {
+  const pool = getPool();
+  const upsert = `INSERT INTO kv_store (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+  await pool.query(upsert, ['pl_playlist_id', plState.playlistId != null ? String(plState.playlistId) : '']);
+  await pool.query(upsert, ['pl_current_index', String(plState.currentIndex || 0)]);
+  await pool.query(upsert, ['pl_interval_ms', String(plState.intervalMs || 900000)]);
+  await pool.query(upsert, ['pl_next_change_at', plState.nextChangeAt ? plState.nextChangeAt.toISOString() : '']);
+}
+
+async function loadPlaylistRunnerState() {
+  const pool = getPool();
+  const get = async (key) => {
+    const { rows: [row] } = await pool.query('SELECT value FROM kv_store WHERE key = $1', [key]);
+    return row ? row.value : null;
+  };
+  const playlistId = await get('pl_playlist_id');
+  return {
+    playlistId: playlistId ? Number(playlistId) : null,
+    currentIndex: Number((await get('pl_current_index')) || 0),
+    intervalMs: Number((await get('pl_interval_ms')) || 900000),
+    nextChangeAt: (await get('pl_next_change_at')) || null,
+  };
+}
+
+async function clearPlaylistRunnerState() {
+  const pool = getPool();
+  await pool.query(`DELETE FROM kv_store WHERE key IN ('pl_playlist_id', 'pl_current_index', 'pl_interval_ms', 'pl_next_change_at')`);
+}
+
 async function clearWeekData(weekId) {
   const pool = getPool();
   await pool.query('DELETE FROM weekly_points WHERE week_id = $1', [weekId]);
@@ -582,6 +613,10 @@ module.exports = {
   saveWeekSchedule,
   getWeekSchedule,
   deleteWeekSchedules,
+  // Playlist runner state
+  savePlaylistRunnerState,
+  loadPlaylistRunnerState,
+  clearPlaylistRunnerState,
   // Recalculation helpers
   clearWeekData,
   getRacesInRange,

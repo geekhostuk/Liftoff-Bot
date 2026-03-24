@@ -78,6 +78,7 @@ async function startPlaylist(playlistId, intervalMs, startIndex = 0) {
 
   _applyCurrentTrack();
   _scheduleNext();
+  _persistState();
 
   console.log(`[playlist] Started "${playlist.name}" at track ${idx + 1}/${tracks.length} (interval=${intervalMs}ms)`);
   _broadcastState();
@@ -96,6 +97,7 @@ function stopPlaylist() {
   state.nextChangeAt = null;
   if (wasRunning) {
     console.log('[playlist] Stopped');
+    _clearPersistedState();
     if (_onStopCallback) _onStopCallback();
     _broadcastState();
   }
@@ -120,6 +122,7 @@ function skipToNext() {
     console.error('[playlist] Error applying track after skip:', err.message);
   }
   _scheduleNext();
+  _persistState();
   _broadcastState();
 }
 
@@ -318,8 +321,62 @@ async function resumePlaylist(playlistId, intervalMs, startIndex, remainingMs, f
     _broadcastState();
   }, delay);
 
+  _persistState();
   console.log(`[playlist] Resumed "${playlist.name}" at track ${idx + 1}/${tracks.length} (next change in ${Math.round(delay / 1000)}s)`);
   _broadcastState();
+}
+
+// ── Persistence ─────────────────────────────────────────────────────────────
+
+async function _persistState() {
+  try {
+    await db.savePlaylistRunnerState({
+      playlistId: state.playlistId,
+      currentIndex: state.currentIndex,
+      intervalMs: state.intervalMs,
+      nextChangeAt: state.nextChangeAt,
+    });
+  } catch (err) {
+    console.error('[playlist] Failed to persist state:', err.message);
+  }
+}
+
+async function _clearPersistedState() {
+  try {
+    await db.clearPlaylistRunnerState();
+  } catch (err) {
+    console.error('[playlist] Failed to clear persisted state:', err.message);
+  }
+}
+
+/**
+ * Attempt to resume the playlist from persisted state on startup.
+ * Called from realtime/index.js after competition runner has started.
+ * Competition runner's own resume takes priority — only resume here
+ * if the competition runner did NOT start a playlist.
+ */
+async function tryResume() {
+  if (state.running) return; // already running (e.g. competition runner resumed it)
+  try {
+    const saved = await db.loadPlaylistRunnerState();
+    if (!saved.playlistId) return;
+
+    const remainingMs = saved.nextChangeAt
+      ? new Date(saved.nextChangeAt).getTime() - Date.now()
+      : null;
+
+    if (remainingMs !== null && remainingMs < 1000) {
+      // Timer already expired — advance to next track
+      const tracks = await db.getPlaylistTracks(saved.playlistId);
+      const nextIndex = tracks.length > 0 ? (saved.currentIndex + 1) % tracks.length : 0;
+      await resumePlaylist(saved.playlistId, saved.intervalMs, nextIndex, saved.intervalMs, true);
+    } else {
+      await resumePlaylist(saved.playlistId, saved.intervalMs, saved.currentIndex, remainingMs || saved.intervalMs, true);
+    }
+    console.log('[playlist] Resumed from persisted state');
+  } catch (err) {
+    console.error('[playlist] Failed to resume from persisted state:', err.message);
+  }
 }
 
 // ── Internals ────────────────────────────────────────────────────────────────
@@ -351,6 +408,8 @@ async function _scheduleNext() {
     }
   }
 
+  _persistState();
+
   _timer = setTimeout(() => {
     state.currentIndex = (state.currentIndex + 1) % state.tracks.length;
     try {
@@ -381,4 +440,4 @@ function _broadcastState() {
   broadcast.broadcastAll({ event_type: 'playlist_state', ...getState() });
 }
 
-module.exports = { init, getState, startPlaylist, startSchedule, resumePlaylist, stopPlaylist, skipToNext, skipToIndex, extendTimer, onStop };
+module.exports = { init, getState, startPlaylist, startSchedule, resumePlaylist, stopPlaylist, skipToNext, skipToIndex, extendTimer, onStop, tryResume };

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Map, MessageSquare, ListMusic, Tag, Trophy, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { LayoutDashboard, Users, Map, MessageSquare, BotMessageSquare, ListMusic, Tag, Trophy, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { useWs } from '../../context/WebSocketContext.jsx';
 import StatusDot from '../feedback/StatusDot.jsx';
 import './Sidebar.css';
@@ -9,9 +9,11 @@ const navItems = [
   { to: '/admin/players', icon: Users, label: 'Players' },
   { to: '/admin/tracks', icon: Map, label: 'Tracks' },
   { to: '/admin/chat', icon: MessageSquare, label: 'Chat' },
+  { to: '/admin/chat-beta', icon: MessageSquare, label: 'Chat', beta: true },
   { to: '/admin/playlists', icon: ListMusic, label: 'Playlists' },
   { to: '/admin/tags', icon: Tag, label: 'Tags' },
   { to: '/admin/competition', icon: Trophy, label: 'Competition' },
+  { to: '/admin/auto-messages', icon: BotMessageSquare, label: 'Auto Messages', beta: true },
 ];
 
 export default function Sidebar({ collapsed, onToggle, pluginConnected }) {
@@ -25,7 +27,7 @@ export default function Sidebar({ collapsed, onToggle, pluginConnected }) {
       </div>
 
       <nav className="sidebar__nav">
-        {navItems.map(({ to, icon: Icon, label, end }) => (
+        {navItems.map(({ to, icon: Icon, label, end, beta }) => (
           <NavLink
             key={to}
             to={to}
@@ -34,7 +36,12 @@ export default function Sidebar({ collapsed, onToggle, pluginConnected }) {
             title={collapsed ? label : undefined}
           >
             <Icon size={20} />
-            {!collapsed && <span>{label}</span>}
+            {!collapsed && (
+              <>
+                <span>{label}</span>
+                {beta && <span className="badge badge-beta" style={{ marginLeft: 'auto' }}>Beta</span>}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
