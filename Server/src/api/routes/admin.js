@@ -238,6 +238,38 @@ router.delete('/chat/templates/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Chat template variables & preview ────────────────────────────────────────
+
+const TEMPLATE_VARIABLES = [
+  { key: 'nick', description: 'Player nickname', triggers: ['player_joined', 'player_new', 'player_returned'] },
+  { key: 'env', description: 'Track environment name', triggers: ['track_change'] },
+  { key: 'track', description: 'Track name', triggers: ['track_change'] },
+  { key: 'race', description: 'Race mode', triggers: ['track_change'] },
+  { key: 'mins', description: 'Minutes until next track (pre-change only)', triggers: ['track_change'] },
+  { key: 'race_id', description: 'Race ID (first 8 chars)', triggers: ['race_start'] },
+  { key: 'winner', description: 'Race winner display name', triggers: ['race_end'] },
+  { key: 'time', description: "Winner's finish time", triggers: ['race_end'] },
+  { key: '1st', description: '1st place pilot (weekly standings)', triggers: ['*'] },
+  { key: '2nd', description: '2nd place pilot (weekly standings)', triggers: ['*'] },
+  { key: '3rd', description: '3rd place pilot (weekly standings)', triggers: ['*'] },
+  { key: 'playlist', description: 'Current playlist name', triggers: ['*'] },
+];
+
+router.get('/chat/template-variables', (req, res) => {
+  res.json(TEMPLATE_VARIABLES);
+});
+
+router.post('/chat/template-preview', async (req, res) => {
+  const { template = '' } = req.body;
+  if (!template.trim()) return res.status(400).json({ error: 'template is required' });
+  try {
+    const result = await rt.previewTemplate(template);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to preview template' });
+  }
+});
+
 // ── Playlists (direct DB + realtime for start/stop/skip) ────────────────────
 
 router.get('/playlists', async (req, res) => {

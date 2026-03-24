@@ -10,9 +10,11 @@ const routeTitles = {
   '/admin/players': 'Players',
   '/admin/tracks': 'Tracks',
   '/admin/chat': 'Chat',
+  '/admin/chat-beta': 'Chat Beta',
   '/admin/playlists': 'Playlists',
   '/admin/tags': 'Tags',
   '/admin/competition': 'Competition',
+  '/admin/auto-messages': 'Auto Messages Beta',
 };
 
 export default function AppShell() {

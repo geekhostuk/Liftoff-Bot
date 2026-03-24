@@ -207,6 +207,26 @@ function fmtMs(ms) {
   return m > 0 ? `${m}:${s}` : `${s}s`;
 }
 
+async function buildTemplateVars(baseVars = {}) {
+  const enriched = { ...baseVars };
+  try {
+    const pl = require('./playlistRunner');
+    const s = pl.getState();
+    if (s.playlist_name) enriched.playlist ??= s.playlist_name;
+  } catch {}
+  try {
+    const cr = require('./competitionRunner');
+    const s = cr.getState();
+    if (s.current_week_id) {
+      const standings = await db.getWeeklyStandings(s.current_week_id);
+      enriched['1st'] ??= standings[0]?.display_name ?? '';
+      enriched['2nd'] ??= standings[1]?.display_name ?? '';
+      enriched['3rd'] ??= standings[2]?.display_name ?? '';
+    }
+  } catch {}
+  return enriched;
+}
+
 async function fireTemplates(trigger, vars = {}) {
   let templates;
   try {
@@ -214,10 +234,11 @@ async function fireTemplates(trigger, vars = {}) {
   } catch {
     return;
   }
+  const enriched = await buildTemplateVars(vars);
   for (const tmpl of templates) {
     if (tmpl.delay_ms < 0) continue; // negative = pre-scheduled by playlist runner
     let message = tmpl.template;
-    for (const [key, val] of Object.entries(vars)) {
+    for (const [key, val] of Object.entries(enriched)) {
       message = message.replaceAll(`{${key}}`, val ?? '');
     }
     message = message.trim();
@@ -374,8 +395,14 @@ async function handlePluginEvent(jsonLine) {
     }
   }
 
-  // Auto-trigger chat templates for race events
-  if (eventType === E.RACE_RESET) {
+  // Auto-trigger chat templates for game events
+  if (eventType === E.PLAYER_ENTERED) {
+    const nick = event.nick || '';
+    fireTemplates('player_joined', { nick });
+    db.isKnownPilot(nick).then(known => {
+      fireTemplates(known ? 'player_returned' : 'player_new', { nick });
+    }).catch(() => {});
+  } else if (eventType === E.RACE_RESET) {
     fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) });
   } else if (eventType === E.RACE_END) {
     fireTemplates('race_end', {
@@ -391,4 +418,4 @@ async function handlePluginEvent(jsonLine) {
   }
 }
 
-module.exports = { createPluginSocketServer, sendCommand, sendCommandAwait, getPluginSocket, setCurrentTrack, fireTemplates, stripSensitiveFields };
+module.exports = { createPluginSocketServer, sendCommand, sendCommandAwait, getPluginSocket, setCurrentTrack, fireTemplates, buildTemplateVars, stripSensitiveFields };

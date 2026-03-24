@@ -153,6 +153,12 @@ async function getTracksInfo() {
   return get('/internal/tracks/info');
 }
 
+// ── Chat template preview ───────────────────────────────────────────────────
+
+async function previewTemplate(template) {
+  return post('/internal/chat/template-preview', { template });
+}
+
 // ── State ───────────────────────────────────────────────────────────────────
 
 async function getState() {
@@ -185,5 +191,6 @@ module.exports = {
   destroyRemoteSession,
   broadcast,
   getTracksInfo,
+  previewTemplate,
   getState,
 };
