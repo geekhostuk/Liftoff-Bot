@@ -10,6 +10,7 @@ const navItems = [
   { to: '/admin/tracks', icon: Map, label: 'Tracks' },
   { to: '/admin/chat', icon: MessageSquare, label: 'Chat' },
   { to: '/admin/playlists', icon: ListMusic, label: 'Playlists' },
+  { to: '/admin/playlists-beta', icon: ListMusic, label: 'Playlists (beta)' },
   { to: '/admin/tags', icon: Tag, label: 'Tags' },
   { to: '/admin/competition', icon: Trophy, label: 'Competition' },
 ];

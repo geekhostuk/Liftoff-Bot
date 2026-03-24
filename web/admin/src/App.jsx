@@ -9,6 +9,7 @@ import Players from './pages/Players.jsx';
 import Tracks from './pages/Tracks.jsx';
 import Chat from './pages/Chat.jsx';
 import Playlists from './pages/Playlists.jsx';
+import PlaylistsBeta from './pages/PlaylistsBeta.jsx';
 import Tags from './pages/Tags.jsx';
 import Competition from './pages/Competition.jsx';
 
@@ -33,6 +34,7 @@ export default function App() {
                   <Route path="/admin/tracks" element={<Tracks />} />
                   <Route path="/admin/chat" element={<Chat />} />
                   <Route path="/admin/playlists" element={<Playlists />} />
+                  <Route path="/admin/playlists-beta" element={<PlaylistsBeta />} />
                   <Route path="/admin/tags" element={<Tags />} />
                   <Route path="/admin/competition" element={<Competition />} />
                 </Route>

@@ -41,11 +41,11 @@ export default function Nav({ lobby }) {
         </nav>
 
         {lobby && (
-          <div className={`lobby-indicator ${lobbyFull ? 'lobby-full' : ''}`} title="Players in lobby">
+          <Link to="/live" className={`lobby-indicator ${lobbyFull ? 'lobby-full' : ''}`} title="Players in lobby">
             <span className="lobby-icon" />
             <span className="lobby-count">{lobbyLabel}</span>
             {lobbyFull && <span className="lobby-tag">FULL</span>}
-          </div>
+          </Link>
         )}
 
         <Link to="/competition" className="btn btn-primary nav-cta">
