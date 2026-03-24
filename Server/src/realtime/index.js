@@ -39,11 +39,8 @@ async function main() {
   // Initialise playlist runner
   playlistRunner.init(broadcast.broadcastAll);
 
-  // Start competition runner (week lifecycle + playlist calendar)
+  // Start competition runner (week lifecycle + interleaved schedule)
   await competitionRunner.start();
-  broadcast.onBroadcast((msg) => {
-    if (msg.event_type === 'playlist_state') competitionRunner.onPlaylistStateChange(msg);
-  });
 
   // Try resuming tag runner from persisted config (only if competition isn't managing playlists)
   await tagRunner.tryResume();

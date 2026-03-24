@@ -130,6 +130,7 @@ async function updateWeek(id, fields) {
   if (fields.ends_at !== undefined) { sets.push(`ends_at = $${n++}`); values.push(fields.ends_at); }
   if (fields.status !== undefined) { sets.push(`status = $${n++}`); values.push(fields.status); }
   if (fields.week_number !== undefined) { sets.push(`week_number = $${n++}`); values.push(fields.week_number); }
+  if (fields.interval_ms !== undefined) { sets.push(`interval_ms = $${n++}`); values.push(fields.interval_ms); }
   if (sets.length === 0) return;
   values.push(id);
   await getPool().query(`UPDATE competition_weeks SET ${sets.join(', ')} WHERE id = $${n}`, values);
@@ -475,7 +476,7 @@ async function saveRunnerState(state) {
   const upsert = `INSERT INTO kv_store (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
   await pool.query(upsert, ['runner_auto_managed', state.autoManaged ? '1' : '0']);
   await pool.query(upsert, ['runner_week_id', state.currentWeekId != null ? String(state.currentWeekId) : '']);
-  await pool.query(upsert, ['runner_playlist_index', String(state.currentPlaylistIndex || 0)]);
+  await pool.query(upsert, ['runner_day_number', state.currentDayNumber != null ? String(state.currentDayNumber) : '']);
 }
 
 async function loadRunnerState() {
@@ -487,8 +488,30 @@ async function loadRunnerState() {
   return {
     autoManaged: (await get('runner_auto_managed')) === '1',
     currentWeekId: (await get('runner_week_id')) ? Number(await get('runner_week_id')) : null,
-    currentPlaylistIndex: Number((await get('runner_playlist_index')) || 0),
+    currentDayNumber: (await get('runner_day_number')) !== null ? Number(await get('runner_day_number')) : null,
   };
+}
+
+// ── Week Schedules ─────────────────────────────────────────────────────────
+
+async function saveWeekSchedule(weekId, dayNumber, schedule) {
+  await getPool().query(`
+    INSERT INTO week_schedules (week_id, day_number, schedule)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (week_id, day_number) DO UPDATE SET schedule = EXCLUDED.schedule, created_at = NOW()
+  `, [weekId, dayNumber, JSON.stringify(schedule)]);
+}
+
+async function getWeekSchedule(weekId, dayNumber) {
+  const { rows: [row] } = await getPool().query(
+    'SELECT schedule FROM week_schedules WHERE week_id = $1 AND day_number = $2',
+    [weekId, dayNumber]
+  );
+  return row ? row.schedule : null;
+}
+
+async function deleteWeekSchedules(weekId) {
+  await getPool().query('DELETE FROM week_schedules WHERE week_id = $1', [weekId]);
 }
 
 async function clearWeekData(weekId) {
@@ -555,6 +578,10 @@ module.exports = {
   // Runner state
   saveRunnerState,
   loadRunnerState,
+  // Week schedules
+  saveWeekSchedule,
+  getWeekSchedule,
+  deleteWeekSchedules,
   // Recalculation helpers
   clearWeekData,
   getRacesInRange,

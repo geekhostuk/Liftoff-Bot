@@ -183,6 +183,65 @@ function skipToIndex(index) {
 }
 
 /**
+ * Start a pre-built schedule (used by competition runner for interleaved rotation).
+ * Accepts a track array directly instead of loading from DB.
+ *
+ * @param {Object[]} tracks - Array of {env, track, race, workshop_id}
+ * @param {number} intervalMs - duration per track
+ * @param {number} [startIndex=0] - track index to start at
+ * @param {number} [remainingMs] - custom first delay (null = use intervalMs)
+ * @param {boolean} [forceTrack=true] - whether to send set_track
+ */
+function startSchedule(tracks, intervalMs, startIndex = 0, remainingMs = null, forceTrack = true) {
+  if (!tracks || tracks.length === 0) throw new Error('Schedule is empty');
+
+  const idx = Math.max(0, Math.min(startIndex, tracks.length - 1));
+
+  // Mutual exclusion: stop tag runner if running
+  try {
+    const tagRunner = require('./tagRunner');
+    tagRunner.stopTagRunner();
+  } catch {}
+
+  stopPlaylist();
+
+  state.running = true;
+  state.playlistId = null; // null = competition schedule, not a DB playlist
+  state.playlistName = 'Competition Schedule';
+  state.currentIndex = idx;
+  state.intervalMs = intervalMs;
+  state.tracks = tracks;
+
+  if (forceTrack) {
+    _applyCurrentTrack();
+  } else {
+    const t = state.tracks[idx];
+    if (t) setCurrentTrack({ env: t.env, track: t.track, race: t.race });
+  }
+
+  if (remainingMs !== null && remainingMs !== intervalMs) {
+    // Custom first delay (resume mid-track)
+    const delay = Math.max(1000, remainingMs);
+    state.nextChangeAt = new Date(Date.now() + delay);
+    _clearPreTimers();
+
+    _timer = setTimeout(() => {
+      state.currentIndex = (state.currentIndex + 1) % state.tracks.length;
+      try { _applyCurrentTrack(); } catch (err) {
+        console.error('[playlist] Error applying track during schedule advance:', err.message);
+      }
+      _scheduleNext();
+      _broadcastState();
+    }, delay);
+  } else {
+    _scheduleNext();
+  }
+
+  console.log(`[playlist] Started schedule at track ${idx + 1}/${tracks.length} (interval=${intervalMs}ms)`);
+  _broadcastState();
+}
+
+/**
  * Resume a playlist at a specific track index with a custom initial delay.
  * Used by the competition runner to pick up where we left off after a reboot.
  *
@@ -322,4 +381,4 @@ function _broadcastState() {
   broadcast.broadcastAll({ event_type: 'playlist_state', ...getState() });
 }
 
-module.exports = { init, getState, startPlaylist, resumePlaylist, stopPlaylist, skipToNext, skipToIndex, extendTimer, onStop };
+module.exports = { init, getState, startPlaylist, startSchedule, resumePlaylist, stopPlaylist, skipToNext, skipToIndex, extendTimer, onStop };

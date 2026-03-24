@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Trophy, Plus, Trash2, ChevronUp, ChevronDown, Play, Square, Edit, Calculator } from 'lucide-react';
+import { Trophy, Plus, Trash2, ChevronUp, ChevronDown, Play, Square, Edit, Calculator, RefreshCw } from 'lucide-react';
 import { useApi } from '../hooks/useApi.js';
 import { useToast } from '../components/feedback/Toast.jsx';
 import Badge from '../components/feedback/Badge.jsx';
@@ -174,7 +174,7 @@ export default function Competition() {
 
   // Week editor
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ starts_at: '', ends_at: '', status: 'scheduled' });
+  const [editForm, setEditForm] = useState({ starts_at: '', ends_at: '', status: 'scheduled', interval_min: 15 });
 
   // Playlists for selected week
   const [weekPlaylists, setWeekPlaylists] = useState([]);
@@ -245,9 +245,17 @@ export default function Competition() {
   }
 
   async function saveWeek() {
-    await apiCall('PUT', `/api/admin/competition/week/${selectedWeekId}`, editForm, 'Week updated');
+    const { interval_min, ...rest } = editForm;
+    await apiCall('PUT', `/api/admin/competition/week/${selectedWeekId}`, {
+      ...rest,
+      interval_ms: Number(interval_min) * 60000,
+    }, 'Week updated');
     setEditing(false);
     loadWeeks();
+  }
+
+  async function regenerateSchedule() {
+    await apiCall('POST', `/api/admin/competition/week/${selectedWeekId}/regenerate-schedule`, null, 'Schedule will regenerate');
   }
 
   async function recalcWeek() {
@@ -287,6 +295,7 @@ export default function Competition() {
       starts_at: selectedWeek.starts_at?.slice(0, 10) ?? '',
       ends_at: selectedWeek.ends_at?.slice(0, 10) ?? '',
       status: selectedWeek.status,
+      interval_min: Math.round((selectedWeek.interval_ms || 900000) / 60000),
     });
     setEditing(true);
   }
@@ -305,7 +314,7 @@ export default function Competition() {
         <RunnerBar
           label="Competition Runner"
           state={{ running: runner.running }}
-          extra={`Week ${runner.week_id ?? '—'}  ·  Playlist ${(runner.playlist_index ?? 0) + 1}/${runner.playlist_count ?? 0}  ·  Auto: ${runner.auto_managed ? 'ON' : 'OFF'}`}
+          extra={`Week ${runner.week_id ?? '—'}  ·  Day ${runner.day_number ?? '—'}  ·  ${runner.playlist_count ?? 0} playlists  ·  Auto: ${runner.auto_managed ? 'ON' : 'OFF'}`}
           actions={
             <button style={styles.btn} onClick={toggleAuto}>
               {runner.auto_managed ? <Square size={14} /> : <Play size={14} />}
@@ -422,7 +431,7 @@ export default function Competition() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
               <h2 style={styles.sectionTitle}>Week {selectedWeek.week_number}</h2>
               <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {fmtDate(selectedWeek.starts_at)} – {fmtDate(selectedWeek.ends_at)}
+                {fmtDate(selectedWeek.starts_at)} – {fmtDate(selectedWeek.ends_at)} · {Math.round((selectedWeek.interval_ms || 900000) / 60000)}min tracks
               </span>
               <Badge variant={STATUS_BADGE[selectedWeek.status] ?? 'muted'}>{selectedWeek.status}</Badge>
             </div>
@@ -434,6 +443,9 @@ export default function Competition() {
               )}
               <button style={styles.btnMuted} onClick={recalcWeek}>
                 <Calculator size={14} /> Recalculate
+              </button>
+              <button style={styles.btnMuted} onClick={regenerateSchedule}>
+                <RefreshCw size={14} /> Regenerate Schedule
               </button>
               <ConfirmButton onConfirm={deleteWeek} label="Delete" icon={<Trash2 size={14} />} />
             </div>
@@ -473,6 +485,16 @@ export default function Competition() {
                     <option value="finalised">finalised</option>
                   </select>
                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+                  <span style={styles.label}>Track interval (min)</span>
+                  <input
+                    type="number"
+                    style={{ ...styles.input, width: 90 }}
+                    min={1}
+                    value={editForm.interval_min}
+                    onChange={e => setEditForm(f => ({ ...f, interval_min: e.target.value }))}
+                  />
+                </div>
               </div>
               <div style={styles.row}>
                 <button style={styles.btn} onClick={saveWeek}>Save</button>
@@ -493,9 +515,6 @@ export default function Competition() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                     <span style={{ color: 'var(--text-muted)', fontWeight: 600, minWidth: 24 }}>{wp.position}</span>
                     <span>{wp.playlist_name}</span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                      {Math.round(wp.interval_ms / 60_000)} min
-                    </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
                     <button
@@ -535,14 +554,6 @@ export default function Competition() {
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
-              <input
-                type="number"
-                style={{ ...styles.input, width: 90 }}
-                min={1}
-                value={addInterval}
-                onChange={e => setAddInterval(e.target.value)}
-                placeholder="min"
-              />
               <button style={styles.btn} onClick={addPlaylist}>
                 <Plus size={14} /> Add
               </button>
