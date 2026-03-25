@@ -104,6 +104,12 @@ function checkExtendVoteThreshold() {
     }
     _sendCommand({ cmd: 'send_chat', message: '<color=#00FF00>VOTE PASSED</color> <color=#FFFF00>Adding 5 minutes to the current track.</color>' });
     active.runner.extendTimer(EXTEND_AMOUNT_MS);
+    const trackToExtend = state.getCurrentTrack();
+    if (trackToExtend) {
+      const db = require('./database');
+      db.incrementExtendCount(trackToExtend.env, trackToExtend.track)
+        .catch(err => console.error('[extendVote] persist extend count failed:', err));
+    }
   }
 }
 

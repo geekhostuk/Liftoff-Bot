@@ -2,6 +2,15 @@
   max-width: 900px;
 }
 
+.track-link {
+  color: inherit;
+  text-decoration: none;
+}
+.track-link:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
 .tracks-title {
   margin-bottom: var(--space-sm);
 }

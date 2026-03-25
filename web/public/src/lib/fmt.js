@@ -44,3 +44,21 @@ export function fmtNumber(n) {
   if (n == null) return '\u2014';
   return Number(n).toLocaleString();
 }
+
+/** Generate a URL path to the track browser detail page. */
+export function browsePath(env, track) {
+  return `/browse/${encodeURIComponent(env)}/${encodeURIComponent(track)}`;
+}
+
+/** Format a timestamp as relative time (e.g. "3m ago", "2h ago"). */
+export function timeAgo(dateStr) {
+  if (!dateStr) return '\u2014';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}

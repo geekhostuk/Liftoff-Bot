@@ -10,4 +10,5 @@ module.exports = {
   ...require('./competition'),
   ...require('./whitelist'),
   ...require('./tags'),
+  ...require('./trackBrowser'),
 };

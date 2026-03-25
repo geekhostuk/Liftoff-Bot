@@ -1,0 +1,88 @@
+.track-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.track-card:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
+}
+
+.track-card-image {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-muted, #111);
+  overflow: hidden;
+}
+
+.track-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.track-card-no-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.track-card-body {
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  flex: 1;
+}
+
+.track-card-env {
+  font-size: 0.75rem;
+  color: var(--color-primary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.track-card-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary, inherit);
+  line-height: 1.3;
+}
+
+.track-card-author {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.track-card-stats {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: var(--space-xs);
+}
+
+.track-card-stat {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--bg-muted, rgba(255,255,255,0.06));
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.track-card-stat-skip {
+  color: var(--color-warning, #f59e0b);
+}

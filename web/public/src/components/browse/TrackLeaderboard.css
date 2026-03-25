@@ -1,0 +1,32 @@
+.browse-leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.browse-leaderboard-table th {
+  text-align: left;
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.browse-leaderboard-table td {
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.browse-leaderboard-table tr:last-child td {
+  border-bottom: none;
+}
+
+.browse-leaderboard-nick {
+  font-weight: 500;
+}
+
+.browse-leaderboard-time {
+  font-family: var(--font-mono);
+  color: var(--color-primary);
+}

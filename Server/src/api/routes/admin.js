@@ -640,4 +640,11 @@ router.get('/tag-vote/state', async (req, res) => {
   res.json(await rt.getTagVoteState());
 });
 
+// ── Track comment moderation ────────────────────────────────────────────────
+
+router.delete('/track-comments/:commentId', async (req, res) => {
+  await db.deleteTrackComment(Number(req.params.commentId));
+  res.json({ ok: true });
+});
+
 module.exports = router;

@@ -8,6 +8,8 @@ import HowItWorks from './pages/HowItWorks';
 import About from './pages/About';
 import Live from './pages/Live';
 import Tracks from './pages/Tracks';
+import TrackBrowse from './pages/TrackBrowse';
+import TrackDetail from './pages/TrackDetail';
 import useLobbyCount from './hooks/useLobbyCount';
 
 export default function App() {
@@ -21,6 +23,8 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/live" element={<Live />} />
           <Route path="/tracks" element={<Tracks />} />
+          <Route path="/browse" element={<TrackBrowse />} />
+          <Route path="/browse/:env/:track" element={<TrackDetail />} />
           <Route path="/competition" element={<Competition />} />
           <Route path="/pilots" element={<Pilots />} />
           <Route path="/how-it-works" element={<HowItWorks />} />
