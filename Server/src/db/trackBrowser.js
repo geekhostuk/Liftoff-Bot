@@ -238,6 +238,117 @@ async function incrementExtendCount(env, track) {
   `, [t.id]);
 }
 
+// ── Admin-facing functions ───────────────────────────────────────────────────
+
+const ADMIN_SORTS = ['name', 'plays', 'last_played', 'steam_score'];
+
+async function getAdminTrackList({ search = '', env = '', sort = 'name', limit = 50, offset = 0 } = {}) {
+  const pool = getPool();
+  const conditions = [];
+  const params = [];
+
+  if (search) {
+    params.push(`%${search}%`);
+    conditions.push(`(t.track ILIKE $${params.length} OR t.steam_title ILIKE $${params.length})`);
+  }
+  if (env) {
+    params.push(env);
+    conditions.push(`t.env = $${params.length}`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const safeSort = ADMIN_SORTS.includes(sort) ? sort : 'name';
+  const orderBy = {
+    name: 't.track ASC, t.env ASC',
+    plays: 'race_count DESC NULLS LAST, t.track ASC',
+    last_played: 'last_played DESC NULLS LAST, t.track ASC',
+    steam_score: 't.steam_score DESC NULLS LAST, t.track ASC',
+  }[safeSort];
+
+  const lp = params.length + 1;
+  const op = params.length + 2;
+
+  const { rows } = await pool.query(`
+    SELECT
+      t.id, t.env, t.track, t.steam_id, t.steam_title,
+      t.steam_author_name, t.steam_preview_url, t.steam_score,
+      t.steam_fetched_at, t.duration_ms,
+      COALESCE(rc.race_count, 0)::int  AS race_count,
+      rc.last_played,
+      COALESCE(plc.playlist_count, 0)::int AS playlist_count,
+      COALESCE(cc.comment_count, 0)::int   AS comment_count,
+      COALESCE(utc.user_tag_count, 0)::int AS user_tag_count,
+      COALESCE(tc.tag_count, 0)::int       AS tag_count
+    FROM tracks t
+    LEFT JOIN (
+      SELECT env, track, COUNT(*)::int AS race_count, MAX(started_at) AS last_played
+      FROM races GROUP BY env, track
+    ) rc ON rc.env = t.env AND rc.track = t.track
+    LEFT JOIN (
+      SELECT env, track, COUNT(DISTINCT playlist_id)::int AS playlist_count
+      FROM playlist_tracks WHERE env IS NOT NULL AND env <> ''
+      GROUP BY env, track
+    ) plc ON plc.env = t.env AND plc.track = t.track
+    LEFT JOIN (
+      SELECT track_id, COUNT(*)::int AS comment_count
+      FROM track_comments WHERE deleted_at IS NULL GROUP BY track_id
+    ) cc ON cc.track_id = t.id
+    LEFT JOIN (
+      SELECT track_id, COUNT(DISTINCT label)::int AS user_tag_count
+      FROM track_user_tags GROUP BY track_id
+    ) utc ON utc.track_id = t.id
+    LEFT JOIN (
+      SELECT track_id, COUNT(*)::int AS tag_count
+      FROM track_tags GROUP BY track_id
+    ) tc ON tc.track_id = t.id
+    ${whereClause}
+    ORDER BY ${orderBy}
+    LIMIT $${lp} OFFSET $${op}
+  `, [...params, limit, offset]);
+
+  const { rows: [{ total }] } = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM tracks t ${whereClause}`,
+    params
+  );
+
+  return { tracks: rows, total };
+}
+
+async function getTrackPlaylistMemberships(trackId) {
+  const pool = getPool();
+  const { rows: [track] } = await pool.query(
+    'SELECT env, track FROM tracks WHERE id = $1',
+    [trackId]
+  );
+  if (!track) return [];
+  const { rows } = await pool.query(`
+    SELECT pt.id AS playlist_track_id, pt.playlist_id, p.name AS playlist_name,
+           pt.position, pt.race
+    FROM playlist_tracks pt
+    JOIN playlists p ON p.id = pt.playlist_id
+    WHERE pt.env = $1 AND pt.track = $2
+    ORDER BY p.name ASC
+  `, [track.env, track.track]);
+  return rows;
+}
+
+async function getAdminTrackComments(trackId) {
+  const { rows } = await getPool().query(`
+    SELECT id, author_name, is_known_pilot, body, created_at, deleted_at
+    FROM track_comments
+    WHERE track_id = $1
+    ORDER BY created_at DESC
+  `, [trackId]);
+  return rows;
+}
+
+async function deleteUserTagLabel(trackId, label) {
+  await getPool().query(
+    'DELETE FROM track_user_tags WHERE track_id = $1 AND label = $2',
+    [trackId, label.toLowerCase()]
+  );
+}
+
 module.exports = {
   getBrowseTracks,
   getTrackDetailByEnvTrack,
@@ -251,4 +362,8 @@ module.exports = {
   getRecentTagCount,
   incrementSkipCount,
   incrementExtendCount,
+  getAdminTrackList,
+  getTrackPlaylistMemberships,
+  getAdminTrackComments,
+  deleteUserTagLabel,
 };

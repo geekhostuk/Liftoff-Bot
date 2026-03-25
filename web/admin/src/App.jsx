@@ -14,6 +14,7 @@ import Tags from './pages/Tags.jsx';
 import Competition from './pages/Competition.jsx';
 import ChatBeta from './pages/ChatBeta.jsx';
 import AutoMessages from './pages/AutoMessages.jsx';
+import TrackManagerBeta from './pages/TrackManagerBeta.jsx';
 
 function AuthGate({ children }) {
   const { user, checking } = useAuth();
@@ -41,6 +42,7 @@ export default function App() {
                   <Route path="/admin/competition" element={<Competition />} />
                   <Route path="/admin/chat-beta" element={<ChatBeta />} />
                   <Route path="/admin/auto-messages" element={<AutoMessages />} />
+                  <Route path="/admin/track-manager" element={<TrackManagerBeta />} />
                 </Route>
               </Routes>
             </WebSocketProvider>
