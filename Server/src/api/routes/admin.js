@@ -562,14 +562,16 @@ router.post('/tracks/steam-fetch-all', strictLimiter, async (req, res) => {
 
 router.get('/tracks/steam-image-proxy', async (req, res) => {
   const { url } = req.query;
-  if (!url || !url.startsWith('https://steamuserimages-a.akamaihd.net/') && !url.startsWith('https://clan.akamai.steamstatic.com/') && !url.startsWith('https://clan.cloudflare.steamstatic.com/')) {
+  const allowed = ['https://steamuserimages-a.akamaihd.net/', 'https://clan.akamai.steamstatic.com/', 'https://clan.cloudflare.steamstatic.com/', 'https://steamcdn-a.akamaihd.net/'];
+  if (!url || !allowed.some(prefix => url.startsWith(prefix))) {
     return res.status(400).json({ error: 'Invalid image URL' });
   }
   const upstream = await fetch(url);
   if (!upstream.ok) return res.status(502).json({ error: 'Failed to fetch image' });
   res.set('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
   res.set('Cache-Control', 'public, max-age=86400');
-  upstream.body.pipe(res);
+  const buffer = await upstream.arrayBuffer();
+  res.send(Buffer.from(buffer));
 });
 
 router.put('/tracks/:id/duration', async (req, res) => {
