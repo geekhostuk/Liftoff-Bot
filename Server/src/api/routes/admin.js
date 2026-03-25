@@ -538,7 +538,7 @@ router.post('/tracks/:id/steam-fetch', strictLimiter, async (req, res) => {
 
 router.post('/tracks/steam-fetch-all', strictLimiter, async (req, res) => {
   const tracks = await db.getTracks();
-  const withSteamId = tracks.filter(t => t.steam_id);
+  const withSteamId = tracks.filter(t => t.steam_id && !t.steam_fetched_at);
 
   let updated = 0;
   let skipped = 0;
