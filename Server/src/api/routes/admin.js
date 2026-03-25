@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const rt = require('../realtimeClient');
 const db = require('../../database');
 const { recalculateWeek } = require('../../competitionScoring');
+const { fetchWorkshopItem, resolveAuthorName } = require('../../steamWorkshop');
 const { hashPassword, verifyPassword, createSession, getSession, destroySession, destroyUserSessions } = require('../../auth');
 
 const router = Router();
@@ -519,6 +520,58 @@ router.put('/tracks/:id/steam-id', async (req, res) => {
   const row = await db.updateTrackSteamId(Number(req.params.id), steam_id);
   if (!row) return res.status(404).json({ error: 'Track not found' });
   res.json(row);
+});
+
+router.post('/tracks/:id/steam-fetch', strictLimiter, async (req, res) => {
+  const track = await db.getTrackById(Number(req.params.id));
+  if (!track) return res.status(404).json({ error: 'Track not found' });
+  if (!track.steam_id) return res.status(400).json({ error: 'Track has no steam_id set' });
+
+  const item = await fetchWorkshopItem(track.steam_id);
+  if (!item) return res.status(404).json({ error: 'Workshop item not found on Steam' });
+
+  item.authorName = await resolveAuthorName(item.authorId);
+
+  const row = await db.updateTrackSteamData(track.id, item);
+  res.json(row);
+});
+
+router.post('/tracks/steam-fetch-all', strictLimiter, async (req, res) => {
+  const tracks = await db.getTracks();
+  const withSteamId = tracks.filter(t => t.steam_id && !t.steam_fetched_at);
+
+  let updated = 0;
+  let skipped = 0;
+  const errors = [];
+
+  for (const track of withSteamId) {
+    try {
+      const item = await fetchWorkshopItem(track.steam_id);
+      if (!item) { skipped++; continue; }
+      item.authorName = await resolveAuthorName(item.authorId);
+      await db.updateTrackSteamData(track.id, item);
+      updated++;
+    } catch (err) {
+      errors.push({ track: `${track.env} / ${track.track}`, error: err.message });
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  res.json({ updated, skipped, errors });
+});
+
+router.get('/tracks/steam-image-proxy', async (req, res) => {
+  const { url } = req.query;
+  const allowed = ['https://images.steamusercontent.com/', 'https://steamuserimages-a.akamaihd.net/', 'https://clan.akamai.steamstatic.com/', 'https://clan.cloudflare.steamstatic.com/', 'https://steamcdn-a.akamaihd.net/'];
+  if (!url || !allowed.some(prefix => url.startsWith(prefix))) {
+    return res.status(400).json({ error: 'Invalid image URL' });
+  }
+  const upstream = await fetch(url);
+  if (!upstream.ok) return res.status(502).json({ error: 'Failed to fetch image' });
+  res.set('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
+  res.set('Cache-Control', 'public, max-age=86400');
+  const buffer = await upstream.arrayBuffer();
+  res.send(Buffer.from(buffer));
 });
 
 router.put('/tracks/:id/duration', async (req, res) => {

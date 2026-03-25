@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Map, Send } from 'lucide-react';
+import { RefreshCw, Map } from 'lucide-react';
 import { useApi } from '../hooks/useApi.js';
 import { useToast } from '../components/feedback/Toast.jsx';
 import { useWsEvent } from '../context/WebSocketContext.jsx';
@@ -13,6 +13,9 @@ export default function Tracks() {
   const [catalog, setCatalog] = useState(null);
   const [selected, setSelected] = useState(null);
 
+  const [workshopTracks, setWorkshopTracks] = useState([]);
+  const [fetchingAll, setFetchingAll] = useState(false);
+
   const loadCatalog = useCallback(async () => {
     try {
       const data = await apiFetch('GET', '/api/catalog');
@@ -22,9 +25,19 @@ export default function Tracks() {
     }
   }, [apiFetch, toast]);
 
+  const loadWorkshopTracks = useCallback(async () => {
+    try {
+      const data = await apiFetch('GET', '/api/admin/tracks');
+      setWorkshopTracks(data.filter(t => t.steam_id));
+    } catch {
+      // non-critical
+    }
+  }, [apiFetch]);
+
   useEffect(() => {
     loadCatalog();
-  }, [loadCatalog]);
+    loadWorkshopTracks();
+  }, [loadCatalog, loadWorkshopTracks]);
 
   useWsEvent('track_catalog', loadCatalog);
 
@@ -49,9 +62,25 @@ export default function Tracks() {
     setTimeout(loadCatalog, 3000);
   };
 
+  const handleFetchAll = async () => {
+    setFetchingAll(true);
+    try {
+      const result = await apiFetch('POST', '/api/admin/tracks/steam-fetch-all');
+      toast(`Fetched ${result.updated} track(s)${result.errors.length ? `, ${result.errors.length} error(s)` : ''}`, result.errors.length ? 'warning' : 'success');
+      await loadWorkshopTracks();
+    } catch {
+      toast('Fetch all failed', 'error');
+    } finally {
+      setFetchingAll(false);
+    }
+  };
+
   const envCount = catalog?.environments?.length ?? 0;
   const trackCount = catalog?.environments?.reduce((sum, e) => sum + (e.tracks?.length ?? 0), 0) ?? 0;
   const modeCount = catalog?.game_modes?.length ?? 0;
+
+  const fetchedTracks = workshopTracks.filter(t => t.steam_preview_url);
+  const unfetchedCount = workshopTracks.length - fetchedTracks.length;
 
   return (
     <div style={styles.page}>
@@ -116,9 +145,35 @@ export default function Tracks() {
           )}
         </div>
       </div>
+
+      {/* Card 3: Steam Workshop */}
+      {workshopTracks.length > 0 && (
+        <div style={styles.card}>
+          <div style={styles.catalogHeader}>
+            <h2 style={styles.cardTitle}>Steam Workshop</h2>
+            <button
+              className="btn-outline"
+              style={{ ...styles.refreshBtn, opacity: unfetchedCount === 0 ? 0.5 : 1 }}
+              onClick={handleFetchAll}
+              disabled={fetchingAll || unfetchedCount === 0}
+            >
+              <RefreshCw size={14} style={{ marginRight: 6 }} />
+              {fetchingAll ? 'Fetching…' : 'Fetch Missing'}
+            </button>
+          </div>
+
+          <div style={styles.statusLine}>
+            <span style={styles.statBadge}>{workshopTracks.length} with Steam ID</span>
+            <span style={styles.statBadge}>{fetchedTracks.length} fetched</span>
+            {unfetchedCount > 0 && <span style={styles.statBadge}>{unfetchedCount} missing</span>}
+            {unfetchedCount === 0 && <span style={styles.timestamp}>All tracks fetched</span>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 const styles = {
   page: {
@@ -182,6 +237,7 @@ const styles = {
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: '0.75rem',
+    marginBottom: '0.75rem',
   },
   statBadge: {
     background: 'var(--bg-surface-alt)',

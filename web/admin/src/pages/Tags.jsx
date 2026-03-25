@@ -8,8 +8,8 @@ import Badge from '../components/feedback/Badge.jsx';
 import SearchInput from '../components/data/SearchInput.jsx';
 import ConfirmButton from '../components/form/ConfirmButton.jsx';
 import EmptyState from '../components/data/EmptyState.jsx';
-import { fmtMs, fmtCountdown } from '../lib/fmt.js';
-import { Tag, Plus, Trash2, Play, Square, SkipForward, Search, Check, X } from 'lucide-react';
+import { fmtMs, fmtCountdown, fmtDateTime } from '../lib/fmt.js';
+import { Tag, Plus, Trash2, Play, Square, SkipForward, Search, Check, X, RefreshCw } from 'lucide-react';
 
 const cardStyle = {
   background: 'var(--bg-surface)',
@@ -185,6 +185,12 @@ export default function Tags() {
   const saveSteamId = async () => {
     if (!selectedTrackId) return;
     await apiCall('PUT', `/api/admin/tracks/${selectedTrackId}/steam-id`, { steam_id: steamId }, 'Steam ID saved');
+    loadTracks();
+  };
+
+  const fetchSteamData = async () => {
+    if (!selectedTrackId) return;
+    await apiCall('POST', `/api/admin/tracks/${selectedTrackId}/steam-fetch`, null, 'Steam data fetched');
     loadTracks();
   };
 
@@ -422,7 +428,7 @@ export default function Tags() {
               </div>
 
               {/* Steam ID */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Steam ID</span>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <input
@@ -433,7 +439,53 @@ export default function Tags() {
                     style={{ ...inputStyle, flex: 1 }}
                   />
                   <button onClick={saveSteamId} style={btnPrimary}>Save</button>
+                  <button
+                    onClick={fetchSteamData}
+                    disabled={!selectedTrack?.steam_id}
+                    style={{ ...btnOutline, display: 'flex', alignItems: 'center', gap: '0.375rem' }}
+                    title="Fetch metadata from Steam Workshop"
+                  >
+                    <RefreshCw size={13} /> Fetch
+                  </button>
                 </div>
+
+                {/* Steam Workshop preview */}
+                {selectedTrack?.steam_fetched_at && (
+                  <div style={{ display: 'flex', gap: '0.75rem', padding: '0.625rem', background: 'var(--bg-surface-alt, rgba(255,255,255,0.04))', borderRadius: 'var(--radius-sm, 4px)', border: '1px solid var(--border-color)' }}>
+                    {selectedTrack.steam_preview_url && (
+                      <a href={`https://steamcommunity.com/sharedfiles/filedetails/?id=${selectedTrack.steam_id}`} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
+                        <img src={`/api/admin/tracks/steam-image-proxy?url=${encodeURIComponent(selectedTrack.steam_preview_url)}`} alt="Workshop preview" style={{ width: 100, height: 56, objectFit: 'cover', borderRadius: 3, display: 'block' }} />
+                      </a>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0, fontSize: '0.8125rem' }}>
+                      {selectedTrack.steam_title && (
+                        <span style={{ fontWeight: 600, color: 'var(--color-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedTrack.steam_title}</span>
+                      )}
+                      {selectedTrack.steam_author_id && (
+                        <a
+                          href={`https://steamcommunity.com/profiles/${selectedTrack.steam_author_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: 'var(--color-primary)', textDecoration: 'none', fontSize: '0.8rem' }}
+                        >
+                          {selectedTrack.steam_author_name || selectedTrack.steam_author_id}
+                        </a>
+                      )}
+                      <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--color-text-muted)', fontSize: '0.775rem' }}>
+                        {selectedTrack.steam_subscriptions != null && <span>⭐ {selectedTrack.steam_subscriptions.toLocaleString()} subs</span>}
+                        {selectedTrack.steam_score != null && <span>👍 {Math.round(selectedTrack.steam_score * 100)}%</span>}
+                      </div>
+                      {selectedTrack.steam_description && (
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.775rem', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                          {selectedTrack.steam_description}
+                        </span>
+                      )}
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: '0.725rem' }}>
+                        Fetched {fmtDateTime(selectedTrack.steam_fetched_at)}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Duration override */}

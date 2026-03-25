@@ -114,6 +114,42 @@ async function updateTrackDuration(trackId, duration_ms) {
   return row || null;
 }
 
+async function updateTrackSteamData(trackId, data) {
+  const { rows: [row] } = await getPool().query(`
+    UPDATE tracks SET
+      steam_title        = $1,
+      steam_author_id    = $2,
+      steam_author_name  = $3,
+      steam_preview_url  = $4,
+      steam_description  = $5,
+      steam_subscriptions = $6,
+      steam_votes_up     = $7,
+      steam_votes_down   = $8,
+      steam_score        = $9,
+      steam_tags         = $10,
+      steam_time_created = $11,
+      steam_time_updated = $12,
+      steam_fetched_at   = NOW()
+    WHERE id = $13
+    RETURNING *
+  `, [
+    data.title,
+    data.authorId,
+    data.authorName ?? null,
+    data.previewUrl,
+    data.description,
+    data.subscriptions,
+    data.votesUp,
+    data.votesDown,
+    data.score,
+    data.tags ?? [],
+    data.timeCreated,
+    data.timeUpdated,
+    trackId,
+  ]);
+  return row || null;
+}
+
 // ── Track-tag assignment ────────────────────────────────────────────────────
 
 async function getTagsForTrack(trackId) {
@@ -270,6 +306,7 @@ module.exports = {
   updateTrackLocalId,
   updateTrackSteamId,
   updateTrackDuration,
+  updateTrackSteamData,
   // Track-tag assignment
   getTagsForTrack,
   getTracksForTag,
