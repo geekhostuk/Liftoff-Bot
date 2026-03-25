@@ -73,3 +73,61 @@ export function getTracks() {
 export function getTrackLeaderboard(env, track) {
   return get(`/api/leaderboard/track?env=${encodeURIComponent(env)}&track=${encodeURIComponent(track)}`);
 }
+
+// ── Track browser ────────────────────────────────────────────────────────
+
+export function getBrowseTracks({ search = '', sort = 'name', limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (sort) params.set('sort', sort);
+  params.set('limit', limit);
+  params.set('offset', offset);
+  return get(`/api/browse?${params}`);
+}
+
+export function getTrackDetail(env, track) {
+  return get(`/api/browse/${encodeURIComponent(env)}/${encodeURIComponent(track)}`);
+}
+
+export function getTrackDetailLeaderboard(env, track) {
+  return get(`/api/browse/${encodeURIComponent(env)}/${encodeURIComponent(track)}/leaderboard`);
+}
+
+export function getTrackComments(env, track, { limit = 50, offset = 0 } = {}) {
+  return get(`/api/browse/${encodeURIComponent(env)}/${encodeURIComponent(track)}/comments?limit=${limit}&offset=${offset}`);
+}
+
+export async function postTrackComment(env, track, { authorName, body }) {
+  const res = await fetch(`/api/browse/${encodeURIComponent(env)}/${encodeURIComponent(track)}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ author_name: authorName, body }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export function getTrackUserTags(env, track) {
+  return get(`/api/browse/${encodeURIComponent(env)}/${encodeURIComponent(track)}/user-tags`);
+}
+
+export async function postUserTagVote(env, track, label) {
+  const res = await fetch(`/api/browse/${encodeURIComponent(env)}/${encodeURIComponent(track)}/user-tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export function imageProxyUrl(steamUrl) {
+  if (!steamUrl) return null;
+  return `/api/image-proxy?url=${encodeURIComponent(steamUrl)}`;
+}

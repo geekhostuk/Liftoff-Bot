@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import RankMedal from '../ui/RankMedal';
 import Badge from '../ui/Badge';
-import { fmtMs } from '../../lib/fmt';
+import { fmtMs, browsePath } from '../../lib/fmt';
 import './TrackPanel.css';
 
 function useElapsed(since) {
@@ -48,7 +48,7 @@ export default function TrackPanel({ currentTrack, trackSince, trackRecord }) {
       </div>
       <div className="track-panel-track">
         {env && <span className="track-panel-env">{env}</span>}
-        <Link to="/tracks" className="track-panel-name track-panel-link">{track}</Link>
+        <Link to={browsePath(env, track)} className="track-panel-name track-panel-link">{track}</Link>
       </div>
       <div className="track-panel-meta">
         {elapsed && (

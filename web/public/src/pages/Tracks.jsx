@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import useApi from '../hooks/useApi';
 import { getTracks } from '../lib/api';
 import { Loading, ErrorState, Empty } from '../components/ui/EmptyState';
+import { browsePath } from '../lib/fmt';
 import './Tracks.css';
 
 export default function Tracks() {
@@ -53,7 +55,7 @@ export default function Tracks() {
               {data.upcoming.map((t, i) => (
                 <li key={i} className="track-item">
                   <span className="track-index">{i + 1}</span>
-                  <span className="track-name">{t.track}</span>
+                  <Link to={browsePath(t.env, t.track)} className="track-name track-link">{t.track}</Link>
                   <span className="track-env">{t.env}</span>
                 </li>
               ))}
@@ -73,7 +75,7 @@ export default function Tracks() {
               <tbody>
                 {data.recent_tracks.map((t, i) => (
                   <tr key={i}>
-                    <td>{t.track}</td>
+                    <td><Link to={browsePath(t.env, t.track)} className="track-link">{t.track}</Link></td>
                     <td>{t.env}</td>
                     <td className="time-ago">{timeAgo(t.last_played)}</td>
                   </tr>
@@ -164,7 +166,7 @@ function PlaylistCard({ playlist, defaultOpen }) {
             return (
               <li key={i} className={`track-item${isCurrent ? ' current' : ''}`}>
                 <span className="track-index">{i + 1}</span>
-                <span className="track-name">{t.track}</span>
+                <Link to={browsePath(t.env, t.track)} className="track-name track-link">{t.track}</Link>
                 <span className="track-env">{t.env}</span>
               </li>
             );

@@ -7,6 +7,7 @@ const links = [
   { to: '/', label: 'Home' },
   { to: '/live', label: 'Live' },
   { to: '/tracks', label: 'Tracks' },
+  { to: '/browse', label: 'Browse' },
   { to: '/competition', label: 'Competition' },
   { to: '/pilots', label: 'Pilots' },
   { to: '/how-it-works', label: 'How It Works' },

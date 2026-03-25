@@ -63,13 +63,13 @@ async function getBestLapsByTrack(env, track, { limit = 100 } = {}) {
   const { rows } = await getPool().query(`
     SELECT
       COALESCE(l.steam_id, l.pilot_guid, l.nick) AS pilot_key,
-      l.nick, l.pilot_guid, l.steam_id,
+      (ARRAY_AGG(l.nick ORDER BY l.lap_ms ASC))[1] AS nick,
       MIN(l.lap_ms)  AS best_lap_ms,
       COUNT(*)       AS total_laps
     FROM laps l
     JOIN races r ON l.race_id = r.id
     WHERE r.env = $1 AND r.track = $2
-    GROUP BY COALESCE(l.steam_id, l.pilot_guid, l.nick), l.nick, l.pilot_guid, l.steam_id
+    GROUP BY COALESCE(l.steam_id, l.pilot_guid, l.nick)
     ORDER BY best_lap_ms ASC
     LIMIT $3
   `, [env, track, limit]);

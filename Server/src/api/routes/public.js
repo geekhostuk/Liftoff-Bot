@@ -6,8 +6,33 @@
  */
 
 const { Router } = require('express');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const db = require('../../database');
 const rt = require('../realtimeClient');
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function hashIp(ip) {
+  const salt = process.env.IP_HASH_SALT || 'liftoff';
+  return crypto.createHash('sha256').update(ip + salt).digest('hex');
+}
+
+const commentLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many comments — try again in 10 minutes' },
+});
+
+const tagLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many tag votes — try again in 10 minutes' },
+});
 
 const router = Router();
 
@@ -186,6 +211,118 @@ router.get('/tracks', async (req, res) => {
     current_track: playlist.current_track,
     next_change_at: playlist.next_change_at,
   });
+});
+
+// ── Public image proxy (Steam CDN images) ───────────────────────────────────
+
+const ALLOWED_IMAGE_PREFIXES = [
+  'https://images.steamusercontent.com/',
+  'https://steamuserimages-a.akamaihd.net/',
+  'https://clan.akamai.steamstatic.com/',
+  'https://clan.cloudflare.steamstatic.com/',
+  'https://steamcdn-a.akamaihd.net/',
+];
+
+router.get('/image-proxy', async (req, res) => {
+  const { url } = req.query;
+  if (!url || !ALLOWED_IMAGE_PREFIXES.some(p => url.startsWith(p))) {
+    return res.status(400).json({ error: 'Invalid image URL' });
+  }
+  try {
+    const upstream = await fetch(url);
+    if (!upstream.ok) return res.status(502).json({ error: 'Failed to fetch image' });
+    res.set('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    const buffer = await upstream.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch {
+    res.status(502).json({ error: 'Failed to fetch image' });
+  }
+});
+
+// ── Track browser ────────────────────────────────────────────────────────────
+
+router.get('/browse', async (req, res) => {
+  const search = req.query.search || '';
+  const sort = req.query.sort || 'name';
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+  res.json(await db.getBrowseTracks({ search, sort, limit, offset }));
+});
+
+router.get('/browse/:env/:track', async (req, res) => {
+  const env = decodeURIComponent(req.params.env);
+  const track = decodeURIComponent(req.params.track);
+  const row = await db.getTrackDetailByEnvTrack(env, track);
+  if (!row) return res.status(404).json({ error: 'Track not found' });
+  res.json(row);
+});
+
+router.get('/browse/:env/:track/leaderboard', async (req, res) => {
+  const env = decodeURIComponent(req.params.env);
+  const track = decodeURIComponent(req.params.track);
+  const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+  res.json(await db.getBestLapsByTrack(env, track, { limit }));
+});
+
+router.get('/browse/:env/:track/comments', async (req, res) => {
+  const env = decodeURIComponent(req.params.env);
+  const track = decodeURIComponent(req.params.track);
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+  const row = await db.getTrackDetailByEnvTrack(env, track);
+  if (!row) return res.status(404).json({ error: 'Track not found' });
+  res.json(await db.getTrackComments(row.id, { limit, offset }));
+});
+
+router.post('/browse/:env/:track/comments', commentLimiter, async (req, res) => {
+  const env = decodeURIComponent(req.params.env);
+  const track = decodeURIComponent(req.params.track);
+  const { author_name, body } = req.body;
+
+  if (!author_name || typeof author_name !== 'string' || author_name.trim().length < 1 || author_name.trim().length > 50) {
+    return res.status(400).json({ error: 'author_name must be 1–50 characters' });
+  }
+  if (!body || typeof body !== 'string' || body.trim().length < 1 || body.trim().length > 500) {
+    return res.status(400).json({ error: 'body must be 1–500 characters' });
+  }
+
+  const row = await db.getTrackDetailByEnvTrack(env, track);
+  if (!row) return res.status(404).json({ error: 'Track not found' });
+
+  const ipHash = hashIp(req.ip || '');
+  const isKnownPilot = await db.isKnownPilotName(author_name.trim());
+  const comment = await db.addTrackComment(row.id, {
+    authorName: author_name.trim(),
+    isKnownPilot,
+    body: body.trim(),
+    ipHash,
+  });
+  res.status(201).json(comment);
+});
+
+router.get('/browse/:env/:track/user-tags', async (req, res) => {
+  const env = decodeURIComponent(req.params.env);
+  const track = decodeURIComponent(req.params.track);
+  const row = await db.getTrackDetailByEnvTrack(env, track);
+  if (!row) return res.status(404).json({ error: 'Track not found' });
+  res.json(await db.getTrackUserTags(row.id));
+});
+
+router.post('/browse/:env/:track/user-tags', tagLimiter, async (req, res) => {
+  const env = decodeURIComponent(req.params.env);
+  const track = decodeURIComponent(req.params.track);
+  const { label } = req.body;
+
+  if (!label || typeof label !== 'string' || label.trim().length < 1 || label.trim().length > 30) {
+    return res.status(400).json({ error: 'label must be 1–30 characters' });
+  }
+
+  const row = await db.getTrackDetailByEnvTrack(env, track);
+  if (!row) return res.status(404).json({ error: 'Track not found' });
+
+  const ipHash = hashIp(req.ip || '');
+  res.json(await db.addOrVoteUserTag(row.id, label.trim(), ipHash));
 });
 
 module.exports = router;

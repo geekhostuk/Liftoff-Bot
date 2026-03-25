@@ -102,11 +102,17 @@ function checkSkipVoteThreshold() {
       return;
     }
     _sendCommand({ cmd: 'send_chat', message: '<color=#00FF00>VOTE PASSED</color> <color=#FFFF00>Track will change in 10 seconds...</color>' });
+    const trackToSkip = state.getCurrentTrack();
     setTimeout(() => {
       const current = _getActiveRunner();
       if (!current) return;
       current.runner.skipToNext();
     }, 10_000);
+    if (trackToSkip) {
+      const db = require('./database');
+      db.incrementSkipCount(trackToSkip.env, trackToSkip.track)
+        .catch(err => console.error('[skipVote] persist skip count failed:', err));
+    }
   }
 }
 
