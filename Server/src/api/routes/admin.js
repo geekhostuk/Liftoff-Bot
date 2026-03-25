@@ -562,7 +562,7 @@ router.post('/tracks/steam-fetch-all', strictLimiter, async (req, res) => {
 
 router.get('/tracks/steam-image-proxy', async (req, res) => {
   const { url } = req.query;
-  const allowed = ['https://steamuserimages-a.akamaihd.net/', 'https://clan.akamai.steamstatic.com/', 'https://clan.cloudflare.steamstatic.com/', 'https://steamcdn-a.akamaihd.net/'];
+  const allowed = ['https://images.steamusercontent.com/', 'https://steamuserimages-a.akamaihd.net/', 'https://clan.akamai.steamstatic.com/', 'https://clan.cloudflare.steamstatic.com/', 'https://steamcdn-a.akamaihd.net/'];
   if (!url || !allowed.some(prefix => url.startsWith(prefix))) {
     return res.status(400).json({ error: 'Invalid image URL' });
   }
