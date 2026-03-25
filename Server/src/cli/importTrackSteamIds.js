@@ -31,8 +31,8 @@ if (!fs.existsSync(csvPath)) {
 }
 
 function parseCSV(content) {
-  const lines = content.split(/\r?\n/).filter(l => l.trim());
-  const headers = lines[0].replace(/"/g, '').split(',');
+  const lines = content.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
+  const headers = lines[0].replace(/"/g, '').split(',').map(h => h.trim());
 
   return lines.slice(1).map(line => {
     // Handle quoted fields (some values contain commas in path)
