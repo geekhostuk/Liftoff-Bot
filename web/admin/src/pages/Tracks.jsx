@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Map, Send } from 'lucide-react';
+import { RefreshCw, Map, ExternalLink } from 'lucide-react';
 import { useApi } from '../hooks/useApi.js';
 import { useToast } from '../components/feedback/Toast.jsx';
 import { useWsEvent } from '../context/WebSocketContext.jsx';
@@ -13,6 +13,9 @@ export default function Tracks() {
   const [catalog, setCatalog] = useState(null);
   const [selected, setSelected] = useState(null);
 
+  const [workshopTracks, setWorkshopTracks] = useState([]);
+  const [fetchingAll, setFetchingAll] = useState(false);
+
   const loadCatalog = useCallback(async () => {
     try {
       const data = await apiFetch('GET', '/api/catalog');
@@ -22,9 +25,19 @@ export default function Tracks() {
     }
   }, [apiFetch, toast]);
 
+  const loadWorkshopTracks = useCallback(async () => {
+    try {
+      const data = await apiFetch('GET', '/api/admin/tracks');
+      setWorkshopTracks(data.filter(t => t.steam_id));
+    } catch {
+      // non-critical
+    }
+  }, [apiFetch]);
+
   useEffect(() => {
     loadCatalog();
-  }, [loadCatalog]);
+    loadWorkshopTracks();
+  }, [loadCatalog, loadWorkshopTracks]);
 
   useWsEvent('track_catalog', loadCatalog);
 
@@ -49,9 +62,25 @@ export default function Tracks() {
     setTimeout(loadCatalog, 3000);
   };
 
+  const handleFetchAll = async () => {
+    setFetchingAll(true);
+    try {
+      const result = await apiFetch('POST', '/api/admin/tracks/steam-fetch-all');
+      toast(`Fetched ${result.updated} track(s)${result.errors.length ? `, ${result.errors.length} error(s)` : ''}`, result.errors.length ? 'warning' : 'success');
+      await loadWorkshopTracks();
+    } catch {
+      toast('Fetch all failed', 'error');
+    } finally {
+      setFetchingAll(false);
+    }
+  };
+
   const envCount = catalog?.environments?.length ?? 0;
   const trackCount = catalog?.environments?.reduce((sum, e) => sum + (e.tracks?.length ?? 0), 0) ?? 0;
   const modeCount = catalog?.game_modes?.length ?? 0;
+
+  const fetchedTracks = workshopTracks.filter(t => t.steam_preview_url);
+  const unfetchedCount = workshopTracks.length - fetchedTracks.length;
 
   return (
     <div style={styles.page}>
@@ -116,9 +145,153 @@ export default function Tracks() {
           )}
         </div>
       </div>
+
+      {/* Card 3: Steam Workshop */}
+      {workshopTracks.length > 0 && (
+        <div style={styles.card}>
+          <div style={styles.catalogHeader}>
+            <h2 style={styles.cardTitle}>Steam Workshop</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {unfetchedCount > 0 && (
+                <span style={styles.timestamp}>{unfetchedCount} not yet fetched</span>
+              )}
+              <button
+                className="btn-outline"
+                style={styles.refreshBtn}
+                onClick={handleFetchAll}
+                disabled={fetchingAll}
+              >
+                <RefreshCw size={14} style={{ marginRight: 6, animation: fetchingAll ? 'spin 1s linear infinite' : 'none' }} />
+                {fetchingAll ? 'Fetching…' : 'Fetch All'}
+              </button>
+            </div>
+          </div>
+
+          <div style={styles.statusLine}>
+            <span style={styles.statBadge}>{workshopTracks.length} with Steam ID</span>
+            <span style={styles.statBadge}>{fetchedTracks.length} fetched</span>
+          </div>
+
+          {fetchedTracks.length > 0 && (
+            <div style={styles.workshopGrid}>
+              {fetchedTracks.map(track => (
+                <WorkshopCard key={track.id} track={track} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
+
+function WorkshopCard({ track }) {
+  return (
+    <div style={cardStyles.wrapper}>
+      <a
+        href={`https://steamcommunity.com/sharedfiles/filedetails/?id=${track.steam_id}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ display: 'block', flexShrink: 0 }}
+      >
+        {track.steam_preview_url
+          ? <img src={track.steam_preview_url} alt={track.steam_title || track.track} style={cardStyles.img} />
+          : <div style={cardStyles.imgPlaceholder} />
+        }
+      </a>
+      <div style={cardStyles.body}>
+        <div style={cardStyles.title} title={track.steam_title || track.track}>
+          {track.steam_title || track.track}
+        </div>
+        <div style={cardStyles.env}>{track.env}</div>
+        {track.steam_author_id && (
+          <a
+            href={`https://steamcommunity.com/profiles/${track.steam_author_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={cardStyles.author}
+          >
+            {track.steam_author_name || track.steam_author_id}
+          </a>
+        )}
+        <div style={cardStyles.meta}>
+          {track.steam_subscriptions != null && (
+            <span>⭐ {track.steam_subscriptions.toLocaleString()}</span>
+          )}
+          {track.steam_score != null && (
+            <span>👍 {Math.round(track.steam_score * 100)}%</span>
+          )}
+          <a
+            href={`https://steamcommunity.com/sharedfiles/filedetails/?id=${track.steam_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ marginLeft: 'auto', color: 'var(--color-primary)' }}
+            title="Open on Steam"
+          >
+            <ExternalLink size={12} />
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const cardStyles = {
+  wrapper: {
+    display: 'flex',
+    flexDirection: 'column',
+    background: 'var(--bg-surface-alt, rgba(255,255,255,0.04))',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--radius-sm, 4px)',
+    overflow: 'hidden',
+  },
+  img: {
+    width: '100%',
+    aspectRatio: '16/9',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  imgPlaceholder: {
+    width: '100%',
+    aspectRatio: '16/9',
+    background: 'var(--bg-surface)',
+  },
+  body: {
+    padding: '0.5rem 0.625rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.2rem',
+    flex: 1,
+  },
+  title: {
+    fontWeight: 600,
+    fontSize: '0.8125rem',
+    color: 'var(--text-primary)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  env: {
+    fontSize: '0.75rem',
+    color: 'var(--text-muted)',
+  },
+  author: {
+    fontSize: '0.775rem',
+    color: 'var(--color-primary)',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  meta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    fontSize: '0.75rem',
+    color: 'var(--text-muted)',
+    marginTop: '0.125rem',
+  },
+};
 
 const styles = {
   page: {
@@ -182,6 +355,7 @@ const styles = {
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: '0.75rem',
+    marginBottom: '0.75rem',
   },
   statBadge: {
     background: 'var(--bg-surface-alt)',
@@ -195,5 +369,10 @@ const styles = {
     color: 'var(--text-muted)',
     fontSize: '0.82rem',
     marginLeft: 'auto',
+  },
+  workshopGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+    gap: '0.75rem',
   },
 };
