@@ -454,7 +454,7 @@ export default function Tags() {
                   <div style={{ display: 'flex', gap: '0.75rem', padding: '0.625rem', background: 'var(--bg-surface-alt, rgba(255,255,255,0.04))', borderRadius: 'var(--radius-sm, 4px)', border: '1px solid var(--border-color)' }}>
                     {selectedTrack.steam_preview_url && (
                       <a href={`https://steamcommunity.com/sharedfiles/filedetails/?id=${selectedTrack.steam_id}`} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
-                        <img src={selectedTrack.steam_preview_url} alt="Workshop preview" style={{ width: 100, height: 56, objectFit: 'cover', borderRadius: 3, display: 'block' }} />
+                        <img src={`/api/admin/tracks/steam-image-proxy?url=${encodeURIComponent(selectedTrack.steam_preview_url)}`} alt="Workshop preview" style={{ width: 100, height: 56, objectFit: 'cover', borderRadius: 3, display: 'block' }} />
                       </a>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0, fontSize: '0.8125rem' }}>

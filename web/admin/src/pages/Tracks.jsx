@@ -195,7 +195,7 @@ function WorkshopCard({ track }) {
         style={{ display: 'block', flexShrink: 0 }}
       >
         {track.steam_preview_url
-          ? <img src={track.steam_preview_url} alt={track.steam_title || track.track} style={cardStyles.img} />
+          ? <img src={`/api/admin/tracks/steam-image-proxy?url=${encodeURIComponent(track.steam_preview_url)}`} alt={track.steam_title || track.track} style={cardStyles.img} />
           : <div style={cardStyles.imgPlaceholder} />
         }
       </a>

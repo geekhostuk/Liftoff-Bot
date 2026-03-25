@@ -560,6 +560,18 @@ router.post('/tracks/steam-fetch-all', strictLimiter, async (req, res) => {
   res.json({ updated, skipped, errors });
 });
 
+router.get('/tracks/steam-image-proxy', async (req, res) => {
+  const { url } = req.query;
+  if (!url || !url.startsWith('https://steamuserimages-a.akamaihd.net/') && !url.startsWith('https://clan.akamai.steamstatic.com/') && !url.startsWith('https://clan.cloudflare.steamstatic.com/')) {
+    return res.status(400).json({ error: 'Invalid image URL' });
+  }
+  const upstream = await fetch(url);
+  if (!upstream.ok) return res.status(502).json({ error: 'Failed to fetch image' });
+  res.set('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
+  res.set('Cache-Control', 'public, max-age=86400');
+  upstream.body.pipe(res);
+});
+
 router.put('/tracks/:id/duration', async (req, res) => {
   const { duration_ms } = req.body;
   const value = duration_ms === null || duration_ms === undefined ? null : Number(duration_ms);
