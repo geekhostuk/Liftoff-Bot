@@ -64,6 +64,16 @@ export default function TrackDetail() {
             {data.steam_tags && data.steam_tags.length > 0 && (
               <span className="track-detail-badge">{data.steam_tags.slice(0, 4).join(', ')}</span>
             )}
+            {data.steam_id && (
+              <a
+                className="track-detail-badge track-detail-workshop-link"
+                href={`https://steamcommunity.com/sharedfiles/filedetails/?id=${data.steam_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View on Steam Workshop ↗
+              </a>
+            )}
           </div>
         </div>
       </div>

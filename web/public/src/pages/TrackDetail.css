@@ -97,6 +97,17 @@
   border: 1px solid var(--border-color);
   border-radius: 999px;
   color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.track-detail-workshop-link {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.track-detail-workshop-link:hover {
+  background: var(--color-primary);
+  color: #000;
 }
 
 /* ── Stats row ─────────────────────────────────────────────────────────── */
