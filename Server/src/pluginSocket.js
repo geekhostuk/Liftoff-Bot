@@ -206,7 +206,7 @@ async function buildTemplateVars(baseVars = {}) {
     enriched.playlist ??= os.playlist_name || '';
   } catch {}
   try {
-    const week = await db.getOrCreateCurrentWeek();
+    const week = await db.getActiveWeek() || await db.getOrCreateCurrentWeek();
     if (week) {
       const standings = await db.getWeeklyStandings(week.id);
       enriched['1st'] ??= standings[0]?.display_name ?? '';

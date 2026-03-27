@@ -112,12 +112,24 @@ router.get('/stats/overview', async (req, res) => {
 // ── Competition (public) ────────────────────────────────────────────────────
 
 router.get('/competition/current', async (req, res) => {
+  // Try existing active competition first, then auto season
+  const comp = await db.getActiveCompetition();
+  if (comp) {
+    const weeks = await db.getWeeks(comp.id);
+    const currentWeek = weeks.find(w => w.status === 'active') || null;
+    const nextWeek = weeks.find(w => w.status === 'scheduled') || null;
+    return res.json({ competition: comp, current_week: currentWeek, next_week: nextWeek });
+  }
   const week = await db.getOrCreateCurrentWeek();
   if (!week) return res.json({ competition: null, current_week: null });
   res.json({ competition: { id: 0, name: week.competition_name || 'Auto Season', status: 'active' }, current_week: week, next_week: null });
 });
 
 router.get('/competition/standings', async (req, res) => {
+  // Try existing active competition week first
+  const activeWeek = await db.getActiveWeek();
+  if (activeWeek) return res.json(await db.getWeeklyStandings(activeWeek.id));
+  // Fall back to auto season
   const week = await db.getOrCreateCurrentWeek();
   if (!week) return res.json([]);
   res.json(await db.getWeeklyStandings(week.id));
@@ -128,17 +140,22 @@ router.get('/competition/standings/:weekId', async (req, res) => {
 });
 
 router.get('/competition/season', async (req, res) => {
-  // Season standings for competition_id=0 (auto season)
-  res.json(await db.getSeasonStandings(0));
+  // Use existing active competition, fall back to auto season
+  const comp = await db.getActiveCompetition();
+  const compId = comp ? comp.id : 0;
+  res.json(await db.getSeasonStandings(compId));
 });
 
 router.get('/competition/weeks', async (req, res) => {
-  // All weeks for competition_id=0 (auto season)
-  res.json(await db.getWeeks(0));
+  const comp = await db.getActiveCompetition();
+  const compId = comp ? comp.id : 0;
+  res.json(await db.getWeeks(compId));
 });
 
 router.get('/competition/pilot/:pilotKey', async (req, res) => {
-  res.json(await db.getPilotCompetitionHistory(0, decodeURIComponent(req.params.pilotKey)));
+  const comp = await db.getActiveCompetition();
+  const compId = comp ? comp.id : 0;
+  res.json(await db.getPilotCompetitionHistory(compId, decodeURIComponent(req.params.pilotKey)));
 });
 
 router.get('/competition/race/:raceId/results', async (req, res) => {
