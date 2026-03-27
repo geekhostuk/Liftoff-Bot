@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Map, MessageSquare, BotMessageSquare, ListMusic, Tag, Trophy, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { LayoutDashboard, Users, Map, MessageSquare, BotMessageSquare, ListMusic, Tag, Trophy, PanelLeftClose, PanelLeft, Library } from 'lucide-react';
 import { useWs } from '../../context/WebSocketContext.jsx';
 import StatusDot from '../feedback/StatusDot.jsx';
 import './Sidebar.css';
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/players', icon: Users, label: 'Players' },
   { to: '/admin/tracks', icon: Map, label: 'Tracks' },
+  { to: '/admin/track-manager', icon: Library, label: 'Track Manager', beta: true },
   { to: '/admin/chat', icon: MessageSquare, label: 'Chat' },
   { to: '/admin/chat-beta', icon: MessageSquare, label: 'Chat', beta: true },
   { to: '/admin/playlists', icon: ListMusic, label: 'Playlists' },
