@@ -143,6 +143,20 @@ async function main() {
     res.json(trackOverseer.getState());
   });
 
+  internal.post('/internal/overseer/next-playlist', async (req, res) => {
+    const { playlist_id, interval_ms } = req.body;
+    try {
+      res.json(await trackOverseer.setNextPlaylist(playlist_id, interval_ms));
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.delete('/internal/overseer/next-playlist', (req, res) => {
+    trackOverseer.setNextPlaylist(null);
+    res.json({ ok: true });
+  });
+
   // ── Queue ─────────────────────────────────────────────────────────────────
   internal.get('/internal/queue', async (req, res) => {
     const queue = await db.getQueue();

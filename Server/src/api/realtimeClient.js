@@ -83,6 +83,14 @@ async function skipToIndex(index) {
   return post('/internal/overseer/skip-to-index', { index });
 }
 
+async function setNextPlaylist(playlistId, intervalMs) {
+  return post('/internal/overseer/next-playlist', { playlist_id: playlistId, interval_ms: intervalMs });
+}
+
+async function clearNextPlaylist() {
+  return del('/internal/overseer/next-playlist');
+}
+
 // ── Queue ───────────────────────────────────────────────────────────────────
 
 async function getQueue() {
@@ -194,6 +202,8 @@ module.exports = {
   skipOverseer,
   extendOverseer,
   skipToIndex,
+  setNextPlaylist,
+  clearNextPlaylist,
   // Queue
   getQueue,
   addToQueue,

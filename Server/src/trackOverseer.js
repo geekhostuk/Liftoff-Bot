@@ -37,6 +37,8 @@ const state = {
   tagNames: [],
   defaultIntervalMs: DEFAULT_TAG_INTERVAL_MS,
   recentHistory: [],         // last N { env, track } pairs
+  // Next playlist (queued to auto-start when current playlist wraps)
+  nextPlaylist: null,        // { playlistId, intervalMs } or null
   // Shared
   intervalMs: DEFAULT_PLAYLIST_INTERVAL_MS,
   currentTrack: null,        // { env, track, race, workshop_id }
@@ -70,6 +72,8 @@ function getState() {
     // Tag info
     tag_names: state.tagNames,
     default_interval_ms: state.defaultIntervalMs,
+    // Next playlist
+    next_playlist: state.nextPlaylist,
     // Shared
     interval_ms: state.intervalMs,
     current_track: state.currentTrack,
@@ -97,6 +101,7 @@ async function startPlaylist(playlistId, intervalMs, startIndex = 0) {
   state.tracks = tracks;
   state.tagNames = [];
   state.recentHistory = [];
+  state.nextPlaylist = null;
 
   await _applyTrack(_getPlaylistTrack(idx), 'playlist');
   await _persistState();
@@ -153,6 +158,7 @@ function stop() {
   state.currentIndex = 0;
   state.tagNames = [];
   state.recentHistory = [];
+  state.nextPlaylist = null;
   if (wasRunning) {
     console.log('[overseer] Stopped');
     _clearPersistedState();
@@ -190,6 +196,28 @@ async function extendTimer(ms) {
   await _persistState();
   console.log(`[overseer] Extended timer by ${ms / 1000}s — next change at ${state.nextChangeAt.toISOString()}`);
   _broadcastState();
+}
+
+async function setNextPlaylist(playlistId, intervalMs) {
+  if (!playlistId) {
+    state.nextPlaylist = null;
+    console.log('[overseer] Next playlist cleared');
+    _broadcastState();
+    return { ok: true, next_playlist: null };
+  }
+  const playlist = await db.getPlaylistById(playlistId);
+  if (!playlist) throw new Error(`Playlist ${playlistId} not found`);
+  const tracks = await db.getPlaylistTracks(playlistId);
+  if (tracks.length === 0) throw new Error('Playlist is empty');
+  state.nextPlaylist = {
+    playlistId,
+    playlistName: playlist.name,
+    intervalMs: intervalMs || DEFAULT_PLAYLIST_INTERVAL_MS,
+    trackCount: tracks.length,
+  };
+  console.log(`[overseer] Next playlist queued: "${playlist.name}" (${tracks.length} tracks)`);
+  _broadcastState();
+  return { ok: true, next_playlist: state.nextPlaylist };
 }
 
 function skipToIndex(index) {
@@ -366,8 +394,19 @@ async function _advance() {
   if (state.mode === 'playlist') {
     if (state.tracks.length === 0) return;
     const prevIndex = state.currentIndex;
-    state.currentIndex = (state.currentIndex + 1) % state.tracks.length;
-    if (state.currentIndex === 0 && prevIndex !== 0) {
+    const nextIndex = (state.currentIndex + 1) % state.tracks.length;
+    const wrapped = nextIndex === 0 && prevIndex !== 0;
+
+    // If wrapping and a next playlist is queued, switch to it
+    if (wrapped && state.nextPlaylist) {
+      const np = state.nextPlaylist;
+      console.log(`[overseer] Playlist complete — switching to queued playlist "${np.playlistName}"`);
+      await startPlaylist(np.playlistId, np.intervalMs, 0);
+      return;
+    }
+
+    state.currentIndex = nextIndex;
+    if (wrapped) {
       console.log(`[overseer] Wrapped from last track (${prevIndex + 1}/${state.tracks.length}) back to track 1`);
     }
     const t = _getPlaylistTrack(state.currentIndex);
@@ -546,6 +585,7 @@ module.exports = {
   skipToIndex,
   extendTimer,
   enqueueTrack,
+  setNextPlaylist,
   getUpcoming,
   tryResume,
 };

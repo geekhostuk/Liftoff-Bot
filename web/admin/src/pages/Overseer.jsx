@@ -58,6 +58,8 @@ export default function Overseer() {
   // Start form
   const [selectedPlaylist, setSelectedPlaylist] = useState('');
   const [intervalMin, setIntervalMin] = useState(15);
+  const [nextPlaylistId, setNextPlaylistId] = useState('');
+  const [nextIntervalMin, setNextIntervalMin] = useState(15);
   const [selectedTags, setSelectedTags] = useState([]);
   const [tagIntervalMin, setTagIntervalMin] = useState(10);
 
@@ -108,6 +110,18 @@ export default function Overseer() {
     }, 'Tag mode started').then(fetchAll);
   };
 
+  const queueNextPlaylist = () => {
+    if (!nextPlaylistId) return;
+    apiCall('POST', '/api/admin/overseer/next-playlist', {
+      playlist_id: Number(nextPlaylistId),
+      interval_ms: nextIntervalMin * 60 * 1000,
+    }, 'Next playlist queued').then(fetchAll);
+  };
+
+  const clearNextPlaylist = () => {
+    apiCall('DELETE', '/api/admin/overseer/next-playlist', {}, 'Next playlist cleared').then(fetchAll);
+  };
+
   const stop = () => apiCall('POST', '/api/admin/overseer/stop', {}, 'Stopped').then(fetchAll);
   const skip = () => apiCall('POST', '/api/admin/overseer/skip', {}, 'Skipped').then(fetchAll);
   const extend = () => apiCall('POST', '/api/admin/overseer/extend', { ms: 300000 }, 'Extended +5m').then(fetchAll);
@@ -154,6 +168,12 @@ export default function Overseer() {
             <span style={styles.value}>{os.tag_names?.join(', ')}</span>
           </div>
         )}
+        {os?.next_playlist && (
+          <div style={styles.row}>
+            <span style={styles.label}>Up Next</span>
+            <span style={styles.value}>{os.next_playlist.playlistName} ({os.next_playlist.trackCount} tracks)</span>
+          </div>
+        )}
 
         <div style={{ ...styles.btnRow, marginTop: 'var(--space-md)' }}>
           <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={skip} disabled={!os?.running}>
@@ -184,6 +204,41 @@ export default function Overseer() {
           <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={startPlaylist}>
             <Play size={14} /> Start Playlist
           </button>
+
+          {/* Queue Next Playlist */}
+          {os?.running && os?.mode === 'playlist' && (
+            <div style={{ marginTop: 'var(--space-md)', paddingTop: 'var(--space-md)', borderTop: '1px solid var(--border-color)' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 'var(--space-sm)' }}>Queue Next Playlist</div>
+              {os.next_playlist ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                    Up next: <strong>{os.next_playlist.playlistName}</strong> ({os.next_playlist.trackCount} tracks)
+                  </span>
+                  <button style={{ ...styles.btn, ...styles.btnDanger, marginLeft: 'auto' }} onClick={clearNextPlaylist}>
+                    <Trash2 size={14} /> Clear
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-sm)' }}>
+                    <select style={styles.select} value={nextPlaylistId} onChange={e => setNextPlaylistId(e.target.value)}>
+                      <option value="">Select playlist...</option>
+                      {playlists.filter(p => p.id !== os.playlist_id).map(p => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.track_count} tracks)</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center', marginBottom: 'var(--space-sm)' }}>
+                    <span style={styles.label}>Interval:</span>
+                    <input type="number" style={styles.input} value={nextIntervalMin} onChange={e => setNextIntervalMin(Number(e.target.value))} min={1} /> min
+                  </div>
+                  <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={queueNextPlaylist} disabled={!nextPlaylistId}>
+                    <Plus size={14} /> Queue Next
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Start Tags */}

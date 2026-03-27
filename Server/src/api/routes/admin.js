@@ -401,6 +401,21 @@ router.post('/overseer/skip-to-index', async (req, res) => {
   res.json(await rt.skipToIndex(Number(index)));
 });
 
+router.post('/overseer/next-playlist', async (req, res) => {
+  const { playlist_id, interval_ms } = req.body;
+  if (!playlist_id) return res.status(400).json({ error: 'playlist_id is required' });
+  const intervalMs = Math.max(5000, Number(interval_ms) || 15 * 60 * 1000);
+  try {
+    res.json(await rt.setNextPlaylist(Number(playlist_id), intervalMs));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/overseer/next-playlist', async (req, res) => {
+  res.json(await rt.clearNextPlaylist());
+});
+
 // ── Queue (via realtime) ──────────────────────────────────────────────────────
 
 router.get('/queue', async (req, res) => {
