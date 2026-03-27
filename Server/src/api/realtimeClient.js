@@ -2,8 +2,8 @@
  * Realtime Client
  *
  * Thin HTTP client for the API server to communicate with the realtime server's
- * internal API. All admin routes that need plugin commands, playlist control,
- * competition runner state, idle kick, or broadcasting go through here.
+ * internal API. All admin routes that need plugin commands, track overseer,
+ * idle kick, or broadcasting go through here.
  */
 
 const REALTIME_URL = process.env.REALTIME_URL || 'http://localhost:3001';
@@ -53,43 +53,69 @@ async function setTrack(trackInfo) {
   return result.ok;
 }
 
-// ── Playlist ────────────────────────────────────────────────────────────────
+// ── Track Overseer ──────────────────────────────────────────────────────────
 
-async function startPlaylist(playlistId, intervalMs, startIndex = 0) {
-  return post('/internal/playlist/start', { playlist_id: playlistId, interval_ms: intervalMs, start_index: startIndex });
+async function getOverseerState() {
+  return get('/internal/overseer/state');
 }
 
-async function stopPlaylist() {
-  return post('/internal/playlist/stop');
+async function startOverseerPlaylist(playlistId, intervalMs, startIndex = 0) {
+  return post('/internal/overseer/start-playlist', { playlist_id: playlistId, interval_ms: intervalMs, start_index: startIndex });
 }
 
-async function skipPlaylist() {
-  return post('/internal/playlist/skip');
+async function startOverseerTags(tagNames, intervalMs) {
+  return post('/internal/overseer/start-tags', { tag_names: tagNames, interval_ms: intervalMs });
 }
 
-async function getPlaylistState() {
-  return get('/internal/playlist/state');
+async function stopOverseer() {
+  return post('/internal/overseer/stop');
 }
 
-// ── Tag runner ─────────────────────────────────────────────────────────
-
-async function startTagRunner(tagNames, intervalMs) {
-  return post('/internal/tag-runner/start', { tag_names: tagNames, interval_ms: intervalMs });
+async function skipOverseer() {
+  return post('/internal/overseer/skip');
 }
 
-async function stopTagRunner() {
-  return post('/internal/tag-runner/stop');
+async function extendOverseer(ms) {
+  return post('/internal/overseer/extend', { ms });
 }
 
-async function skipTagRunner() {
-  return post('/internal/tag-runner/skip');
+async function skipToIndex(index) {
+  return post('/internal/overseer/skip-to-index', { index });
 }
 
-async function getTagRunnerState() {
-  return get('/internal/tag-runner/state');
+// ── Queue ───────────────────────────────────────────────────────────────────
+
+async function getQueue() {
+  return get('/internal/queue');
 }
 
-// ── Tag vote ─────────────────────────────────────────────────────────
+async function addToQueue(track) {
+  return post('/internal/queue', track);
+}
+
+async function removeFromQueue(id) {
+  return del(`/internal/queue/${id}`);
+}
+
+async function reorderQueue(id, direction) {
+  return post(`/internal/queue/${id}/move`, { direction });
+}
+
+async function clearQueue() {
+  return del('/internal/queue');
+}
+
+// ── Tracks info ─────────────────────────────────────────────────────────────
+
+async function getUpcomingTracks(count = 10) {
+  return get(`/internal/tracks/upcoming?count=${count}`);
+}
+
+async function getTrackHistory(limit = 50, offset = 0) {
+  return get(`/internal/tracks/history?limit=${limit}&offset=${offset}`);
+}
+
+// ── Tag vote ─────────────────────────────────────────────────────────────
 
 async function startTagVote(tagOptions, durationMs) {
   return post('/internal/tag-vote/start', { tag_options: tagOptions, duration_ms: durationMs });
@@ -101,16 +127,6 @@ async function cancelTagVote() {
 
 async function getTagVoteState() {
   return get('/internal/tag-vote/state');
-}
-
-// ── Competition runner ──────────────────────────────────────────────────────
-
-async function getCompetitionRunnerState() {
-  return get('/internal/competition/runner/state');
-}
-
-async function setCompetitionAutoManaged(enabled) {
-  return post('/internal/competition/runner/auto', { enabled });
 }
 
 // ── Idle kick ───────────────────────────────────────────────────────────────
@@ -170,25 +186,36 @@ module.exports = {
   sendCommandAwait,
   getPluginStatus,
   setTrack,
-  startPlaylist,
-  stopPlaylist,
-  skipPlaylist,
-  getPlaylistState,
-  startTagRunner,
-  stopTagRunner,
-  skipTagRunner,
-  getTagRunnerState,
+  // Overseer
+  getOverseerState,
+  startOverseerPlaylist,
+  startOverseerTags,
+  stopOverseer,
+  skipOverseer,
+  extendOverseer,
+  skipToIndex,
+  // Queue
+  getQueue,
+  addToQueue,
+  removeFromQueue,
+  reorderQueue,
+  clearQueue,
+  // Tracks
+  getUpcomingTracks,
+  getTrackHistory,
+  // Tag vote
   startTagVote,
   cancelTagVote,
   getTagVoteState,
-  getCompetitionRunnerState,
-  setCompetitionAutoManaged,
+  // Idle kick
   getIdleKickStatus,
   getIdleKickWhitelist,
   addToIdleKickWhitelist,
   removeFromIdleKickWhitelist,
+  // Session
   syncSession,
   destroyRemoteSession,
+  // Broadcast
   broadcast,
   getTracksInfo,
   previewTemplate,

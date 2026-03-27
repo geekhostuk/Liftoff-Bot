@@ -1,6 +1,6 @@
 # Liftoff Competition
 
-Competition management platform for Liftoff FPV Simulator. Remotely control your lobby — change tracks, kick players, run playlists with scheduled rotations, tag tracks by category and run random tag-based rotations, and let pilots vote to skip, extend, or choose a track category. Run weekly competitions with automatic scoring, league tables, and a playlist calendar that auto-rotates tracks all week. Includes a Node.js backend, live spectator view, competition page, and admin dashboard. Turn casual lobbies into league nights.
+Competition management platform for Liftoff FPV Simulator. Remotely control your lobby — change tracks, kick players, run playlists with scheduled rotations, tag tracks by category and run random tag-based rotations, queue tracks for upcoming play, and let pilots vote to skip, extend, or choose a track category. Always-on weekly scoring with automatic league tables. Includes a Node.js backend, live spectator view, competition page, and admin dashboard. Turn casual lobbies into league nights.
 
 > **BepInEx game plugin** — the plugin that runs inside Liftoff lives in its own repo: [liftoff-plugin](https://github.com/geekhostuk/liftoff-plugin) (private).
 
@@ -38,14 +38,14 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 | **public-web** | Serves the public HTML/JS/CSS (live view, competition, stats, about) | `/*` |
 | **admin-web** | Serves the admin dashboard HTML/JS/CSS | `/admin/*` (Basic Auth) |
 | **api** | Express REST API — public + admin routes, auth, DB reads/writes | `/api/*` |
-| **realtime** | WebSocket servers, plugin ingestion, domain services (playlists, tag runner, competitions, idle kick, skip/extend vote, tag vote), internal API | `/ws/*` |
+| **realtime** | WebSocket servers, plugin ingestion, domain services (track overseer, idle kick, skip/extend vote, tag vote, scoring), internal API | `/ws/*` |
 | **postgres** | PostgreSQL 16 database — stores all race data, competitions, playlists, and admin users | Port 5432 (internal) |
 | **nginx** | TLS termination, path-based routing, Basic Auth for admin | Ports 80/443 |
 
 1. The **BepInEx plugin** captures Photon multiplayer events (races, laps, players, chat) inside Liftoff and sends them to the realtime server over WebSocket.
 2. The **realtime server** ingests events into PostgreSQL, manages in-memory state, runs domain services, and broadcasts updates to connected web clients.
 3. The **API server** handles REST endpoints for both public data and admin operations. Admin actions that need the plugin or domain services are forwarded to the realtime server via an internal HTTP API.
-4. The **competition runner** (in realtime) manages weekly competition lifecycles — activating weeks, rotating playlists, and auto-recovering after server reboots.
+4. The **track overseer** (in realtime) manages track rotation in playlist or tag mode, maintains a track queue, and auto-recovers after server reboots.
 5. The **admin dashboard** lets organisers control the lobby: change tracks, run playlists, send chat, manage players, and configure competitions.
 6. The **live view** gives spectators a real-time window into the current race, track, and player activity.
 7. The **competition page** shows season and weekly league tables with live-updating standings.
@@ -65,6 +65,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Create named playlists with ordered track lists
 - Start, stop, pause, and skip through playlists
 - Scheduled track rotation with configurable timing
+- Admin-only track queue — queue tracks to play next, reorder or remove queued items
 - Resume mid-playlist after server reboot with correct remaining time
 - Ideal for league nights, qualifying sessions, tournaments, and curated race events
 
@@ -76,12 +77,10 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Search and filter tracks, assign multiple tags per track via checkboxes
 - Per-track duration override — set a custom rotation time for individual tracks
 - Local ID auto-populated from catalog; Steam ID editable for future Steam API lookups
-- **Tag Runner** — standalone mode that randomly selects tracks matching one or more tags
-  - Mutually exclusive with playlist runner (starting one stops the other)
+- **Tag Runner** — a mode of the track overseer that randomly selects tracks matching one or more tags
   - Avoids recently played tracks (circular buffer of last 5)
   - Only selects tracks present in the current in-game catalog
   - Persists config to database — auto-resumes after server restart
-  - Blocked when competition runner is auto-managed
 
 ### Tag Voting
 
@@ -89,7 +88,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Players type `/tagvote` in game chat to start a vote with up to 4 random tags
 - Vote by typing `/1`, `/2`, `/3`, or `/4` in chat
 - Live tally displayed in chat after each new vote
-- When the timer expires, the winning tag loads a random track
+- When the timer expires, the winning tag queues a random track
 - Random tiebreak if multiple tags share the top vote count
 - Admin-triggered votes via dashboard with custom tag selection and duration
 - 5-minute cooldown between player-triggered votes
@@ -113,7 +112,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Players can type `/stay` in chat to reset their idle timer (adds 5 more minutes)
 - JMT_Bot (the host) is always immune and hidden from the admin player list
 - Additional players can be whitelisted via admin API, admin dashboard, or `IDLE_KICK_WHITELIST` env var
-- Only active when a playlist is running — free lobbies are unaffected
+- Only active when the track overseer is running — free lobbies are unaffected
 
 ### Player Commands
 
@@ -127,15 +126,9 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 ### Competition System
 
-- Create seasons with weekly competition weeks
-- Automatic weekly lifecycle: `scheduled → active → finalised`
-- **Interleaved multi-playlist rotation** — assign multiple playlists per week; tracks from all playlists are pooled and shuffled into a fair daily schedule where every track appears once per round
-- Configurable track interval per week (e.g. 15 minutes per track)
-- Daily schedules use deterministic seeded shuffle — different order each day, same order on reboot
-- Playlists auto-start when a week begins, no manual intervention needed
-- **Reboot resilient** — schedules persist in the database; position is recalculated from the clock after a server restart
-- Regenerate schedule button in admin for mid-week playlist changes
-- Real-time scoring on every race close, plus batch scoring at week finalisation
+- **Always-on weekly scoring** — competition periods are automatically created for each Monday-to-Sunday week, no admin setup required
+- Scoring runs continuously whenever races are recorded; no need to start or stop a competition
+- Real-time scoring on every race close, plus batch scoring at period finalisation
 
 ### Points & Scoring
 
@@ -175,13 +168,12 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Track catalog browsing, selection, and manual track control
 - Playlist creation, management, and automated rotation with configurable intervals
 - **Track tagging** — search tracks, assign tags via checkboxes, edit Steam IDs and per-track durations
-- **Tag runner** — start/stop/skip random tag-based rotation with tag multi-select and interval config
+- **Tag runner** — start/stop/skip random tag-based rotation via track overseer with tag multi-select and interval config
 - **Tag voting** — trigger category votes with custom tag options and duration
 - Automated chat templates triggered by track changes, race starts, race ends, and player joins (new/returning)
 - **Chat Beta** — redesigned chat with filterable log, character counter, variable chips, and live preview
 - **Auto Messages Beta** — dedicated template manager with edit/test, trigger-filtered variables, and live preview
-- **Competition management** — create seasons, generate weeks, assign playlists, set track interval, regenerate schedules, recalculate points
-- **Competition runner** — automatic week lifecycle, interleaved multi-playlist rotation with daily shuffled schedules, reboot-resilient state recovery
+- **Track Overseer** — overseer dashboard with mode switching (playlist/tag), track queue management, upcoming track preview, and track history
 - Live chat log and manual messaging into the game
 - Persistent WebSocket connection for real-time status updates across all sections
 
@@ -211,7 +203,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Per-pilot tracking via Steam ID and pilot GUID
 - Session history and leaderboard support
 - Structured JSONL event logs from the plugin
-- Race results feed into competition scoring automatically when a competition week is active
+- Race results feed into competition scoring automatically via always-on weekly periods
 
 ---
 
@@ -285,12 +277,10 @@ Liftoff/
 │   │   ├── pluginSocket.js             # Plugin WebSocket server
 │   │   ├── liveSocket.js               # Live & admin WebSocket servers
 │   │   ├── broadcast.js                # Event broadcast dispatcher
-│   │   ├── playlistRunner.js           # Playlist scheduling & execution
-│   │   ├── competitionRunner.js        # Weekly competition lifecycle & playlist calendar
+│   │   ├── trackOverseer.js            # Track rotation (playlist & tag modes) + queue
 │   │   ├── competitionScoring.js       # Points engine (real-time + batch)
 │   │   ├── state.js                    # In-memory state
 │   │   ├── auth.js                     # Password hashing & session store
-│   │   ├── tagRunner.js                # Tag-based random track rotation
 │   │   ├── tagVote.js                  # Chat-based tag category voting
 │   │   ├── idleKick.js                 # Auto-kick idle pilots
 │   │   ├── skipVote.js                 # Vote-to-skip logic
@@ -310,14 +300,18 @@ Liftoff/
 │   │       │   ├── 003_whitelist.sql
 │   │       │   ├── 004_tags.sql
 │   │       │   ├── 005_track_ids.sql
-│   │       │   └── 006_week_schedules.sql
+│   │       │   ├── 006_week_schedules.sql
+│   │       │   ├── 007_overseer.sql
+│   │       │   ├── 008_scoring_periods.sql
+│   │       │   └── 009_overseer_queue.sql
 │   │       ├── competition.js          # Competition queries
 │   │       ├── ingest.js               # Event ingestion
 │   │       ├── queries.js              # Public data queries
 │   │       ├── adminUsers.js           # Admin user management
 │   │       ├── chatTemplates.js        # Chat template CRUD
 │   │       ├── playlists.js            # Playlist CRUD
-│   │       └── tags.js                 # Tag, track, and track-tag CRUD
+│   │       ├── tags.js                 # Tag, track, and track-tag CRUD
+│   │       └── trackOverseer.js        # Track overseer state & queue persistence
 │   │
 │   ├── nginx/
 │   │   └── nginx.conf                  # Reverse proxy config (4 upstreams)
@@ -432,9 +426,9 @@ For production with HTTPS:
 
 The server is split into two processes that communicate via an internal HTTP API (port 3001, Docker-internal only):
 
-**API Server** — Handles all REST endpoints, admin authentication, and database CRUD. When an admin action needs the game plugin or a domain service (playlists, competitions, idle kick), it forwards the request to the realtime server.
+**API Server** — Handles all REST endpoints, admin authentication, and database CRUD. When an admin action needs the game plugin or a domain service (track overseer, idle kick), it forwards the request to the realtime server.
 
-**Realtime Server** — Owns all WebSocket connections (plugin, live view, admin), in-memory state, event ingestion, and domain services (playlist runner, tag runner, competition runner, idle kick, skip/extend vote, tag vote). Exposes an internal API for the API server to call.
+**Realtime Server** — Owns all WebSocket connections (plugin, live view, admin), in-memory state, event ingestion, and domain services (track overseer, idle kick, skip/extend vote, tag vote, scoring). Exposes an internal API for the API server to call.
 
 Both servers share the same PostgreSQL database. The database layer uses the `pg` connection pool with parameterized queries throughout — no ORM.
 

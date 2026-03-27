@@ -2,7 +2,7 @@ const { WebSocketServer } = require('ws');
 const db = require('./database');
 const { getCurrentTrack, getOnlinePlayers, getCurrentTrackSince } = require('./state');
 const { getSession } = require('./auth');
-const playlistRunner = require('./playlistRunner');
+const trackOverseer = require('./trackOverseer');
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const COOKIE_NAME = 'liftoff_admin';
@@ -80,7 +80,7 @@ function createLiveSocketServer(httpServer) {
         current_track: getCurrentTrack(),
         track_since: trackSince,
         online_players: players,
-        playlist: playlistRunner.getState(),
+        overseer: trackOverseer.getState(),
       }));
     } catch (err) {
       console.error('[live] Failed to send state snapshot:', err.message);

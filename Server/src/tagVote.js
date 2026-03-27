@@ -170,13 +170,12 @@ async function handleTagVoteCommand(voterId) {
     return;
   }
 
-  // Check a runner is active
-  const playlist = require('./playlistRunner');
-  const tagRunner = require('./tagRunner');
-  if (!playlist.getState().running && !tagRunner.getState().running) {
+  // Check overseer is active
+  const overseer = require('./trackOverseer');
+  if (!overseer.getState().running) {
     _sendCommand({
       cmd: 'send_chat',
-      message: '<color=#FF0000>TAG VOTE</color> <color=#FFFF00>No runner is active — nothing to change.</color>',
+      message: '<color=#FF0000>TAG VOTE</color> <color=#FFFF00>No track rotation is active — nothing to change.</color>',
     });
     return;
   }
@@ -296,52 +295,6 @@ async function _resolveVote() {
 }
 
 async function _loadTrackFromTag(tagName) {
-  const tagRunner = require('./tagRunner');
-  const playlist = require('./playlistRunner');
-
-  // If tag runner is active, temporarily override its tags to include the winner
-  // and skip to a track from that tag
-  if (tagRunner.getState().running) {
-    try {
-      // Get a random track from this specific tag
-      const track = await db.getRandomTrackByTags([tagName], [], null);
-      if (!track) {
-        _sendCommand({
-          cmd: 'send_chat',
-          message: `<color=#FF0000>TAG VOTE</color> <color=#FFFF00>No tracks found for tag "${tagName}".</color>`,
-        });
-        return;
-      }
-
-      // Send the track directly via pluginSocket
-      const { sendCommand: psSendCommand, setCurrentTrack, fireTemplates } = require('./pluginSocket');
-      psSendCommand({
-        cmd: 'set_track',
-        env: track.env,
-        track: track.track,
-        race: 'InfiniteRace',
-        workshop_id: track.local_id || '',
-      });
-      setCurrentTrack({ env: track.env, track: track.track, race: 'InfiniteRace' });
-      broadcast.broadcastAll({
-        event_type: 'track_changed',
-        env: track.env,
-        track: track.track,
-        race: 'InfiniteRace',
-      });
-      fireTemplates('track_change', { env: track.env, track: track.track, race: 'InfiniteRace' });
-
-      _sendCommand({
-        cmd: 'send_chat',
-        message: `<color=#00BFFF>TAG VOTE</color> <color=#FFFF00>Loading:</color> <color=#00FF00>${track.track}</color> <color=#FFFF00>(${track.env})</color>`,
-      });
-    } catch (err) {
-      console.error('[tag-vote] Error loading track from winning tag:', err.message);
-    }
-    return;
-  }
-
-  // If playlist runner is active or nothing is running, just load a single track
   try {
     const track = await db.getRandomTrackByTags([tagName], [], null);
     if (!track) {
@@ -352,26 +305,18 @@ async function _loadTrackFromTag(tagName) {
       return;
     }
 
-    const { sendCommand: psSendCommand, setCurrentTrack, fireTemplates } = require('./pluginSocket');
-    psSendCommand({
-      cmd: 'set_track',
+    // Queue the winning track via the overseer — it plays next
+    const overseer = require('./trackOverseer');
+    await overseer.enqueueTrack({
       env: track.env,
       track: track.track,
       race: 'InfiniteRace',
-      workshop_id: track.local_id || '',
+      local_id: track.local_id || '',
     });
-    setCurrentTrack({ env: track.env, track: track.track, race: 'InfiniteRace' });
-    broadcast.broadcastAll({
-      event_type: 'track_changed',
-      env: track.env,
-      track: track.track,
-      race: 'InfiniteRace',
-    });
-    fireTemplates('track_change', { env: track.env, track: track.track, race: 'InfiniteRace' });
 
     _sendCommand({
       cmd: 'send_chat',
-      message: `<color=#00BFFF>TAG VOTE</color> <color=#FFFF00>Loading:</color> <color=#00FF00>${track.track}</color> <color=#FFFF00>(${track.env})</color>`,
+      message: `<color=#00BFFF>TAG VOTE</color> <color=#FFFF00>Queued:</color> <color=#00FF00>${track.track}</color> <color=#FFFF00>(${track.env})</color>`,
     });
   } catch (err) {
     console.error('[tag-vote] Error loading track from winning tag:', err.message);

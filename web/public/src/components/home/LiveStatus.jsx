@@ -25,7 +25,7 @@ export default function LiveStatus() {
       case 'track_changed':
         setTrack({ env: event.env, track: event.track, race: event.race });
         break;
-      case 'playlist_state':
+      case 'overseer_state':
         setPlaylist(event.running ? event : null);
         break;
       case 'player_list':

@@ -77,7 +77,7 @@ Create and manage ordered lists of tracks that can be run automatically on a tim
 
 #### Playlist Runner
 
-The playlist runner is a server-side state machine (`playlistRunner.js`) that automatically advances through a playlist's tracks on a timer.
+The playlist runner is managed by the Track Overseer (`trackOverseer.js`), which automatically advances through a playlist's tracks on a timer.
 
 **Controls:**
 - **Start** — begin running a playlist with a configurable interval in minutes and an optional start position (`POST /api/admin/playlists/:id/start`)
@@ -90,12 +90,12 @@ The playlist runner is a server-side state machine (`playlistRunner.js`) that au
 - Countdown timer showing time until next track change
 
 **How it works:**
-1. When started, the runner loads all tracks for the playlist from the database.
+1. When started, the overseer loads all tracks for the playlist from the database.
 2. It sets the first track (or the specified start position) via the plugin.
-3. A timer runs for the configured interval. When it fires, the runner advances to the next track and resets the timer.
+3. A timer runs for the configured interval. When it fires, the overseer advances to the next track and resets the timer.
 4. When the last track is reached, the playlist wraps around to the beginning.
 5. Track changes trigger any configured chat templates (e.g., announcing the new track).
-6. The runner broadcasts its state to all connected admin WebSocket clients so the dashboard stays in sync.
+6. The overseer broadcasts its state to all connected admin WebSocket clients so the dashboard stays in sync.
 
 ### 4. Chat
 
@@ -176,69 +176,71 @@ Dedicated automated message management page, separate from the chat log.
 - **Live preview** — debounced preview showing resolved text and character count with colour-coded limit indicator
 - **Test button** — preview any existing template against live data without sending
 
-### 5. Competition Management
+### 5. Track Overseer
 
-Create and manage structured weekly competitions with automatic scoring.
+Central control panel for automated track rotation, powered by the Track Overseer (`trackOverseer.js`).
 
-#### Competitions
+#### Status Display
 
-- **Create** — name a new competition/season (`POST /api/admin/competition`)
-- **List** — view all competitions (`GET /api/admin/competitions`)
-- **Archive** — mark a competition as archived (`POST /api/admin/competition/:id/archive`)
+The overseer status bar shows:
+- **Mode** — the current rotation mode: `playlist`, `tag`, or `idle` (stopped)
+- **Current track** — the track currently loaded in the lobby
+- **Time remaining** — countdown until the next automatic track change
 
-#### Weeks
+#### Playlist Mode
 
-Each competition is divided into weekly periods that progress through a lifecycle: `scheduled` &rarr; `active` &rarr; `finalised` &rarr; `archived`.
+Run an ordered playlist of tracks on a timer.
 
-- **Generate weeks** — specify a start date and number of weeks. The system auto-aligns to Monday boundaries and creates all week records (`POST /api/admin/competition/:id/weeks`)
-- **Edit week** — change start/end dates or manually change status (`PUT /api/admin/competition/week/:id`)
-- **Delete week** — remove a week (`DELETE /api/admin/competition/week/:id`)
-- **Recalculate points** — re-run the scoring engine for a specific week (`POST /api/admin/competition/recalculate/:weekId`)
+- **Select a playlist** — choose from existing playlists
+- **Set interval** — configure the rotation interval in minutes
+- **Start** — begin playlist rotation (`POST /api/admin/overseer/start-playlist`)
 
-#### Playlist Assignment
+The overseer cycles through the playlist's tracks sequentially, wrapping to the beginning after the last track.
 
-Each week can have multiple playlists assigned to it. Tracks from all playlists are pooled and shuffled into a fair daily schedule.
+#### Tag Mode
 
-- **Assign playlist** — add a playlist to a week (`POST /api/admin/competition/week/:id/playlists`)
-- **Remove playlist** — unassign a playlist from a week (`DELETE /api/admin/competition/week/:weekId/playlists/:wpId`)
-- **Reorder** — change playlist order (`POST /api/admin/competition/week/:weekId/playlists/:wpId/move`)
-- **Track interval** — set per-week (e.g. 15 minutes per track), configured via week edit form (`PUT /api/admin/competition/week/:id` with `interval_ms`)
-- **Regenerate schedule** — clear cached schedules and regenerate on next tick (`POST /api/admin/competition/week/:id/regenerate-schedule`). Use after modifying playlists on an active week.
+Run a random selection of tracks filtered by tags on a timer.
 
-#### Interleaved Schedule Generation
+- **Select tags** — choose one or more tags to filter the track pool
+- **Set interval** — configure the rotation interval in minutes
+- **Start** — begin tag-based rotation (`POST /api/admin/overseer/start-tags`)
 
-When a week is active, the competition runner generates a daily schedule:
+The overseer picks a random track matching the selected tags each time the interval fires.
 
-1. **Pool all tracks** from every playlist assigned to the week
-2. **Shuffle** using a deterministic seeded PRNG (seed = `weekId × 1000 + dayNumber`) — different order each day, reproducible on reboot
-3. **Build rounds** — each round contains every track exactly once (fair distribution)
-4. **Repeat rounds** to fill 24 hours
-5. **Persist** the schedule to the `week_schedules` database table
+#### Track Queue
 
-This means every track gets equal play time per day regardless of which playlist it belongs to.
+Admins can manually queue tracks that take priority over normal rotation.
 
-#### Competition Runner
+- **Add to queue** — select a track and add it to the FIFO queue (`POST /api/admin/queue`)
+- **Reorder** — move a queued track up or down (`POST /api/admin/queue/:id/move`)
+- **Remove** — delete a single track from the queue (`DELETE /api/admin/queue/:id`)
+- **Clear** — remove all tracks from the queue (`DELETE /api/admin/queue`)
 
-The competition runner (`competitionRunner.js`) is a server-side lifecycle manager that automates the entire weekly competition flow.
+When the current track's interval expires, the overseer checks the queue first. If a queued track exists, it plays next (FIFO order) before resuming normal rotation.
 
-**Controls:**
-- **View state** — see the active week, current day number, and auto-management status (`GET /api/admin/competition/runner/state`)
-- **Toggle auto-management** — enable or disable automatic week activation and schedule rotation (`POST /api/admin/competition/runner/auto`)
+#### Upcoming Tracks
 
-**How it works:**
-1. The runner watches for scheduled weeks whose start time has arrived.
-2. When a week becomes active, it generates a daily interleaved schedule from all assigned playlists and starts playing it.
-3. Each track plays for the week's configured interval, then advances to the next track in the shuffled schedule.
-4. On day rollover, a new shuffled schedule is generated for the new day.
-5. When a week's end time is reached, the runner finalises it (triggering batch scoring) and activates the next scheduled week.
-6. **Reboot resilience** — schedules are persisted in the database. After a restart, the runner loads the current day's schedule and calculates the correct position from elapsed time.
-7. Schedules are automatically invalidated when playlists are added, removed, or the track interval changes.
+A preview of the next tracks in the rotation, including any queued tracks at the top (`GET /api/admin/tracks/upcoming`).
 
-**Status bar** (visible when a competition is running):
-- Active week number
-- Current day number
-- Number of playlists
-- Whether auto-management is on or off
+#### Track History
+
+A table showing recently played tracks (`GET /api/admin/tracks/history`):
+
+| Column | Description |
+|--------|-------------|
+| Track | Track name |
+| Environment | Game environment |
+| Source | How the track was selected (playlist, tag, queue, manual) |
+| Skip Count | Number of skip votes received |
+| Extend Count | Number of extend votes received |
+| Timestamps | When the track was loaded and unloaded |
+
+#### Controls
+
+- **Skip** — immediately advance to the next track (`POST /api/admin/overseer/skip`)
+- **Extend** — add 5 minutes to the current track's remaining time (`POST /api/admin/overseer/extend`)
+- **Skip to Index** — jump to a specific position in the upcoming tracks list (`POST /api/admin/overseer/skip-to-index`)
+- **Stop** — halt automatic rotation (`POST /api/admin/overseer/stop`)
 
 ### 6. Status & Monitoring
 
@@ -270,8 +272,7 @@ The admin dashboard maintains a persistent WebSocket connection to `/ws/admin`.
 | `race_end` | A race has finished |
 | `lap_recorded` | A lap was completed |
 | `track_changed` | The track was changed |
-| `playlist_state` | Playlist runner status update |
-| `competition_state` | Competition runner status update |
+| `overseer_state` | Track Overseer status update |
 | `idle_update` | Player idle time changes |
 | `player_list` | Full player list snapshot |
 
@@ -325,24 +326,37 @@ All admin endpoints are prefixed with `/api/admin/` and require authentication.
 | `POST` | `/playlist/skip` | Skip to the next track |
 | `GET` | `/playlist/state` | Get playlist runner state |
 
-### Competitions
+### Track Overseer
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/competition` | Create a new competition |
-| `GET` | `/competitions` | List all competitions |
-| `POST` | `/competition/:id/archive` | Archive a competition |
-| `POST` | `/competition/:id/weeks` | Generate weeks for a competition |
-| `GET` | `/competition/:id/weeks` | Get weeks for a competition |
-| `PUT` | `/competition/week/:id` | Update a week (dates, status) |
-| `DELETE` | `/competition/week/:id` | Delete a week |
-| `GET` | `/competition/week/:id/playlists` | Get playlists assigned to a week |
-| `POST` | `/competition/week/:id/playlists` | Assign a playlist to a week |
-| `DELETE` | `/competition/week/:weekId/playlists/:wpId` | Remove a playlist from a week |
-| `POST` | `/competition/week/:weekId/playlists/:wpId/move` | Reorder a playlist in a week |
-| `POST` | `/competition/week/:id/regenerate-schedule` | Clear cached schedules (regenerates on next tick) |
-| `POST` | `/competition/recalculate/:weekId` | Recalculate points for a week |
-| `GET` | `/competition/runner/state` | Get competition runner state |
-| `POST` | `/competition/runner/auto` | Toggle auto-management |
+| `GET` | `/overseer/state` | Get current overseer state (mode, track, time remaining) |
+| `POST` | `/overseer/start-playlist` | Start playlist rotation (playlist ID, interval) |
+| `POST` | `/overseer/start-tags` | Start tag-based rotation (tag IDs, interval) |
+| `POST` | `/overseer/stop` | Stop automatic rotation |
+| `POST` | `/overseer/skip` | Skip to the next track |
+| `POST` | `/overseer/extend` | Extend current track by 5 minutes |
+| `POST` | `/overseer/skip-to-index` | Jump to a specific position in upcoming tracks |
+
+### Queue
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/queue` | List all queued tracks |
+| `POST` | `/queue` | Add a track to the queue |
+| `DELETE` | `/queue/:id` | Remove a track from the queue |
+| `POST` | `/queue/:id/move` | Reorder a queued track |
+| `DELETE` | `/queue` | Clear the entire queue |
+
+### Tracks
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/tracks/upcoming` | Preview upcoming tracks in the rotation |
+| `GET` | `/tracks/history` | Get recently played track history |
+
+### Scoring
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/scoring/recalculate/:weekId` | Recalculate points for a week |
+| `GET` | `/scoring/current-week` | Get current scoring week |
 
 ### Users
 | Method | Endpoint | Description |
@@ -361,15 +375,15 @@ All admin endpoints are prefixed with `/api/admin/` and require authentication.
 | `web/admin/src/pages/Chat.jsx` | Original chat page |
 | `web/admin/src/pages/ChatBeta.jsx` | Redesigned chat page (Beta) |
 | `web/admin/src/pages/AutoMessages.jsx` | Dedicated auto messages page (Beta) |
-| `web/admin/src/pages/Competition.jsx` | Competition management page |
+| `web/admin/src/pages/Overseer.jsx` | Track Overseer management page |
 | `Server/src/api/routes/admin.js` | Admin REST API endpoint handlers |
 | `Server/src/pluginSocket.js` | Plugin WebSocket server, template firing, variable enrichment |
-| `Server/src/playlistRunner.js` | Playlist auto-advance state machine |
-| `Server/src/competitionRunner.js` | Weekly competition lifecycle, interleaved schedule generation |
+| `Server/src/trackOverseer.js` | Track rotation state machine (playlist, tag, and queue modes) |
+| `Server/src/db/trackOverseer.js` | Track Overseer database queries |
 | `Server/src/competitionScoring.js` | Points engine (real-time + batch) |
 | `Server/src/idleKick.js` | Idle detection, warnings, and auto-kick |
 | `Server/src/broadcast.js` | Event dispatch to WebSocket clients |
 | `Server/src/liveSocket.js` | WebSocket server setup (admin + public) |
 | `Server/src/auth.js` | Password hashing and session management |
 | `Server/src/db/connection.js` | PostgreSQL connection pool and migration runner |
-| `Server/src/db/competition.js` | Competition, standings, schedule, and runner state queries |
+| `Server/src/db/competition.js` | Competition and standings queries |

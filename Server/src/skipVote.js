@@ -45,17 +45,15 @@ function getSkipVoteInfo() {
 }
 
 function _getActiveRunner() {
-  const playlist = require('./playlistRunner');
-  const tagRunner = require('./tagRunner');
-  if (playlist.getState().running) return { type: 'playlist', runner: playlist };
-  if (tagRunner.getState().running) return { type: 'tag', runner: tagRunner };
+  const overseer = require('./trackOverseer');
+  if (overseer.getState().running) return overseer;
   return null;
 }
 
 function handleSkipVoteCommand(voterId) {
-  const active = _getActiveRunner();
-  if (!active) {
-    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>No playlist or tag runner is running — nothing to skip.</color>' });
+  const runner = _getActiveRunner();
+  if (!runner) {
+    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>No track rotation is running — nothing to skip.</color>' });
     return;
   }
 
@@ -96,8 +94,8 @@ function checkSkipVoteThreshold() {
   if (realPlayers === 0) return;
   if (skipVote.voters.size >= needed) {
     cancelSkipVote();
-    const active = _getActiveRunner();
-    if (!active) {
+    const runner = _getActiveRunner();
+    if (!runner) {
       _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>Vote passed but nothing is running.</color>' });
       return;
     }
@@ -106,7 +104,7 @@ function checkSkipVoteThreshold() {
     setTimeout(() => {
       const current = _getActiveRunner();
       if (!current) return;
-      current.runner.skipToNext();
+      current.skipToNext();
     }, 10_000);
     if (trackToSkip) {
       const db = require('./database');

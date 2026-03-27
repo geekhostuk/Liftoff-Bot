@@ -77,8 +77,8 @@ export default function Playlists() {
     if (selectedId) loadTracks(selectedId);
   }, [selectedId, loadTracks]);
 
-  // WebSocket: playlist_state
-  useWsEvent('playlist_state', (data) => {
+  // WebSocket: overseer_state
+  useWsEvent('overseer_state', (data) => {
     setRunnerState(data);
     if (selectedId) loadTracks(selectedId);
   });

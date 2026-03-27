@@ -20,7 +20,7 @@ export default function Tracks() {
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
-          if (msg.event_type === 'playlist_state' || msg.event_type === 'track_changed') {
+          if (msg.event_type === 'overseer_state' || msg.event_type === 'track_changed') {
             refetch();
           }
         } catch {}

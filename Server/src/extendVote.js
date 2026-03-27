@@ -46,17 +46,15 @@ function getExtendVoteInfo() {
 }
 
 function _getActiveRunner() {
-  const playlist = require('./playlistRunner');
-  const tagRunner = require('./tagRunner');
-  if (playlist.getState().running) return { type: 'playlist', runner: playlist };
-  if (tagRunner.getState().running) return { type: 'tag', runner: tagRunner };
+  const overseer = require('./trackOverseer');
+  if (overseer.getState().running) return overseer;
   return null;
 }
 
 function handleExtendVoteCommand(voterId) {
-  const active = _getActiveRunner();
-  if (!active) {
-    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>EXTEND</color> <color=#FFFF00>No playlist or tag runner is running — nothing to extend.</color>' });
+  const runner = _getActiveRunner();
+  if (!runner) {
+    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>EXTEND</color> <color=#FFFF00>No track rotation is running — nothing to extend.</color>' });
     return;
   }
 
@@ -97,13 +95,13 @@ function checkExtendVoteThreshold() {
   if (realPlayers === 0) return;
   if (extendVote.voters.size >= needed) {
     cancelExtendVote();
-    const active = _getActiveRunner();
-    if (!active) {
+    const runner = _getActiveRunner();
+    if (!runner) {
       _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>EXTEND</color> <color=#FFFF00>Vote passed but nothing is running.</color>' });
       return;
     }
     _sendCommand({ cmd: 'send_chat', message: '<color=#00FF00>VOTE PASSED</color> <color=#FFFF00>Adding 5 minutes to the current track.</color>' });
-    active.runner.extendTimer(EXTEND_AMOUNT_MS);
+    runner.extendTimer(EXTEND_AMOUNT_MS);
     const trackToExtend = state.getCurrentTrack();
     if (trackToExtend) {
       const db = require('./database');

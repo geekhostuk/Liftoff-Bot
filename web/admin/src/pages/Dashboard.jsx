@@ -129,22 +129,19 @@ export default function Dashboard() {
   const [pluginConnected, setPluginConnected] = useState(false);
   const [players, setPlayers] = useState([]);
   const [idleTimes, setIdleTimes] = useState({});
-  const [playlistState, setPlaylistState] = useState(null);
-  const [tagRunnerState, setTagRunnerState] = useState(null);
+  const [overseerState, setOverseerState] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [status, playlist, tagRunner, idleStatus] = await Promise.all([
+      const [status, overseer, idleStatus] = await Promise.all([
         apiFetch('GET', '/api/status'),
-        apiFetch('GET', '/api/admin/playlist/state'),
-        apiFetch('GET', '/api/admin/tag-runner/state').catch(() => null),
+        apiFetch('GET', '/api/admin/overseer/state'),
         apiFetch('GET', '/api/admin/idle-kick/status'),
       ]);
       setPluginConnected(status.plugin_connected);
       setPlayers(status.online_players || []);
-      setPlaylistState(playlist);
-      setTagRunnerState(tagRunner);
+      setOverseerState(overseer);
       setIdleTimes(idleStatus?.idleTimes || {});
     } catch {
       // errors silenced — dashboard is best-effort
@@ -178,12 +175,8 @@ export default function Dashboard() {
     setChatMessages((prev) => [msg, ...prev].slice(0, 5));
   });
 
-  useWsEvent('playlist_state', (data) => {
-    setPlaylistState(data);
-  });
-
-  useWsEvent('tag_runner_state', (data) => {
-    setTagRunnerState(data);
+  useWsEvent('overseer_state', (data) => {
+    setOverseerState(data);
   });
 
   const displayPlayers = useMemo(
@@ -191,8 +184,8 @@ export default function Dashboard() {
     [players],
   );
 
-  const currentTrack = playlistState?.current_track
-    ? `${playlistState.current_track.env} / ${playlistState.current_track.track}`
+  const currentTrack = overseerState?.current_track
+    ? `${overseerState.current_track.env} / ${overseerState.current_track.track}`
     : 'None';
 
   return (
@@ -224,7 +217,7 @@ export default function Dashboard() {
           <div style={styles.cardValue}>
             <Play size={24} style={styles.cardIcon} />
             <span style={{ fontSize: '1rem', fontWeight: 500 }}>
-              {playlistState?.running ? 'Running' : 'Stopped'}
+              {overseerState?.running ? (overseerState.mode === 'playlist' ? 'Playlist' : 'Tags') : 'Stopped'}
             </span>
           </div>
           <div style={styles.cardLabel}>Runner Status</div>
@@ -279,13 +272,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Runner bars */}
+      {/* Runner bar */}
       <div style={styles.runnerSection}>
-        {playlistState && (
-          <RunnerBar state={playlistState} label="Playlist" />
-        )}
-        {tagRunnerState && (
-          <RunnerBar state={tagRunnerState} label="Tag Runner" />
+        {overseerState && (
+          <RunnerBar state={overseerState} label={overseerState.mode === 'tag' ? 'Tag Mode' : 'Track Overseer'} />
         )}
       </div>
     </div>

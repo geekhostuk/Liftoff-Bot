@@ -14,7 +14,7 @@ const POSITION_POINTS = [25, 18, 15, 12, 10, 8, 6, 4];
 // ── Real-time scoring (per race close) ──────────────────────────────────────
 
 async function processRaceClose(raceId) {
-  const week = await db.getActiveWeek();
+  const week = await db.getOrCreateCurrentWeek();
   if (!week) return;
 
   // Avoid double-processing

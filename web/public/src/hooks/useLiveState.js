@@ -102,7 +102,7 @@ function reducer(state, action) {
       const pilots = buildPilotsFromSnapshot(e.race, trackSince);
       const raceId = e.race?.id || state.raceId;
       const raceStatus = pilots.length > 0 ? 'racing' : 'waiting';
-      const playlist = e.playlist || state.playlist;
+      const playlist = e.overseer || e.playlist || state.playlist;
       return { ...state, currentTrack, trackSince, players, pilots, raceId, raceStatus, raceResult: null, playlist };
     }
 
@@ -181,7 +181,7 @@ function reducer(state, action) {
       };
     }
 
-    case 'playlist_state':
+    case 'overseer_state':
       return { ...state, playlist: action.payload };
 
     case 'competition_standings_update':
@@ -192,9 +192,6 @@ function reducer(state, action) {
       const msg = e.nick ? `${e.nick} earned competition points` : 'Competition points awarded';
       return { ...state, feedEvents: appendFeed(state.feedEvents, feed('comp', msg, e.timestamp_utc)) };
     }
-
-    case 'competition_runner_state':
-      return state; // informational only
 
     // REST data
     case 'SET_STATUS': {
