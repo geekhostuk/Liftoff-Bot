@@ -660,4 +660,37 @@ router.delete('/track-comments/:commentId', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Track Manager ─────────────────────────────────────────────────────────────
+
+router.get('/track-manager', async (req, res) => {
+  const search = req.query.search || '';
+  const env = req.query.env || '';
+  const sort = req.query.sort || 'name';
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const offset = parseInt(req.query.offset) || 0;
+  res.json(await db.getAdminTrackList({ search, env, sort, limit, offset }));
+});
+
+router.get('/track-manager/envs', async (req, res) => {
+  const { rows } = await db.getPool().query('SELECT DISTINCT env FROM tracks ORDER BY env');
+  res.json(rows.map(r => r.env));
+});
+
+router.get('/track-manager/:id/playlists', async (req, res) => {
+  res.json(await db.getTrackPlaylistMemberships(Number(req.params.id)));
+});
+
+router.get('/track-manager/:id/comments', async (req, res) => {
+  res.json(await db.getAdminTrackComments(Number(req.params.id)));
+});
+
+router.get('/track-manager/:id/user-tags', async (req, res) => {
+  res.json(await db.getTrackUserTags(Number(req.params.id)));
+});
+
+router.delete('/track-manager/:id/user-tags/:label', async (req, res) => {
+  await db.deleteUserTagLabel(Number(req.params.id), req.params.label);
+  res.json({ ok: true });
+});
+
 module.exports = router;
