@@ -1,25 +1,23 @@
 # Competition System
 
-The Liftoff competition is a season-based league system that tracks pilot performance across weekly periods. Points are earned through race finishes, lap volume, consistency, improvement, and participation. All data updates in real-time via WebSocket.
+The Liftoff competition system is an always-on scoring engine that tracks pilot performance across automatic weekly periods. Points are earned through race finishes, lap volume, consistency, improvement, and participation. Scoring weeks are created and finalised automatically with no admin intervention required. All data updates in real-time via WebSocket.
 
 ---
 
 ## Structure
 
-### Season
-A competition (season) is created by an admin and set to **active**. It contains multiple **weeks** that run back-to-back, each spanning Monday 00:00 UTC through Sunday 23:59:59 UTC. Weeks are auto-generated aligned to Monday boundaries.
+### Scoring Weeks
+Scoring weeks run on a fixed Monday 00:00 UTC through Sunday 23:59:59 UTC cadence. They are created and finalised automatically — no admin setup is needed. When race results are recorded during a week that does not yet exist in the database, the week row is created on the fly. When a week's end time passes, it is automatically finalised: batch bonuses (improvement & participation) are calculated and results are locked.
 
-### Week Lifecycle
-Each week progresses through three statuses:
+On the competition page, weeks are shown with status dots:
 
 | Status | Meaning |
 |---|---|
-| **Scheduled** | Upcoming week, not yet started. Shown with an orange dot on the week tab. |
-| **Active** | Currently running. The competition runner checks every 60 seconds and automatically activates a scheduled week once its start time arrives. Shown with a green dot. |
-| **Finalised** | Week has ended. The runner automatically finalises an active week once its end time passes, awarding batch bonuses (improvement & participation) and locking the results. Shown with a grey dot. |
+| **Active** | Currently running (green dot). |
+| **Finalised** | Week has ended and results are locked (grey dot). |
 
-### Playlists
-Each week can have one or more playlists assigned to it. The competition runner automatically rotates through them, cycling playlists in order. After a server reboot, the system deterministically calculates exactly where in the playlist rotation it should be based on elapsed time since the week started — no state needs to survive the restart.
+### Track Rotation
+Track rotation is managed independently by the Track Overseer service and is not tied to the scoring system. Any race that occurs during an active scoring week contributes to that week's points regardless of how the track was selected.
 
 ---
 
@@ -28,21 +26,18 @@ Each week can have one or more playlists assigned to it. The competition runner 
 The public-facing competition page has four main sections:
 
 ### 1. Competition Banner
-Displayed at the top when a competition is active. Shows:
-- **Competition name**
+Displayed at the top. Shows:
 - **Current week number** and date range (e.g. "Week 3 - Mar 9 - Mar 15")
 - **Days remaining** countdown for the current week
 
-If no competition is active, displays: *"No active competition. Check back soon!"*
-
-### 2. Season Standings
-A cumulative leaderboard across all weeks in the season. Columns:
+### 2. Overall Standings
+A cumulative leaderboard across all scoring weeks. Columns:
 
 | Column | Description |
 |---|---|
 | **#** | Rank (1st = gold, 2nd = silver, 3rd = bronze styling) |
 | **Pilot** | Display name (clickable to open pilot detail panel) |
-| **Total Pts** | Sum of all points across all weeks (highlighted in orange) |
+| **Total Pts** | Sum of all points across all scoring weeks (highlighted in orange) |
 | **Weeks** | Number of distinct weeks the pilot was active |
 | **Position** | Cumulative race position points |
 | **Laps** | Cumulative lap volume + lap leader points |
@@ -79,7 +74,7 @@ Award cards shown for the selected week, highlighting the top pilot in each cate
 
 ### 5. Pilot Detail Panel
 Clicking any pilot name opens an expandable panel showing:
-- **Bar chart** visualising the pilot's total points per week across the season
+- **Bar chart** visualising the pilot's total points per week
 - **Week-by-week breakdown table** with columns: Week, Rank, Total, Position, Laps, Consistency, Improved, Participation
 
 ---
@@ -221,16 +216,11 @@ When standings update, table rows flash briefly with an orange highlight animati
 - A pilot must complete at least **2 laps** in a race to be included in race results and earn position points
 - A pilot must complete at least **3 laps** to qualify for consistency scoring
 - Pilot identity is determined by `steam_id`, `pilot_guid`, or `nick` (in that priority order)
-- There are no explicit sign-up requirements — any pilot who flies during an active competition week is automatically included
+- There are no explicit sign-up requirements — any pilot who flies during a scoring week is automatically included
 
 ---
 
 ## Admin Controls
 
-Administrators can:
-- Create and archive competitions
-- Generate weekly schedules with configurable week counts
-- Edit week dates and statuses
-- Assign playlists to weeks (with ordering and interval configuration)
-- Toggle auto-managed playlist rotation on/off
+Scoring is always-on and requires no setup. Administrators can:
 - **Recalculate** a week's scores from scratch (clears all points/results and re-processes every race in the week's time window)

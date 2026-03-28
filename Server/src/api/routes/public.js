@@ -112,16 +112,25 @@ router.get('/stats/overview', async (req, res) => {
 // ── Competition (public) ────────────────────────────────────────────────────
 
 router.get('/competition/current', async (req, res) => {
+  // Try existing active competition first, then auto season
   const comp = await db.getActiveCompetition();
-  if (!comp) return res.json({ competition: null, current_week: null });
-  const weeks = await db.getWeeks(comp.id);
-  const currentWeek = weeks.find(w => w.status === 'active') || null;
-  const nextWeek = weeks.find(w => w.status === 'scheduled') || null;
-  res.json({ competition: comp, current_week: currentWeek, next_week: nextWeek });
+  if (comp) {
+    const weeks = await db.getWeeks(comp.id);
+    const currentWeek = weeks.find(w => w.status === 'active') || null;
+    const nextWeek = weeks.find(w => w.status === 'scheduled') || null;
+    return res.json({ competition: comp, current_week: currentWeek, next_week: nextWeek });
+  }
+  const week = await db.getOrCreateCurrentWeek();
+  if (!week) return res.json({ competition: null, current_week: null });
+  res.json({ competition: { id: 0, name: week.competition_name || 'Auto Season', status: 'active' }, current_week: week, next_week: null });
 });
 
 router.get('/competition/standings', async (req, res) => {
-  const week = await db.getActiveWeek();
+  // Try existing active competition week first
+  const activeWeek = await db.getActiveWeek();
+  if (activeWeek) return res.json(await db.getWeeklyStandings(activeWeek.id));
+  // Fall back to auto season
+  const week = await db.getOrCreateCurrentWeek();
   if (!week) return res.json([]);
   res.json(await db.getWeeklyStandings(week.id));
 });
@@ -131,21 +140,22 @@ router.get('/competition/standings/:weekId', async (req, res) => {
 });
 
 router.get('/competition/season', async (req, res) => {
+  // Use existing active competition, fall back to auto season
   const comp = await db.getActiveCompetition();
-  if (!comp) return res.json([]);
-  res.json(await db.getSeasonStandings(comp.id));
+  const compId = comp ? comp.id : 0;
+  res.json(await db.getSeasonStandings(compId));
 });
 
 router.get('/competition/weeks', async (req, res) => {
   const comp = await db.getActiveCompetition();
-  if (!comp) return res.json([]);
-  res.json(await db.getWeeks(comp.id));
+  const compId = comp ? comp.id : 0;
+  res.json(await db.getWeeks(compId));
 });
 
 router.get('/competition/pilot/:pilotKey', async (req, res) => {
   const comp = await db.getActiveCompetition();
-  if (!comp) return res.json({ weeklyStandings: [], recentResults: [] });
-  res.json(await db.getPilotCompetitionHistory(comp.id, decodeURIComponent(req.params.pilotKey)));
+  const compId = comp ? comp.id : 0;
+  res.json(await db.getPilotCompetitionHistory(compId, decodeURIComponent(req.params.pilotKey)));
 });
 
 router.get('/competition/race/:raceId/results', async (req, res) => {
@@ -160,47 +170,30 @@ router.get('/tracks', async (req, res) => {
     db.getRecentTracks(10),
   ]);
 
-  const { playlist, competition } = rtInfo;
+  const { overseer } = rtInfo;
 
   // Build active playlists array
   const activePlaylists = [];
 
-  if (competition.current_week_id) {
-    // Competition mode: show all playlists assigned to the active week
-    const weekPlaylists = await db.getWeekPlaylists(competition.current_week_id);
-    for (const wp of weekPlaylists) {
-      const isCurrentlyRunning = playlist.running && playlist.playlist_id === wp.playlist_id;
-      const tracks = isCurrentlyRunning ? playlist.tracks : await db.getPlaylistTracks(wp.playlist_id);
-      activePlaylists.push({
-        playlist_id: wp.playlist_id,
-        playlist_name: wp.playlist_name,
-        interval_ms: wp.interval_ms,
-        is_current: isCurrentlyRunning,
-        current_index: isCurrentlyRunning ? playlist.current_index : null,
-        next_change_at: isCurrentlyRunning ? playlist.next_change_at : null,
-        tracks,
-      });
-    }
-  } else if (playlist.running) {
-    // Standalone playlist mode (no competition)
+  if (overseer.running && overseer.mode === 'playlist' && overseer.playlist_id) {
     activePlaylists.push({
-      playlist_id: playlist.playlist_id,
-      playlist_name: playlist.playlist_name,
-      interval_ms: playlist.interval_ms,
+      playlist_id: overseer.playlist_id,
+      playlist_name: overseer.playlist_name,
+      interval_ms: overseer.interval_ms,
       is_current: true,
-      current_index: playlist.current_index,
-      next_change_at: playlist.next_change_at,
-      tracks: playlist.tracks,
+      current_index: overseer.current_index,
+      next_change_at: overseer.next_change_at,
+      tracks: overseer.tracks,
     });
   }
 
   // Derive upcoming tracks from the currently running playlist
   const upcoming = [];
-  if (playlist.running && playlist.tracks.length > 0) {
-    const count = Math.min(5, playlist.tracks.length - 1);
+  if (overseer.running && overseer.mode === 'playlist' && overseer.tracks.length > 0) {
+    const count = Math.min(5, overseer.tracks.length - 1);
     for (let i = 1; i <= count; i++) {
-      const idx = (playlist.current_index + i) % playlist.tracks.length;
-      upcoming.push(playlist.tracks[idx]);
+      const idx = (overseer.current_index + i) % overseer.tracks.length;
+      upcoming.push(overseer.tracks[idx]);
     }
   }
 
@@ -208,8 +201,10 @@ router.get('/tracks', async (req, res) => {
     active_playlists: activePlaylists,
     recent_tracks: recentTracks,
     upcoming,
-    current_track: playlist.current_track,
-    next_change_at: playlist.next_change_at,
+    current_track: overseer.current_track,
+    next_change_at: overseer.next_change_at,
+    mode: overseer.mode,
+    tag_names: overseer.tag_names,
   });
 });
 

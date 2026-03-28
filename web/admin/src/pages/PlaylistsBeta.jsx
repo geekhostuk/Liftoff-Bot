@@ -145,7 +145,7 @@ export default function PlaylistsBeta() {
     if (selectedId) loadTracks(selectedId);
   }, [selectedId, loadTracks]);
 
-  useWsEvent('playlist_state', (data) => {
+  useWsEvent('overseer_state', (data) => {
     setRunnerState(data);
     if (selectedId) loadTracks(selectedId);
   });

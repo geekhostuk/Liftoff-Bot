@@ -121,18 +121,10 @@ async function createPluginSocketServer(httpServer) {
   tagVote.init(sendCommand);
   await idleKick.init(sendCommand, sendCommandAwait);
 
-  // Cancel any active votes when the playlist or tag runner stops so orphaned votes
-  // don't cause "No playlist is running" on the next attempt.
-  const playlist = require('./playlistRunner');
-  playlist.onStop(() => {
-    skipVote.cancelSkipVote();
-    extendVote.cancelExtendVote();
-    tagVote.cancelVote();
-    idleKick.resetAllTimers();
-  });
-
-  const tagRunner = require('./tagRunner');
-  tagRunner.onStop(() => {
+  // Cancel any active votes when the overseer stops so orphaned votes
+  // don't cause "No runner is running" on the next attempt.
+  const overseer = require('./trackOverseer');
+  overseer.onStop(() => {
     skipVote.cancelSkipVote();
     extendVote.cancelExtendVote();
     tagVote.cancelVote();
@@ -210,17 +202,13 @@ function fmtMs(ms) {
 async function buildTemplateVars(baseVars = {}) {
   const enriched = { ...baseVars };
   try {
-    const pl = require('./playlistRunner');
-    const s = pl.getState();
-    // Prefer the source playlist name from the current track (competition schedule)
-    const currentTrackPlaylist = s.current_track?.source_playlist_name;
-    enriched.playlist ??= currentTrackPlaylist || s.playlist_name || '';
+    const os = require('./trackOverseer').getState();
+    enriched.playlist ??= os.playlist_name || '';
   } catch {}
   try {
-    const cr = require('./competitionRunner');
-    const s = cr.getState();
-    if (s.current_week_id) {
-      const standings = await db.getWeeklyStandings(s.current_week_id);
+    const week = await db.getActiveWeek() || await db.getOrCreateCurrentWeek();
+    if (week) {
+      const standings = await db.getWeeklyStandings(week.id);
       enriched['1st'] ??= standings[0]?.display_name ?? '';
       enriched['2nd'] ??= standings[1]?.display_name ?? '';
       enriched['3rd'] ??= standings[2]?.display_name ?? '';
@@ -266,12 +254,9 @@ async function fireTemplates(trigger, vars = {}) {
 const PUBLIC_EVENT_TYPES = new Set([
   'lap_recorded', 'race_reset', 'race_end',
   'player_entered', 'player_left', 'player_list',
-  'track_changed', 'state_snapshot', 'playlist_state',
-  'tag_runner_state',
+  'track_changed', 'state_snapshot', 'overseer_state',
   'checkpoint', 'pilot_complete', 'pilot_reset', 'keepalive',
-  'competition_week_started', 'competition_week_finalised',
   'competition_standings_update', 'competition_points_awarded',
-  'competition_runner_state',
   'tag_vote_state',
 ]);
 
@@ -360,17 +345,13 @@ async function handlePluginEvent(jsonLine) {
     // Ignore all commands during the post-track-change cooldown window.
     if (!state.areChatCommandsAllowed()) return;
     if (msg === '/info') {
-      const playlist = require('./playlistRunner');
-      const tagRunnerMod = require('./tagRunner');
-      const ps = playlist.getState();
-      const ts = tagRunnerMod.getState();
+      const os = require('./trackOverseer').getState();
       let timeLeft = 'N/A';
       let mode = '';
-      const nextChangeAt = ps.running ? ps.next_change_at : ts.running ? ts.next_change_at : null;
-      if (ps.running) mode = 'Playlist';
-      else if (ts.running) mode = `Tags: ${ts.tag_names.join(', ')}`;
-      if (nextChangeAt) {
-        const remainMs = new Date(nextChangeAt).getTime() - Date.now();
+      if (os.running && os.mode === 'playlist') mode = 'Playlist';
+      else if (os.running && os.mode === 'tag') mode = `Tags: ${os.tag_names.join(', ')}`;
+      if (os.next_change_at) {
+        const remainMs = new Date(os.next_change_at).getTime() - Date.now();
         if (remainMs > 0) {
           const m = Math.floor(remainMs / 60000);
           const s = Math.floor((remainMs % 60000) / 1000);

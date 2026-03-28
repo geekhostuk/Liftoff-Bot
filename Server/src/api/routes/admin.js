@@ -11,6 +11,7 @@ const rt = require('../realtimeClient');
 const db = require('../../database');
 const { recalculateWeek } = require('../../competitionScoring');
 const { fetchWorkshopItem, resolveAuthorName } = require('../../steamWorkshop');
+const { getOrCreateCurrentWeek } = require('../../db/trackOverseer');
 const { hashPassword, verifyPassword, createSession, getSession, destroySession, destroyUserSessions } = require('../../auth');
 
 const router = Router();
@@ -299,9 +300,9 @@ router.put('/playlists/:id', async (req, res) => {
 
 router.delete('/playlists/:id', async (req, res) => {
   const id = Number(req.params.id);
-  const plState = await rt.getPlaylistState();
-  if (plState.playlist_id === id && plState.running) {
-    await rt.stopPlaylist();
+  const osState = await rt.getOverseerState();
+  if (osState.playlist_id === id && osState.running) {
+    await rt.stopOverseer();
   }
   await db.deletePlaylist(id);
   res.json({ ok: true });
@@ -333,108 +334,136 @@ router.post('/playlists/:id/start', strictLimiter, async (req, res) => {
   const intervalMs = Math.max(5000, Number(req.body.interval_ms) || 15 * 60 * 1000);
   const startIndex = Math.max(0, parseInt(req.body.start_index) || 0);
   try {
-    res.json(await rt.startPlaylist(Number(req.params.id), intervalMs, startIndex));
+    res.json(await rt.startOverseerPlaylist(Number(req.params.id), intervalMs, startIndex));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
 router.post('/playlist/stop', async (req, res) => {
-  res.json(await rt.stopPlaylist());
+  res.json(await rt.stopOverseer());
 });
 
 router.post('/playlist/skip', async (req, res) => {
-  res.json(await rt.skipPlaylist());
+  res.json(await rt.skipOverseer());
 });
 
 router.get('/playlist/state', async (req, res) => {
-  res.json(await rt.getPlaylistState());
+  res.json(await rt.getOverseerState());
 });
 
-// ── Competition (direct DB + realtime for runner) ───────────────────────────
+// ── Track Overseer (via realtime) ────────────────────────────────────────────
 
-router.post('/competition', async (req, res) => {
-  const { name = '' } = req.body;
-  if (!name.trim()) return res.status(400).json({ error: 'name is required' });
-  res.status(201).json(await db.createCompetition(name.trim()));
+router.get('/overseer/state', async (req, res) => {
+  res.json(await rt.getOverseerState());
 });
 
-router.get('/competitions', async (req, res) => {
-  res.json(await db.getCompetitions());
-});
-
-router.post('/competition/:id/archive', async (req, res) => {
-  await db.archiveCompetition(Number(req.params.id));
-  res.json({ ok: true });
-});
-
-router.post('/competition/:id/weeks', async (req, res) => {
-  const { count = 4, start_date } = req.body;
-  if (!start_date) return res.status(400).json({ error: 'start_date is required (ISO format)' });
-  res.status(201).json(await db.generateWeeks(Number(req.params.id), Number(count), start_date));
-});
-
-router.get('/competition/:id/weeks', async (req, res) => {
-  res.json(await db.getWeeks(Number(req.params.id)));
-});
-
-router.put('/competition/week/:id', async (req, res) => {
-  const { status, starts_at, ends_at, week_number, interval_ms } = req.body;
-  if (status && !['scheduled', 'active', 'finalised'].includes(status)) {
-    return res.status(400).json({ error: 'status must be scheduled, active, or finalised' });
-  }
-  const fields = {};
-  if (status) fields.status = status;
-  if (starts_at) fields.starts_at = starts_at;
-  if (ends_at) fields.ends_at = ends_at;
-  if (week_number !== undefined) fields.week_number = Number(week_number);
-  if (interval_ms !== undefined) {
-    fields.interval_ms = Math.max(60000, Number(interval_ms));
-    await db.deleteWeekSchedules(Number(req.params.id)); // invalidate on interval change
-  }
-  await db.updateWeek(Number(req.params.id), fields);
-  res.json({ ok: true });
-});
-
-router.delete('/competition/week/:id', async (req, res) => {
-  await db.deleteWeek(Number(req.params.id));
-  res.json({ ok: true });
-});
-
-router.get('/competition/week/:id/playlists', async (req, res) => {
-  res.json(await db.getWeekPlaylists(Number(req.params.id)));
-});
-
-router.post('/competition/week/:id/playlists', async (req, res) => {
-  const { playlist_id, interval_ms = 900000 } = req.body;
+router.post('/overseer/start-playlist', strictLimiter, async (req, res) => {
+  const { playlist_id, interval_ms, start_index = 0 } = req.body;
   if (!playlist_id) return res.status(400).json({ error: 'playlist_id is required' });
-  const weekId = Number(req.params.id);
-  const row = await db.addWeekPlaylist(weekId, Number(playlist_id), Number(interval_ms));
-  await db.deleteWeekSchedules(weekId); // invalidate cached schedules
-  res.status(201).json(row);
+  const intervalMs = Math.max(5000, Number(interval_ms) || 15 * 60 * 1000);
+  try {
+    res.json(await rt.startOverseerPlaylist(Number(playlist_id), intervalMs, Math.max(0, Number(start_index) || 0)));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
-router.delete('/competition/week/:weekId/playlists/:wpId', async (req, res) => {
-  const weekId = Number(req.params.weekId);
-  await db.removeWeekPlaylist(Number(req.params.wpId));
-  await db.deleteWeekSchedules(weekId); // invalidate cached schedules
-  res.json({ ok: true });
+router.post('/overseer/start-tags', strictLimiter, async (req, res) => {
+  const { tag_names, interval_ms } = req.body;
+  if (!Array.isArray(tag_names) || tag_names.length === 0) {
+    return res.status(400).json({ error: 'tag_names must be a non-empty array' });
+  }
+  const intervalMs = Math.max(5000, Number(interval_ms) || 10 * 60 * 1000);
+  try {
+    res.json(await rt.startOverseerTags(tag_names, intervalMs));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
-router.post('/competition/week/:weekId/playlists/:wpId/move', async (req, res) => {
+router.post('/overseer/stop', async (req, res) => {
+  res.json(await rt.stopOverseer());
+});
+
+router.post('/overseer/skip', async (req, res) => {
+  res.json(await rt.skipOverseer());
+});
+
+router.post('/overseer/extend', async (req, res) => {
+  const ms = Math.max(10000, Number(req.body.ms) || 300000);
+  res.json(await rt.extendOverseer(ms));
+});
+
+router.post('/overseer/skip-to-index', async (req, res) => {
+  const { index } = req.body;
+  if (index === undefined) return res.status(400).json({ error: 'index is required' });
+  res.json(await rt.skipToIndex(Number(index)));
+});
+
+router.post('/overseer/next-playlist', async (req, res) => {
+  const { playlist_id, interval_ms } = req.body;
+  if (!playlist_id) return res.status(400).json({ error: 'playlist_id is required' });
+  const intervalMs = Math.max(5000, Number(interval_ms) || 15 * 60 * 1000);
+  try {
+    res.json(await rt.setNextPlaylist(Number(playlist_id), intervalMs));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/overseer/next-playlist', async (req, res) => {
+  res.json(await rt.clearNextPlaylist());
+});
+
+// ── Queue (via realtime) ──────────────────────────────────────────────────────
+
+router.get('/queue', async (req, res) => {
+  res.json(await rt.getQueue());
+});
+
+router.post('/queue', async (req, res) => {
+  const { env = '', track = '', race = '', workshop_id = '' } = req.body;
+  if (!env && !track && !workshop_id) {
+    return res.status(400).json({ error: 'Provide at least env+track or workshop_id' });
+  }
+  try {
+    res.status(201).json(await rt.addToQueue({ env, track, race, workshop_id }));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/queue/:id', async (req, res) => {
+  res.json(await rt.removeFromQueue(Number(req.params.id)));
+});
+
+router.post('/queue/:id/move', async (req, res) => {
   const { direction } = req.body;
   if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'direction must be up or down' });
-  await db.moveWeekPlaylist(Number(req.params.wpId), direction);
-  res.json({ ok: true });
+  res.json(await rt.reorderQueue(Number(req.params.id), direction));
 });
 
-router.post('/competition/week/:id/regenerate-schedule', async (req, res) => {
-  const weekId = Number(req.params.id);
-  await db.deleteWeekSchedules(weekId);
-  res.json({ ok: true, message: 'Schedules cleared — will regenerate on next tick' });
+router.delete('/queue', async (req, res) => {
+  res.json(await rt.clearQueue());
 });
 
-router.post('/competition/recalculate/:weekId', strictLimiter, async (req, res) => {
+// ── Tracks upcoming & history (via realtime) ─────────────────────────────────
+
+router.get('/tracks/upcoming', async (req, res) => {
+  const count = parseInt(req.query.count || '10', 10);
+  res.json(await rt.getUpcomingTracks(count));
+});
+
+router.get('/tracks/history', async (req, res) => {
+  const limit = parseInt(req.query.limit || '50', 10);
+  const offset = parseInt(req.query.offset || '0', 10);
+  res.json(await rt.getTrackHistory(limit, offset));
+});
+
+// ── Scoring (recalculate) ───────────────────────────────────────────────────
+
+router.post('/scoring/recalculate/:weekId', strictLimiter, async (req, res) => {
   try {
     res.json(await recalculateWeek(Number(req.params.weekId)));
   } catch (err) {
@@ -442,12 +471,11 @@ router.post('/competition/recalculate/:weekId', strictLimiter, async (req, res) 
   }
 });
 
-router.get('/competition/runner/state', async (req, res) => {
-  res.json(await rt.getCompetitionRunnerState());
-});
-
-router.post('/competition/runner/auto', async (req, res) => {
-  res.json(await rt.setCompetitionAutoManaged(!!req.body.enabled));
+router.get('/scoring/current-week', async (req, res) => {
+  const week = await getOrCreateCurrentWeek();
+  if (!week) return res.status(404).json({ error: 'No active scoring period' });
+  const standings = await db.getWeeklyStandings(week.id);
+  res.json({ week, standings });
 });
 
 // ── Tags (direct DB) ────────────────────────────────────────────────────────
@@ -587,7 +615,7 @@ router.get('/tracks/by-tag/:tagId', async (req, res) => {
   res.json(await db.getTracksForTag(Number(req.params.tagId)));
 });
 
-// ── Tag runner (via realtime) ────────────────────────────────────────────────
+// ── Tag runner (backward compat — routes through overseer) ──────────────────
 
 router.post('/tag-runner/start', strictLimiter, async (req, res) => {
   const { tag_names, interval_ms } = req.body;
@@ -596,22 +624,22 @@ router.post('/tag-runner/start', strictLimiter, async (req, res) => {
   }
   const intervalMs = Math.max(5000, Number(interval_ms) || 10 * 60 * 1000);
   try {
-    res.json(await rt.startTagRunner(tag_names, intervalMs));
+    res.json(await rt.startOverseerTags(tag_names, intervalMs));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
 router.post('/tag-runner/stop', async (req, res) => {
-  res.json(await rt.stopTagRunner());
+  res.json(await rt.stopOverseer());
 });
 
 router.post('/tag-runner/skip', async (req, res) => {
-  res.json(await rt.skipTagRunner());
+  res.json(await rt.skipOverseer());
 });
 
 router.get('/tag-runner/state', async (req, res) => {
-  res.json(await rt.getTagRunnerState());
+  res.json(await rt.getOverseerState());
 });
 
 // ── Tag vote (via realtime) ──────────────────────────────────────────────────
@@ -647,7 +675,7 @@ router.delete('/track-comments/:commentId', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Track Manager Beta ───────────────────────────────────────────────────────
+// ── Track Manager ─────────────────────────────────────────────────────────────
 
 router.get('/track-manager', async (req, res) => {
   const search = req.query.search || '';

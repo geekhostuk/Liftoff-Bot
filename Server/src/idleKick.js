@@ -178,9 +178,9 @@ function getIdleInfo() {
 // ── Core idle check ──────────────────────────────────────────────────────────
 
 function _runIdleCheck() {
-  // Only kick when a playlist is running
-  const { getState: getPlaylistState } = require('./playlistRunner');
-  if (!getPlaylistState().running) return;
+  // Only kick when the overseer is running
+  const { getState: getOverseerState } = require('./trackOverseer');
+  if (!getOverseerState().running) return;
   if (!_sendCommand) return;
 
   const onlinePlayers = state.getOnlinePlayers();

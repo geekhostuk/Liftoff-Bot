@@ -11,10 +11,10 @@ import Chat from './pages/Chat.jsx';
 import Playlists from './pages/Playlists.jsx';
 import PlaylistsBeta from './pages/PlaylistsBeta.jsx';
 import Tags from './pages/Tags.jsx';
-import Competition from './pages/Competition.jsx';
+import Overseer from './pages/Overseer.jsx';
 import ChatBeta from './pages/ChatBeta.jsx';
 import AutoMessages from './pages/AutoMessages.jsx';
-import TrackManagerBeta from './pages/TrackManagerBeta.jsx';
+import TrackManager from './pages/TrackManager.jsx';
 
 function AuthGate({ children }) {
   const { user, checking } = useAuth();
@@ -39,10 +39,10 @@ export default function App() {
                   <Route path="/admin/playlists" element={<Playlists />} />
                   <Route path="/admin/playlists-beta" element={<PlaylistsBeta />} />
                   <Route path="/admin/tags" element={<Tags />} />
-                  <Route path="/admin/competition" element={<Competition />} />
+                  <Route path="/admin/overseer" element={<Overseer />} />
                   <Route path="/admin/chat-beta" element={<ChatBeta />} />
                   <Route path="/admin/auto-messages" element={<AutoMessages />} />
-                  <Route path="/admin/track-manager" element={<TrackManagerBeta />} />
+                  <Route path="/admin/track-manager" element={<TrackManager />} />
                 </Route>
               </Routes>
             </WebSocketProvider>

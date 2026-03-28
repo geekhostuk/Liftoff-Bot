@@ -3,8 +3,7 @@ const rateLimit = require('express-rate-limit');
 const { sendCommand, sendCommandAwait, getPluginSocket, setCurrentTrack, fireTemplates } = require('../pluginSocket');
 const broadcast = require('../broadcast');
 const db = require('../database');
-const playlist = require('../playlistRunner');
-const competitionRunner = require('../competitionRunner');
+const trackOverseer = require('../trackOverseer');
 const { recalculateWeek } = require('../competitionScoring');
 const { hashPassword, verifyPassword, createSession, getSession, destroySession, destroyUserSessions } = require('../auth');
 

@@ -123,7 +123,7 @@ export default function Tags() {
     loadVoteState();
   }, [loadTags, loadTracks, loadTagRunnerState, loadVoteState]);
 
-  useWsEvent('tag_runner_state', (data) => setTagRunnerState(data));
+  useWsEvent('overseer_state', (data) => setTagRunnerState(data));
   useWsEvent('tag_vote_state', (data) => setVoteState(data));
 
   // --- Track search (substring, case-insensitive) ---

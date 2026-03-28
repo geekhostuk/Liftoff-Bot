@@ -2,7 +2,7 @@
  * Realtime Server
  *
  * Owns all WebSocket connections (plugin, public live, admin live),
- * in-memory state, domain services (playlist, competition, idle kick,
+ * in-memory state, domain services (track overseer, idle kick,
  * skip/extend vote), event ingestion, and broadcasting.
  *
  * Exposes an internal HTTP API (port 3001) for the API server to send
@@ -18,11 +18,10 @@ const { createPluginSocketServer, sendCommand, sendCommandAwait, getPluginSocket
 const { createLiveSocketServer } = require('../liveSocket');
 const broadcast = require('../broadcast');
 const state = require('../state');
-const playlistRunner = require('../playlistRunner');
-const competitionRunner = require('../competitionRunner');
+const trackOverseer = require('../trackOverseer');
 const idleKick = require('../idleKick');
-const tagRunner = require('../tagRunner');
 const tagVote = require('../tagVote');
+const db = require('../database');
 
 async function main() {
   // ── Database ──────────────────────────────────────────────────────────────
@@ -36,17 +35,25 @@ async function main() {
   broadcast.init(broadcastPublic, broadcastAdmin);
   await createPluginSocketServer(wsServer);
 
-  // Initialise playlist runner
-  playlistRunner.init(broadcast.broadcastAll);
+  // Initialise track overseer
+  trackOverseer.init(broadcast.broadcastAll);
 
-  // Start competition runner (week lifecycle + interleaved schedule)
-  await competitionRunner.start();
+  // Try resuming overseer from persisted state
+  await trackOverseer.tryResume();
 
-  // Try resuming playlist runner from persisted state (skipped if competition runner already started one)
-  await playlistRunner.tryResume();
+  // Scoring tick: auto-finalise expired weeks and ensure current period exists
+  setInterval(async () => {
+    try {
+      await db.finaliseExpiredWeeks();
+      await db.getOrCreateCurrentWeek();
+    } catch (err) {
+      console.error('[realtime] Scoring tick error:', err.message);
+    }
+  }, 60 * 60 * 1000); // hourly
 
-  // Try resuming tag runner from persisted config (only if competition isn't managing playlists)
-  await tagRunner.tryResume();
+  // Run once on startup
+  db.finaliseExpiredWeeks().catch(() => {});
+  db.getOrCreateCurrentWeek().catch(() => {});
 
   const WS_PORT = process.env.WS_PORT || 3000;
   wsServer.listen(WS_PORT, () => {
@@ -89,54 +96,108 @@ async function main() {
     res.json({ ok: sent });
   });
 
-  // ── Playlist ──────────────────────────────────────────────────────────────
-  internal.post('/internal/playlist/start', async (req, res) => {
+  // ── Track Overseer ────────────────────────────────────────────────────────
+  internal.get('/internal/overseer/state', (req, res) => {
+    res.json(trackOverseer.getState());
+  });
+
+  internal.post('/internal/overseer/start-playlist', async (req, res) => {
     try {
       const { playlist_id, interval_ms, start_index = 0 } = req.body;
-      await playlistRunner.startPlaylist(playlist_id, interval_ms, start_index);
-      res.json(playlistRunner.getState());
+      await trackOverseer.startPlaylist(playlist_id, interval_ms, start_index);
+      res.json(trackOverseer.getState());
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
   });
 
-  internal.post('/internal/playlist/stop', (req, res) => {
-    playlistRunner.stopPlaylist();
-    res.json({ ok: true });
-  });
-
-  internal.post('/internal/playlist/skip', (req, res) => {
-    playlistRunner.skipToNext();
-    res.json(playlistRunner.getState());
-  });
-
-  internal.get('/internal/playlist/state', (req, res) => {
-    res.json(playlistRunner.getState());
-  });
-
-  // ── Tag runner ──────────────────────────────────────────────────────────
-  internal.post('/internal/tag-runner/start', async (req, res) => {
+  internal.post('/internal/overseer/start-tags', async (req, res) => {
     try {
       const { tag_names, interval_ms } = req.body;
-      await tagRunner.startTagRunner(tag_names, interval_ms);
-      res.json(tagRunner.getState());
+      await trackOverseer.startTagMode(tag_names, interval_ms);
+      res.json(trackOverseer.getState());
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
   });
 
-  internal.post('/internal/tag-runner/stop', (req, res) => {
-    tagRunner.stopTagRunner();
+  internal.post('/internal/overseer/stop', (req, res) => {
+    trackOverseer.stop();
     res.json({ ok: true });
   });
 
-  internal.post('/internal/tag-runner/skip', async (req, res) => {
-    await tagRunner.skipToNext();
-    res.json(tagRunner.getState());
+  internal.post('/internal/overseer/skip', async (req, res) => {
+    await trackOverseer.skipToNext();
+    res.json(trackOverseer.getState());
   });
 
-  internal.get('/internal/tag-runner/state', (req, res) => {
-    res.json(tagRunner.getState());
+  internal.post('/internal/overseer/extend', async (req, res) => {
+    const { ms } = req.body;
+    await trackOverseer.extendTimer(ms || 300000);
+    res.json(trackOverseer.getState());
+  });
+
+  internal.post('/internal/overseer/skip-to-index', (req, res) => {
+    const { index } = req.body;
+    trackOverseer.skipToIndex(index);
+    res.json(trackOverseer.getState());
+  });
+
+  internal.post('/internal/overseer/next-playlist', async (req, res) => {
+    const { playlist_id, interval_ms } = req.body;
+    try {
+      res.json(await trackOverseer.setNextPlaylist(playlist_id, interval_ms));
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.delete('/internal/overseer/next-playlist', (req, res) => {
+    trackOverseer.setNextPlaylist(null);
+    res.json({ ok: true });
+  });
+
+  // ── Queue ─────────────────────────────────────────────────────────────────
+  internal.get('/internal/queue', async (req, res) => {
+    const queue = await db.getQueue();
+    res.json(queue);
+  });
+
+  internal.post('/internal/queue', async (req, res) => {
+    try {
+      const item = await db.addToQueue(req.body);
+      res.json(item);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.delete('/internal/queue/:id', async (req, res) => {
+    await db.removeFromQueue(parseInt(req.params.id, 10));
+    res.json({ ok: true });
+  });
+
+  internal.post('/internal/queue/:id/move', async (req, res) => {
+    await db.reorderQueue(parseInt(req.params.id, 10), req.body.direction);
+    res.json({ ok: true });
+  });
+
+  internal.delete('/internal/queue', async (req, res) => {
+    await db.clearQueue();
+    res.json({ ok: true });
+  });
+
+  // ── Tracks info ───────────────────────────────────────────────────────────
+  internal.get('/internal/tracks/upcoming', (req, res) => {
+    const count = parseInt(req.query.count || '10', 10);
+    res.json(trackOverseer.getUpcoming(count));
+  });
+
+  internal.get('/internal/tracks/history', async (req, res) => {
+    const limit = parseInt(req.query.limit || '50', 10);
+    const offset = parseInt(req.query.offset || '0', 10);
+    const history = await db.getTrackHistory(limit, offset);
+    res.json(history);
   });
 
   // ── Tag vote ──────────────────────────────────────────────────────────────
@@ -157,16 +218,6 @@ async function main() {
 
   internal.get('/internal/tag-vote/state', (req, res) => {
     res.json(tagVote.getState());
-  });
-
-  // ── Competition runner ────────────────────────────────────────────────────
-  internal.get('/internal/competition/runner/state', (req, res) => {
-    res.json(competitionRunner.getState());
-  });
-
-  internal.post('/internal/competition/runner/auto', async (req, res) => {
-    await competitionRunner.setAutoManaged(!!req.body.enabled);
-    res.json(competitionRunner.getState());
   });
 
   // ── Idle kick ─────────────────────────────────────────────────────────────
@@ -213,8 +264,7 @@ async function main() {
   // ── Tracks info (public tracks page) ─────────────────────────────────────
   internal.get('/internal/tracks/info', (req, res) => {
     res.json({
-      playlist: playlistRunner.getState(),
-      competition: competitionRunner.getState(),
+      overseer: trackOverseer.getState(),
     });
   });
 
@@ -237,8 +287,7 @@ async function main() {
       current_track: state.getCurrentTrack(),
       track_since: state.getCurrentTrackSince(),
       online_players: state.getOnlinePlayers(),
-      playlist: playlistRunner.getState(),
-      tag_runner: tagRunner.getState(),
+      overseer: trackOverseer.getState(),
       tag_vote: tagVote.getState(),
     });
   });

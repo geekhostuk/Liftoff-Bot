@@ -11,4 +11,5 @@ module.exports = {
   ...require('./whitelist'),
   ...require('./tags'),
   ...require('./trackBrowser'),
+  ...require('./trackOverseer'),
 };
