@@ -106,6 +106,18 @@ async function handleLapRecorded(event, currentTrack = {}) {
 async function handleRaceEnd(event) {
   const pool = getPool();
   await ensureRaceExists(event);
+
+  // Determine winner by fastest lap time (not plugin-reported finish position)
+  const { rows: [fastestLap] } = await pool.query(`
+    SELECT actor, nick, MIN(lap_ms) AS best_ms
+    FROM laps WHERE race_id = $1
+    GROUP BY actor, nick ORDER BY best_ms ASC LIMIT 1
+  `, [event.race_id]);
+
+  const winnerActor = fastestLap?.actor ?? event.winner_actor ?? null;
+  const winnerNick  = fastestLap?.nick  ?? event.winner_nick  ?? null;
+  const winnerMs    = fastestLap?.best_ms ?? event.winner_total_ms ?? null;
+
   await pool.query(`
     UPDATE races
     SET ended_at        = $1,
@@ -117,9 +129,9 @@ async function handleRaceEnd(event) {
     WHERE id = $7
   `, [
     event.timestamp_utc,
-    event.winner_actor || null,
-    event.winner_nick || null,
-    event.winner_total_ms || null,
+    winnerActor,
+    winnerNick,
+    winnerMs,
     event.participants || 0,
     event.completed || 0,
     event.race_id,

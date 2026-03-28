@@ -15,6 +15,7 @@ import Overseer from './pages/Overseer.jsx';
 import ChatBeta from './pages/ChatBeta.jsx';
 import AutoMessages from './pages/AutoMessages.jsx';
 import TrackManager from './pages/TrackManager.jsx';
+import Scoring from './pages/Scoring.jsx';
 
 function AuthGate({ children }) {
   const { user, checking } = useAuth();
@@ -43,6 +44,7 @@ export default function App() {
                   <Route path="/admin/chat-beta" element={<ChatBeta />} />
                   <Route path="/admin/auto-messages" element={<AutoMessages />} />
                   <Route path="/admin/track-manager" element={<TrackManager />} />
+                  <Route path="/admin/scoring" element={<Scoring />} />
                 </Route>
               </Routes>
             </WebSocketProvider>
