@@ -500,6 +500,13 @@ router.post('/competition/:id/activate', async (req, res) => {
   res.json({ ok: true });
 });
 
+router.delete('/competition/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (id === 0) return res.status(400).json({ error: 'Cannot delete Auto Season' });
+  await db.deleteCompetition(id);
+  res.json({ ok: true });
+});
+
 router.post('/competition/:id/weeks', async (req, res) => {
   const { count = 4, start_date } = req.body;
   if (!start_date) return res.status(400).json({ error: 'start_date is required (ISO format)' });

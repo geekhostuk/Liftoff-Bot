@@ -201,6 +201,12 @@ export default function Competitions() {
     fetchCompetitions();
   };
 
+  const handleDeleteComp = async (id) => {
+    await apiCall('DELETE', `/api/admin/competition/${id}`, null, 'Competition deleted');
+    fetchCompetitions();
+    if (selectedCompId === id) setSelectedCompId(null);
+  };
+
   const handleSelectComp = (id) => {
     setSelectedCompId(selectedCompId === id ? null : id);
   };
@@ -342,9 +348,16 @@ export default function Competitions() {
                   </ConfirmButton>
                 )}
                 {comp.status === 'archived' && (
-                  <button className="btn btn-outline btn-sm" onClick={() => handleActivate(comp.id)}>
-                    <RotateCcw size={14} /> Reactivate
-                  </button>
+                  <>
+                    <button className="btn btn-outline btn-sm" onClick={() => handleActivate(comp.id)}>
+                      <RotateCcw size={14} /> Reactivate
+                    </button>
+                    {comp.id !== 0 && (
+                      <ConfirmButton className="btn btn-danger btn-sm" confirmText="Delete forever?" onConfirm={() => handleDeleteComp(comp.id)}>
+                        <Trash2 size={14} /> Delete
+                      </ConfirmButton>
+                    )}
+                  </>
                 )}
               </div>
             </div>

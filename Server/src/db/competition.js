@@ -28,6 +28,20 @@ async function activateCompetition(id) {
   await getPool().query("UPDATE competitions SET status = 'active' WHERE id = $1", [id]);
 }
 
+async function deleteCompetition(id) {
+  const pool = getPool();
+  const { rows: weeks } = await pool.query('SELECT id FROM competition_weeks WHERE competition_id = $1', [id]);
+  for (const w of weeks) {
+    await pool.query('DELETE FROM week_schedules WHERE week_id = $1', [w.id]);
+    await pool.query('DELETE FROM weekly_standings WHERE week_id = $1', [w.id]);
+    await pool.query('DELETE FROM weekly_points WHERE week_id = $1', [w.id]);
+    await pool.query('DELETE FROM race_results WHERE week_id = $1', [w.id]);
+    await pool.query('DELETE FROM week_playlists WHERE week_id = $1', [w.id]);
+  }
+  await pool.query('DELETE FROM competition_weeks WHERE competition_id = $1', [id]);
+  await pool.query('DELETE FROM competitions WHERE id = $1', [id]);
+}
+
 // ── Competition Weeks ───────────────────────────────────────────────────────
 
 async function createWeek(competitionId, weekNumber, startsAt, endsAt) {
@@ -572,6 +586,7 @@ module.exports = {
   getActiveCompetition,
   archiveCompetition,
   activateCompetition,
+  deleteCompetition,
   // Weeks
   createWeek,
   generateWeeks,
