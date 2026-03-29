@@ -13,9 +13,9 @@ const POSITION_POINTS = [25, 18, 15, 12, 10, 8, 6, 4];
 
 // ── Real-time scoring (per race close) ──────────────────────────────────────
 
-async function processRaceClose(raceId) {
-  // Prefer existing active competition week, fall back to auto season
-  const week = await db.getActiveWeek() || await db.getOrCreateCurrentWeek();
+async function processRaceClose(raceId, overrideWeek) {
+  // Use provided week (e.g. during recalculation) or look up the active one
+  const week = overrideWeek || await db.getActiveWeek() || await db.getOrCreateCurrentWeek();
   if (!week) return;
 
   // Avoid double-processing
@@ -288,21 +288,16 @@ async function recalculateWeek(weekId) {
   // Find all races within this week's time range
   const races = await db.getRacesInRange(week.starts_at, week.ends_at);
 
-  // Temporarily set week as active for processRaceClose
-  const originalStatus = week.status;
-  await db.updateWeekStatus(weekId, 'active');
-
+  // Pass the week directly so processRaceClose uses it instead of looking up
+  // the active week (which could be from a different competition)
   for (const race of races) {
-    await processRaceClose(race.id);
+    await processRaceClose(race.id, week);
   }
 
   // Run batch calculations
   await calculateMostImproved(weekId, week);
   await calculateParticipation(weekId, week);
   await db.refreshWeeklyStandings(weekId);
-
-  // Restore original status
-  await db.updateWeekStatus(weekId, originalStatus);
 
   return { races_processed: races.length, standings: await db.getWeeklyStandings(weekId) };
 }
