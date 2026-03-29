@@ -478,6 +478,84 @@ router.get('/scoring/current-week', async (req, res) => {
   res.json({ week, standings });
 });
 
+// ── Competitions (direct DB) ────────────────────────────────────────────────
+
+router.post('/competition', async (req, res) => {
+  const { name = '' } = req.body;
+  if (!name.trim()) return res.status(400).json({ error: 'name is required' });
+  res.status(201).json(await db.createCompetition(name.trim()));
+});
+
+router.get('/competitions', async (req, res) => {
+  res.json(await db.getCompetitions());
+});
+
+router.post('/competition/:id/archive', async (req, res) => {
+  await db.archiveCompetition(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+router.post('/competition/:id/activate', async (req, res) => {
+  await db.activateCompetition(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+router.delete('/competition/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (id === 0) return res.status(400).json({ error: 'Cannot delete Auto Season' });
+  await db.deleteCompetition(id);
+  res.json({ ok: true });
+});
+
+router.post('/competition/:id/weeks', async (req, res) => {
+  const { count = 4, start_date } = req.body;
+  if (!start_date) return res.status(400).json({ error: 'start_date is required (ISO format)' });
+  const weeks = await db.generateWeeks(Number(req.params.id), Number(count), start_date);
+  res.status(201).json(weeks);
+});
+
+router.get('/competition/:id/weeks', async (req, res) => {
+  res.json(await db.getWeeks(Number(req.params.id)));
+});
+
+router.put('/competition/week/:id', async (req, res) => {
+  const { status, starts_at, ends_at, week_number } = req.body;
+  if (status && !['scheduled', 'active', 'finalised'].includes(status)) {
+    return res.status(400).json({ error: 'status must be scheduled, active, or finalised' });
+  }
+  const fields = {};
+  if (status) fields.status = status;
+  if (starts_at) fields.starts_at = starts_at;
+  if (ends_at) fields.ends_at = ends_at;
+  if (week_number !== undefined) fields.week_number = Number(week_number);
+  await db.updateWeek(Number(req.params.id), fields);
+  res.json({ ok: true });
+});
+
+router.delete('/competition/week/:id', async (req, res) => {
+  await db.deleteWeek(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+router.post('/competition/recalculate/:weekId', strictLimiter, async (req, res) => {
+  try {
+    const result = await recalculateWeek(Number(req.params.weekId));
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/competition/week/:id/standings', async (req, res) => {
+  const standings = await db.getWeeklyStandings(Number(req.params.id));
+  res.json(standings);
+});
+
+router.get('/competition/:id/season-standings', async (req, res) => {
+  const standings = await db.getSeasonStandings(Number(req.params.id));
+  res.json(standings);
+});
+
 // ── Tags (direct DB) ────────────────────────────────────────────────────────
 
 router.get('/tags', async (req, res) => {

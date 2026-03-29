@@ -22,6 +22,45 @@ const trackOverseer = require('../trackOverseer');
 const idleKick = require('../idleKick');
 const tagVote = require('../tagVote');
 const db = require('../database');
+const scoring = require('../competitionScoring');
+
+async function checkWeekTransition() {
+  // Finalise any expired week with full batch scoring + broadcast
+  const expired = await db.getOverdueActiveWeek();
+  if (expired) {
+    console.log(`[realtime] Finalising expired week ${expired.id} (week ${expired.week_number})`);
+    await scoring.finaliseWeek(expired.id);
+  }
+
+  // Promote a scheduled week to active if its start time has arrived
+  const scheduled = await db.getNextScheduledWeek();
+  if (scheduled) {
+    console.log(`[realtime] Activating scheduled week ${scheduled.id} (week ${scheduled.week_number})`);
+    await db.updateWeekStatus(scheduled.id, 'active');
+    broadcast.broadcastAll({
+      event_type: 'competition_week_started',
+      week_id: scheduled.id,
+      week_number: scheduled.week_number,
+      starts_at: scheduled.starts_at,
+      ends_at: scheduled.ends_at,
+    });
+    return;
+  }
+
+  // Fallback: auto-create current week if none exists; broadcast if newly created
+  const before = await db.getActiveWeek();
+  const week = await db.getOrCreateCurrentWeek();
+  if (week && !before) {
+    console.log(`[realtime] New competition week ${week.id} started (week ${week.week_number})`);
+    broadcast.broadcastAll({
+      event_type: 'competition_week_started',
+      week_id: week.id,
+      week_number: week.week_number,
+      starts_at: week.starts_at,
+      ends_at: week.ends_at,
+    });
+  }
+}
 
 async function main() {
   // ── Database ──────────────────────────────────────────────────────────────
@@ -41,19 +80,19 @@ async function main() {
   // Try resuming overseer from persisted state
   await trackOverseer.tryResume();
 
-  // Scoring tick: auto-finalise expired weeks and ensure current period exists
+  // Scoring tick: auto-finalise expired weeks (with batch scoring) and ensure current period exists
   setInterval(async () => {
     try {
-      await db.finaliseExpiredWeeks();
-      await db.getOrCreateCurrentWeek();
+      await checkWeekTransition();
     } catch (err) {
       console.error('[realtime] Scoring tick error:', err.message);
     }
   }, 60 * 60 * 1000); // hourly
 
   // Run once on startup
-  db.finaliseExpiredWeeks().catch(() => {});
-  db.getOrCreateCurrentWeek().catch(() => {});
+  checkWeekTransition().catch(err => {
+    console.error('[realtime] Startup week transition error:', err.message);
+  });
 
   const WS_PORT = process.env.WS_PORT || 3000;
   wsServer.listen(WS_PORT, () => {

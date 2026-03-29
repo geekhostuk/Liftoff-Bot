@@ -14,6 +14,7 @@ async function saveOverseerState(state) {
   await pool.query(upsert, [`${KV_PREFIX}next_change_at`, state.nextChangeAt ? state.nextChangeAt.toISOString() : '']);
   await pool.query(upsert, [`${KV_PREFIX}tag_names`, JSON.stringify(state.tagNames || [])]);
   await pool.query(upsert, [`${KV_PREFIX}default_interval_ms`, String(state.defaultIntervalMs || 600000)]);
+  await pool.query(upsert, [`${KV_PREFIX}current_track`, JSON.stringify(state.currentTrack || null)]);
 }
 
 async function loadOverseerState() {
@@ -34,6 +35,7 @@ async function loadOverseerState() {
     nextChangeAt: (await get('next_change_at')) || null,
     tagNames,
     defaultIntervalMs: Number((await get('default_interval_ms')) || 600000),
+    currentTrack: JSON.parse((await get('current_track')) || 'null'),
   };
 }
 
