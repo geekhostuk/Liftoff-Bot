@@ -286,26 +286,11 @@ async function tryResume() {
         ? new Date(saved.nextChangeAt).getTime() - Date.now()
         : null;
 
-      // Clamp remaining time to prevent clock-skew induced skips
+      // If timer expired during downtime, restore current track with fresh interval
+      if (remainingMs !== null && remainingMs < 5000) {
+        remainingMs = saved.intervalMs;
+      }
       if (remainingMs !== null) {
-        if (remainingMs < 5000) {
-          // Timer expired — advance to next track
-          const nextIdx = (idx + 1) % tracks.length;
-          state.mode = 'playlist';
-          state.running = true;
-          state.playlistId = saved.playlistId;
-          state.playlistName = playlist.name;
-          state.currentIndex = nextIdx;
-          state.intervalMs = saved.intervalMs;
-          state.tracks = tracks;
-
-          await _applyTrack(_getPlaylistTrack(nextIdx), 'playlist');
-          await _persistState();
-          _armTimer(state.intervalMs);
-          console.log(`[overseer] Resumed playlist "${playlist.name}" — timer expired, advanced to track ${nextIdx + 1}/${tracks.length}`);
-          _broadcastState();
-          return;
-        }
         remainingMs = Math.min(remainingMs, saved.intervalMs);
       }
 
@@ -339,23 +324,35 @@ async function tryResume() {
       state.running = true;
       state.tagNames = saved.tagNames;
       state.defaultIntervalMs = saved.defaultIntervalMs || DEFAULT_TAG_INTERVAL_MS;
-      state.intervalMs = state.defaultIntervalMs;
+      state.intervalMs = saved.intervalMs || state.defaultIntervalMs;
       state.recentHistory = [];
 
-      const picked = await _pickTagTrack();
-      if (!picked) {
-        console.warn('[overseer] Tag resume failed — no tracks for tags:', saved.tagNames);
-        state.mode = 'idle';
-        state.running = false;
-        return;
+      // Restore saved track if available, otherwise pick new
+      if (saved.currentTrack) {
+        setCurrentTrack({ env: saved.currentTrack.env, track: saved.currentTrack.track, race: saved.currentTrack.race });
+        state.currentTrack = saved.currentTrack;
+      } else {
+        const picked = await _pickTagTrack();
+        if (!picked) {
+          console.warn('[overseer] Tag resume failed — no tracks for tags:', saved.tagNames);
+          state.mode = 'idle';
+          state.running = false;
+          return;
+        }
+        await _applyTrack(picked, 'tag');
+        state.intervalMs = picked.duration_ms || state.defaultIntervalMs;
       }
 
-      await _applyTrack(picked, 'tag');
-      state.intervalMs = picked.duration_ms || state.defaultIntervalMs;
-      await _persistState();
-      _armTimer(state.intervalMs);
+      let remainingMs = saved.nextChangeAt
+        ? new Date(saved.nextChangeAt).getTime() - Date.now()
+        : null;
+      if (remainingMs !== null && remainingMs < 5000) remainingMs = state.intervalMs;
 
-      console.log(`[overseer] Resumed tag mode [${saved.tagNames.join(', ')}]`);
+      const delay = remainingMs || state.intervalMs;
+      await _persistState();
+      _armTimer(delay);
+
+      console.log(`[overseer] Resumed tag mode [${saved.tagNames.join(', ')}] (next change in ${Math.round(delay / 1000)}s)`);
       _broadcastState();
     }
   } catch (err) {
@@ -556,6 +553,7 @@ async function _persistState() {
       nextChangeAt: state.nextChangeAt,
       tagNames: state.tagNames,
       defaultIntervalMs: state.defaultIntervalMs,
+      currentTrack: state.currentTrack,
     });
   } catch (err) {
     console.error('[overseer] Failed to persist state:', err.message);

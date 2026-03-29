@@ -4,8 +4,7 @@ import { useWsEvent } from '../context/WebSocketContext.jsx';
 import ConfirmButton from '../components/form/ConfirmButton.jsx';
 import {
   Trophy, Plus, Archive, RotateCcw, ChevronDown, ChevronRight,
-  Pencil, Trash2, RefreshCw, BarChart3, ListMusic, Check, X,
-  ChevronUp, Play,
+  Pencil, Trash2, RefreshCw, BarChart3, Check, X, Play,
 } from 'lucide-react';
 
 const styles = {
@@ -14,10 +13,6 @@ const styles = {
   panelActive: { borderColor: '#FF7A00' },
   panelTitle: { fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 'var(--space-md)', display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' },
   headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)' },
-  row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-sm) 0', borderBottom: '1px solid var(--border-color)' },
-  label: { fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 500 },
-  value: { fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 600 },
-  btnRow: { display: 'flex', gap: 'var(--space-sm)', marginTop: 'var(--space-md)', flexWrap: 'wrap' },
   formRow: { display: 'flex', gap: 'var(--space-sm)', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 'var(--space-sm)' },
   formGroup: { display: 'flex', flexDirection: 'column', gap: 4 },
   formLabel: { fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 },
@@ -39,13 +34,7 @@ const styles = {
   compName: { fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' },
   compMeta: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 2 },
   compActions: { display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' },
-  iconBtn: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 'var(--radius-sm)', border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', transition: 'background 0.15s, color 0.15s' },
   subPanel: { background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-md)', border: '1px solid var(--border-color)', marginTop: 'var(--space-sm)' },
-  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' },
-  playlistRow: { display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', padding: '6px 0', borderBottom: '1px solid var(--border-color)' },
-  playlistName: { flex: 1, fontSize: '0.85rem', color: 'var(--text-primary)' },
-  playlistPos: { fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, minWidth: 24 },
-  playlistInterval: { fontSize: '0.75rem', color: 'var(--text-muted)' },
 };
 
 function fmtDate(iso) {
@@ -82,19 +71,14 @@ export default function Competitions() {
   const [editingWeekId, setEditingWeekId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [expandedWeekId, setExpandedWeekId] = useState(null);
-  const [expandedView, setExpandedView] = useState(null); // 'playlists' | 'standings'
 
   // Add weeks form
   const [showAddWeeks, setShowAddWeeks] = useState(false);
   const [addWeeksCount, setAddWeeksCount] = useState(4);
   const [addWeeksStart, setAddWeeksStart] = useState('');
 
-  // Week detail data
-  const [weekPlaylists, setWeekPlaylists] = useState([]);
+  // Week standings
   const [weekStandings, setWeekStandings] = useState([]);
-  const [allPlaylists, setAllPlaylists] = useState([]);
-  const [addPlaylistId, setAddPlaylistId] = useState('');
-  const [addIntervalMs, setAddIntervalMs] = useState(900000);
 
   // Season standings
   const [seasonStandings, setSeasonStandings] = useState([]);
@@ -118,25 +102,11 @@ export default function Competitions() {
     } catch { setWeeks([]); }
   }, [apiFetch]);
 
-  const fetchWeekPlaylists = useCallback(async (weekId) => {
-    try {
-      const data = await apiFetch('GET', `/api/admin/competition/week/${weekId}/playlists`);
-      setWeekPlaylists(data);
-    } catch { setWeekPlaylists([]); }
-  }, [apiFetch]);
-
   const fetchWeekStandings = useCallback(async (weekId) => {
     try {
       const data = await apiFetch('GET', `/api/admin/competition/week/${weekId}/standings`);
       setWeekStandings(data);
     } catch { setWeekStandings([]); }
-  }, [apiFetch]);
-
-  const fetchAllPlaylists = useCallback(async () => {
-    try {
-      const data = await apiFetch('GET', '/api/admin/playlists');
-      setAllPlaylists(data);
-    } catch { setAllPlaylists([]); }
   }, [apiFetch]);
 
   const fetchSeasonStandings = useCallback(async (compId) => {
@@ -152,7 +122,6 @@ export default function Competitions() {
     if (selectedCompId) {
       fetchWeeks(selectedCompId);
       setExpandedWeekId(null);
-      setExpandedView(null);
       setShowSeason(false);
     }
   }, [selectedCompId, fetchWeeks]);
@@ -164,10 +133,10 @@ export default function Competitions() {
   }, [selectedCompId, fetchWeeks]);
 
   const handleStandingsUpdate = useCallback((evt) => {
-    if (expandedView === 'standings' && expandedWeekId && evt.week_id === expandedWeekId) {
+    if (expandedWeekId && evt.week_id === expandedWeekId) {
       fetchWeekStandings(expandedWeekId);
     }
-  }, [expandedView, expandedWeekId, fetchWeekStandings]);
+  }, [expandedWeekId, fetchWeekStandings]);
 
   useWsEvent('competition_week_started', handleWsWeekEvent);
   useWsEvent('competition_week_finalised', handleWsWeekEvent);
@@ -229,13 +198,13 @@ export default function Competitions() {
 
   const handleDeleteWeek = async (weekId) => {
     await apiCall('DELETE', `/api/admin/competition/week/${weekId}`, null, 'Week deleted');
-    if (expandedWeekId === weekId) { setExpandedWeekId(null); setExpandedView(null); }
+    if (expandedWeekId === weekId) setExpandedWeekId(null);
     fetchWeeks(selectedCompId);
   };
 
   const handleRecalculate = async (weekId) => {
     await apiCall('POST', `/api/admin/competition/recalculate/${weekId}`, null, 'Week recalculated');
-    if (expandedView === 'standings' && expandedWeekId === weekId) fetchWeekStandings(weekId);
+    if (expandedWeekId === weekId) fetchWeekStandings(weekId);
   };
 
   const handleAddWeeks = async () => {
@@ -245,34 +214,13 @@ export default function Competitions() {
     fetchWeeks(selectedCompId);
   };
 
-  const toggleWeekDetail = (weekId, view) => {
-    if (expandedWeekId === weekId && expandedView === view) {
+  const toggleStandings = (weekId) => {
+    if (expandedWeekId === weekId) {
       setExpandedWeekId(null);
-      setExpandedView(null);
     } else {
       setExpandedWeekId(weekId);
-      setExpandedView(view);
-      if (view === 'playlists') { fetchWeekPlaylists(weekId); fetchAllPlaylists(); }
-      if (view === 'standings') fetchWeekStandings(weekId);
+      fetchWeekStandings(weekId);
     }
-  };
-
-  // Playlist management
-  const handleAddPlaylist = async () => {
-    if (!addPlaylistId) return;
-    await apiCall('POST', `/api/admin/competition/week/${expandedWeekId}/playlists`, { playlist_id: Number(addPlaylistId), interval_ms: Number(addIntervalMs) }, 'Playlist added');
-    setAddPlaylistId('');
-    fetchWeekPlaylists(expandedWeekId);
-  };
-
-  const handleRemovePlaylist = async (wpId) => {
-    await apiCall('DELETE', `/api/admin/competition/week/${expandedWeekId}/playlists/${wpId}`, null, 'Playlist removed');
-    fetchWeekPlaylists(expandedWeekId);
-  };
-
-  const handleMovePlaylist = async (wpId, direction) => {
-    await apiCall('POST', `/api/admin/competition/week/${expandedWeekId}/playlists/${wpId}/move`, { direction }, 'Reordered');
-    fetchWeekPlaylists(expandedWeekId);
   };
 
   const handleChangeWeekStatus = async (weekId, status) => {
@@ -409,7 +357,6 @@ export default function Competitions() {
                   <th style={styles.th}>Start</th>
                   <th style={styles.th}>End</th>
                   <th style={styles.th}>Status</th>
-                  <th style={styles.th}>Playlists</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
@@ -426,21 +373,10 @@ export default function Competitions() {
                     onCancelEdit={() => setEditingWeekId(null)}
                     onDelete={() => handleDeleteWeek(w.id)}
                     onRecalculate={() => handleRecalculate(w.id)}
-                    onTogglePlaylists={() => toggleWeekDetail(w.id, 'playlists')}
-                    onToggleStandings={() => toggleWeekDetail(w.id, 'standings')}
+                    onToggleStandings={() => toggleStandings(w.id)}
                     onChangeStatus={handleChangeWeekStatus}
-                    expandedWeekId={expandedWeekId}
-                    expandedView={expandedView}
-                    weekPlaylists={weekPlaylists}
+                    expanded={expandedWeekId === w.id}
                     weekStandings={weekStandings}
-                    allPlaylists={allPlaylists}
-                    addPlaylistId={addPlaylistId}
-                    setAddPlaylistId={setAddPlaylistId}
-                    addIntervalMs={addIntervalMs}
-                    setAddIntervalMs={setAddIntervalMs}
-                    onAddPlaylist={handleAddPlaylist}
-                    onRemovePlaylist={handleRemovePlaylist}
-                    onMovePlaylist={handleMovePlaylist}
                   />
                 ))}
               </tbody>
@@ -464,17 +400,12 @@ export default function Competitions() {
 
 function WeekRow({
   w, editing, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit,
-  onDelete, onRecalculate, onTogglePlaylists, onToggleStandings, onChangeStatus,
-  expandedWeekId, expandedView,
-  weekPlaylists, weekStandings, allPlaylists,
-  addPlaylistId, setAddPlaylistId, addIntervalMs, setAddIntervalMs,
-  onAddPlaylist, onRemovePlaylist, onMovePlaylist,
+  onDelete, onRecalculate, onToggleStandings, onChangeStatus,
+  expanded, weekStandings,
 }) {
-  const isExpanded = expandedWeekId === w.id;
-
   return (
     <>
-      <tr style={isExpanded ? { background: 'rgba(255,122,0,0.03)' } : undefined}>
+      <tr style={expanded ? { background: 'rgba(255,122,0,0.03)' } : undefined}>
         {editing ? (
           <>
             <td style={styles.td}>
@@ -487,7 +418,6 @@ function WeekRow({
               <input className="form-input" type="date" value={editForm.ends_at} onChange={e => setEditForm({ ...editForm, ends_at: e.target.value })} />
             </td>
             <td style={styles.td}><StatusBadge status={w.status} /></td>
-            <td style={styles.td}>{w.playlist_count ?? 0}</td>
             <td style={styles.tdActions}>
               <button className="btn btn-primary btn-sm" onClick={onSaveEdit}><Check size={14} /></button>
               <button className="btn btn-ghost btn-sm" onClick={onCancelEdit}><X size={14} /></button>
@@ -499,7 +429,6 @@ function WeekRow({
             <td style={styles.td}>{fmtDate(w.starts_at)}</td>
             <td style={styles.td}>{fmtDate(w.ends_at)}</td>
             <td style={styles.td}><StatusBadge status={w.status} /></td>
-            <td style={styles.td}>{w.playlist_count ?? 0}</td>
             <td style={styles.tdActions}>
               {w.status === 'scheduled' && (
                 <button className="btn btn-ghost btn-sm" onClick={() => onChangeStatus(w.id, 'active')} title="Activate">
@@ -509,12 +438,8 @@ function WeekRow({
               <button className="btn btn-ghost btn-sm" onClick={onStartEdit} title="Edit dates">
                 <Pencil size={14} />
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={onTogglePlaylists} title="Manage playlists"
-                style={isExpanded && expandedView === 'playlists' ? { color: '#FF7A00' } : undefined}>
-                <ListMusic size={14} />
-              </button>
               <button className="btn btn-ghost btn-sm" onClick={onToggleStandings} title="View standings"
-                style={isExpanded && expandedView === 'standings' ? { color: '#FF7A00' } : undefined}>
+                style={expanded ? { color: '#FF7A00' } : undefined}>
                 <BarChart3 size={14} />
               </button>
               {(w.status === 'active' || w.status === 'finalised') && (
@@ -532,78 +457,15 @@ function WeekRow({
         )}
       </tr>
 
-      {/* Expanded detail row */}
-      {isExpanded && (
+      {/* Expanded standings row */}
+      {expanded && (
         <tr>
-          <td colSpan={6} style={{ padding: 'var(--space-md)', background: 'rgba(255,122,0,0.03)', borderBottom: '1px solid var(--border-color)' }}>
-            {expandedView === 'playlists' && (
-              <PlaylistManager
-                playlists={weekPlaylists}
-                allPlaylists={allPlaylists}
-                addPlaylistId={addPlaylistId}
-                setAddPlaylistId={setAddPlaylistId}
-                addIntervalMs={addIntervalMs}
-                setAddIntervalMs={setAddIntervalMs}
-                onAdd={onAddPlaylist}
-                onRemove={onRemovePlaylist}
-                onMove={onMovePlaylist}
-              />
-            )}
-            {expandedView === 'standings' && (
-              <StandingsTable standings={weekStandings} />
-            )}
+          <td colSpan={5} style={{ padding: 'var(--space-md)', background: 'rgba(255,122,0,0.03)', borderBottom: '1px solid var(--border-color)' }}>
+            <StandingsTable standings={weekStandings} />
           </td>
         </tr>
       )}
     </>
-  );
-}
-
-// ── Playlist Manager ────────────────────────────────────────────────────────
-
-function PlaylistManager({ playlists, allPlaylists, addPlaylistId, setAddPlaylistId, addIntervalMs, setAddIntervalMs, onAdd, onRemove, onMove }) {
-  return (
-    <div>
-      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 'var(--space-sm)' }}>
-        <ListMusic size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} /> Week Playlists
-      </div>
-
-      {playlists.length === 0 ? (
-        <p style={styles.empty}>No playlists assigned to this week.</p>
-      ) : (
-        playlists.map(pl => (
-          <div key={pl.id} style={styles.playlistRow}>
-            <span style={styles.playlistPos}>#{pl.position}</span>
-            <span style={styles.playlistName}>{pl.playlist_name || `Playlist ${pl.playlist_id}`}</span>
-            <span style={styles.playlistInterval}>{Math.round(pl.interval_ms / 60000)}min</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => onMove(pl.id, 'up')} title="Move up"><ChevronUp size={14} /></button>
-            <button className="btn btn-ghost btn-sm" onClick={() => onMove(pl.id, 'down')} title="Move down"><ChevronDown size={14} /></button>
-            <ConfirmButton className="btn btn-danger btn-sm" confirmText="Remove?" onConfirm={() => onRemove(pl.id)}>
-              <Trash2 size={14} />
-            </ConfirmButton>
-          </div>
-        ))
-      )}
-
-      <div style={{ ...styles.formRow, marginTop: 'var(--space-md)' }}>
-        <div style={styles.formGroup}>
-          <label style={styles.formLabel}>Playlist</label>
-          <select className="form-select" style={{ minWidth: 180 }} value={addPlaylistId} onChange={e => setAddPlaylistId(e.target.value)}>
-            <option value="">Select playlist...</option>
-            {allPlaylists.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </div>
-        <div style={styles.formGroup}>
-          <label style={styles.formLabel}>Interval (min)</label>
-          <input className="form-input" type="number" style={{ width: 80 }} min={1} value={Math.round(addIntervalMs / 60000)} onChange={e => setAddIntervalMs(Number(e.target.value) * 60000)} />
-        </div>
-        <button className="btn btn-primary btn-sm" onClick={onAdd} disabled={!addPlaylistId}>
-          <Plus size={14} /> Add
-        </button>
-      </div>
-    </div>
   );
 }
 

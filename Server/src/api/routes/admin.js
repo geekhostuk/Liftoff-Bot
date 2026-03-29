@@ -537,29 +537,6 @@ router.delete('/competition/week/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/competition/week/:id/playlists', async (req, res) => {
-  res.json(await db.getWeekPlaylists(Number(req.params.id)));
-});
-
-router.post('/competition/week/:id/playlists', async (req, res) => {
-  const { playlist_id, interval_ms = 900000 } = req.body;
-  if (!playlist_id) return res.status(400).json({ error: 'playlist_id is required' });
-  const row = await db.addWeekPlaylist(Number(req.params.id), Number(playlist_id), Number(interval_ms));
-  res.status(201).json(row);
-});
-
-router.delete('/competition/week/:weekId/playlists/:wpId', async (req, res) => {
-  await db.removeWeekPlaylist(Number(req.params.wpId));
-  res.json({ ok: true });
-});
-
-router.post('/competition/week/:weekId/playlists/:wpId/move', async (req, res) => {
-  const { direction } = req.body;
-  if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'direction must be up or down' });
-  await db.moveWeekPlaylist(Number(req.params.wpId), direction);
-  res.json({ ok: true });
-});
-
 router.post('/competition/recalculate/:weekId', strictLimiter, async (req, res) => {
   try {
     const result = await recalculateWeek(Number(req.params.weekId));

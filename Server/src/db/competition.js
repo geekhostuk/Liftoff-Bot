@@ -171,60 +171,6 @@ async function getCurrentWeekInfo() {
   return { competition: comp, week: active };
 }
 
-// ── Week Playlists ──────────────────────────────────────────────────────────
-
-async function getWeekPlaylists(weekId) {
-  const { rows } = await getPool().query(`
-    SELECT wp.*, p.name AS playlist_name
-    FROM week_playlists wp
-    JOIN playlists p ON p.id = wp.playlist_id
-    WHERE wp.week_id = $1
-    ORDER BY wp.position
-  `, [weekId]);
-  return rows;
-}
-
-async function addWeekPlaylist(weekId, playlistId, intervalMs = 900000) {
-  const pool = getPool();
-  const { rows: [{ m }] } = await pool.query(
-    'SELECT COALESCE(MAX(position), -1) AS m FROM week_playlists WHERE week_id = $1', [weekId]
-  );
-  const { rows: [row] } = await pool.query(`
-    INSERT INTO week_playlists (week_id, playlist_id, position, interval_ms)
-    VALUES ($1, $2, $3, $4)
-    RETURNING *
-  `, [weekId, playlistId, parseInt(m, 10) + 1, intervalMs]);
-  return row;
-}
-
-async function removeWeekPlaylist(wpId) {
-  const pool = getPool();
-  const { rows: [row] } = await pool.query('SELECT * FROM week_playlists WHERE id = $1', [wpId]);
-  if (!row) return;
-  await pool.query('DELETE FROM week_playlists WHERE id = $1', [wpId]);
-  const { rows: remaining } = await pool.query(
-    'SELECT id FROM week_playlists WHERE week_id = $1 ORDER BY position', [row.week_id]
-  );
-  for (let i = 0; i < remaining.length; i++) {
-    await pool.query('UPDATE week_playlists SET position = $1 WHERE id = $2', [i, remaining[i].id]);
-  }
-}
-
-async function moveWeekPlaylist(wpId, direction) {
-  const pool = getPool();
-  const { rows: [row] } = await pool.query('SELECT * FROM week_playlists WHERE id = $1', [wpId]);
-  if (!row) return;
-  const { rows: items } = await pool.query(
-    'SELECT * FROM week_playlists WHERE week_id = $1 ORDER BY position', [row.week_id]
-  );
-  const idx = items.findIndex(r => r.id === wpId);
-  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-  if (swapIdx < 0 || swapIdx >= items.length) return;
-  const a = items[idx], b = items[swapIdx];
-  await pool.query('UPDATE week_playlists SET position = $1 WHERE id = $2', [b.position, a.id]);
-  await pool.query('UPDATE week_playlists SET position = $1 WHERE id = $2', [a.position, b.id]);
-}
-
 // ── Race Results ────────────────────────────────────────────────────────────
 
 async function insertRaceResult(raceId, pilotKey, displayName, position, bestLapMs, totalLaps, avgLapMs, weekId) {
@@ -599,11 +545,6 @@ module.exports = {
   updateWeek,
   deleteWeek,
   getCurrentWeekInfo,
-  // Week playlists
-  getWeekPlaylists,
-  addWeekPlaylist,
-  removeWeekPlaylist,
-  moveWeekPlaylist,
   // Race results
   insertRaceResult,
   getRaceResults,
