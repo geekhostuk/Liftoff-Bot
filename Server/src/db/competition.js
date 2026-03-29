@@ -24,6 +24,10 @@ async function archiveCompetition(id) {
   await getPool().query("UPDATE competitions SET status = 'archived' WHERE id = $1", [id]);
 }
 
+async function activateCompetition(id) {
+  await getPool().query("UPDATE competitions SET status = 'active' WHERE id = $1", [id]);
+}
+
 // ── Competition Weeks ───────────────────────────────────────────────────────
 
 async function createWeek(competitionId, weekNumber, startsAt, endsAt) {
@@ -567,6 +571,7 @@ module.exports = {
   getCompetitions,
   getActiveCompetition,
   archiveCompetition,
+  activateCompetition,
   // Weeks
   createWeek,
   generateWeeks,
