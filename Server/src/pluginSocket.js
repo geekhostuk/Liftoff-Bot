@@ -345,11 +345,9 @@ async function handlePluginEvent(jsonLine) {
     // Ignore all commands during the post-track-change cooldown window.
     if (!state.areChatCommandsAllowed()) return;
     if (msg === '/info') {
-      const os = require('./trackOverseer').getState();
+      const overseer = require('./trackOverseer');
+      const os = overseer.getState();
       let timeLeft = 'N/A';
-      let mode = '';
-      if (os.running && os.mode === 'playlist') mode = 'Playlist';
-      else if (os.running && os.mode === 'tag') mode = `Tags: ${os.tag_names.join(', ')}`;
       if (os.next_change_at) {
         const remainMs = new Date(os.next_change_at).getTime() - Date.now();
         if (remainMs > 0) {
@@ -360,8 +358,10 @@ async function handlePluginEvent(jsonLine) {
           timeLeft = '0m 0s';
         }
       }
-      const modeStr = mode ? ` | <color=#00BFFF>Mode:</color> ${mode}` : '';
-      sendCommand({ cmd: 'send_chat', message: `<color=#00BFFF>Cmds:</color> <color=#00FF00>/next</color> skip <color=#00FF00>/extend</color> +5m | <color=#00BFFF>Time:</color> <color=#FFFF00>${timeLeft}</color>${modeStr}` });
+      const upcoming = overseer.getUpcoming(1);
+      const nextTrack = upcoming.length > 0 ? upcoming[0].track : '';
+      const nextStr = nextTrack ? ` | <color=#00BFFF>Next:</color> ${nextTrack}` : '';
+      sendCommand({ cmd: 'send_chat', message: `<color=#00BFFF>Cmds:</color> <color=#00FF00>/next</color> skip <color=#00FF00>/extend</color> +5m | <color=#00BFFF>Time:</color> <color=#FFFF00>${timeLeft}</color>${nextStr}` });
     } else if (msg === '/next') {
       // Use user_id (Steam ID) as the voter key — event.actor can be null if the
       // plugin couldn't resolve the Photon actor number, which causes all unresolved
