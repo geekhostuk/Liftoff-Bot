@@ -24,12 +24,13 @@ function verifyPassword(plain, stored) {
 const SESSION_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const sessions = new Map();
 
-function createSession(user) {
+function createSession(user, type = 'admin') {
   const token = crypto.randomBytes(32).toString('hex');
   sessions.set(token, {
     userId: user.id,
-    username: user.username,
-    role: user.role,
+    username: user.username || user.email,
+    role: user.role || 'member',
+    type,
     expiresAt: Date.now() + SESSION_MAX_AGE,
   });
   return token;
@@ -60,6 +61,12 @@ function destroyUserSessions(userId) {
   }
 }
 
+function extractSiteToken(req) {
+  const cookie = req.headers.cookie || '';
+  const match = cookie.split(';').map(c => c.trim()).find(c => c.startsWith('liftoff_user='));
+  return match ? match.split('=')[1] : null;
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
@@ -68,4 +75,5 @@ module.exports = {
   getSession,
   destroySession,
   destroyUserSessions,
+  extractSiteToken,
 };

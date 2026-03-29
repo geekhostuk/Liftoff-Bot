@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
+import { UserAuthProvider } from './context/UserAuthContext';
 import Nav from './components/layout/Nav';
 import Footer from './components/layout/Footer';
 import Home from './pages/Home';
@@ -10,13 +11,19 @@ import Live from './pages/Live';
 import Tracks from './pages/Tracks';
 import TrackBrowse from './pages/TrackBrowse';
 import TrackDetail from './pages/TrackDetail';
+import Register from './pages/Register';
+import Login from './pages/Login';
+import Verify from './pages/Verify';
+import Profile from './pages/Profile';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import useLobbyCount from './hooks/useLobbyCount';
 
 export default function App() {
   const lobby = useLobbyCount();
 
   return (
-    <>
+    <UserAuthProvider>
       <Nav lobby={lobby} />
       <main className="main-content">
         <Routes>
@@ -29,9 +36,15 @@ export default function App() {
           <Route path="/pilots" element={<Pilots />} />
           <Route path="/how-it-works" element={<HowItWorks />} />
           <Route path="/about" element={<About />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/verify" element={<Verify />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
         </Routes>
       </main>
       <Footer />
-    </>
+    </UserAuthProvider>
   );
 }

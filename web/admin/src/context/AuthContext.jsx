@@ -10,8 +10,14 @@ export function AuthProvider({ children }) {
     try {
       const res = await fetch('/api/admin/status');
       if (res.ok) {
-        const data = await res.json();
-        setUser(data.user || { authenticated: true });
+        // Fetch permissions alongside session check
+        const meRes = await fetch('/api/admin/me');
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          setUser(meData);
+        } else {
+          setUser({ authenticated: true });
+        }
       } else {
         setUser(null);
       }
@@ -53,4 +59,10 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
+}
+
+export function useHasPermission(module) {
+  const { user } = useAuth();
+  if (!user || !user.permissions) return false;
+  return user.permissions.includes(module);
 }

@@ -293,6 +293,12 @@ async function main() {
     res.json({ ok: true, whitelist: idleKick.getWhitelist() });
   });
 
+  internal.post('/internal/idle-kick/unreg-kick', (req, res) => {
+    const { enabled } = req.body;
+    idleKick.setUnregKickEnabled(enabled);
+    res.json({ ok: true, unregKickEnabled: idleKick.getUnregKickEnabled() });
+  });
+
   // ── Session sync (from API server) ───────────────────────────────────────
   const { registerSession, destroySession: removeSession } = require('../auth');
 

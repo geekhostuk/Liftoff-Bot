@@ -16,6 +16,7 @@ const routeTitles = {
   '/admin/tags': 'Tags',
   '/admin/overseer': 'Track Overseer',
   '/admin/auto-messages': 'Auto Messages Beta',
+  '/admin/users': 'User Management',
 };
 
 export default function AppShell() {

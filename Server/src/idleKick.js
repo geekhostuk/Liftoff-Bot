@@ -14,9 +14,12 @@
 const state = require('./state');
 const db = require('./db');
 
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000;       // 5 minutes before warning
-const WARN_BEFORE_KICK_MS = 1 * 60 * 1000;   // 1 minute grace after warning
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;       // 5 minutes before warning (registered)
+const WARN_BEFORE_KICK_MS = 1 * 60 * 1000;   // 1 minute grace after warning (registered)
+const UNREG_IDLE_TIMEOUT_MS = 30 * 1000;     // 30 seconds before warning (unregistered)
+const UNREG_WARN_BEFORE_KICK_MS = 10 * 1000; // 10 second grace after warning (unregistered)
 const CHECK_INTERVAL_MS = 30 * 1000;          // sweep every 30 seconds
+const NICK_REFRESH_MS = 60 * 1000;            // refresh registered nicks every 60 seconds
 const MAX_LOBBY_SIZE = 8;                     // 7 players + bot — lobby is full at this count
 const BOT_NICK = 'JMT_Bot';
 
@@ -26,10 +29,14 @@ const _lastActivity = new Map();
 const _warned = new Set();
 // lowercased nicks immune to idle kick
 const _whitelist = new Set();
+// lowercased nicks of verified registered users
+const _verifiedNicks = new Set();
 
 let _checkInterval = null;
+let _nickRefreshInterval = null;
 let _sendCommand = null;
 let _sendCommandAwait = null;
+let _unregKickEnabled = true; // toggle for aggressive unregistered kick
 
 /**
  * Initialise the module.
@@ -61,9 +68,27 @@ async function init(sendCommandFn, sendCommandAwaitFn) {
     console.error('[idle-kick] Failed to load whitelist from database:', err.message);
   }
 
+  // Load verified nicknames for registration-aware idle kick
+  await refreshRegisteredNicks();
+  if (_nickRefreshInterval) clearInterval(_nickRefreshInterval);
+  _nickRefreshInterval = setInterval(refreshRegisteredNicks, NICK_REFRESH_MS);
+
   // Start the periodic sweep
   if (_checkInterval) clearInterval(_checkInterval);
   _checkInterval = setInterval(_runIdleCheck, CHECK_INTERVAL_MS);
+}
+
+/**
+ * Refresh the in-memory set of verified registered nicknames from the database.
+ */
+async function refreshRegisteredNicks() {
+  try {
+    const nicks = await db.getVerifiedNicknames();
+    _verifiedNicks.clear();
+    for (const nick of nicks) _verifiedNicks.add(nick.toLowerCase());
+  } catch (err) {
+    console.error('[idle-kick] Failed to refresh registered nicks:', err.message);
+  }
 }
 
 // ── Activity tracking ────────────────────────────────────────────────────────
@@ -164,14 +189,25 @@ async function removeFromWhitelist(nick) {
  */
 function getIdleInfo() {
   const now = Date.now();
+  const onlinePlayers = state.getOnlinePlayers();
+  const playerByActor = new Map();
+  for (const p of onlinePlayers) playerByActor.set(p.actor, p);
+
   const idleTimes = {};
+  const registrationStatus = {};
   for (const [actor, lastTs] of _lastActivity) {
     idleTimes[actor] = now - lastTs;
+    const player = playerByActor.get(actor);
+    if (player) {
+      registrationStatus[actor] = _verifiedNicks.has((player.nick || '').toLowerCase());
+    }
   }
   return {
     idleTimes,
     warned: [..._warned],
     whitelist: [..._whitelist],
+    registrationStatus,
+    unregKickEnabled: _unregKickEnabled,
   };
 }
 
@@ -214,10 +250,14 @@ function _runIdleCheck() {
     // Whitelisted players are immune
     if (_whitelist.has(nick.toLowerCase())) continue;
 
+    const isRegistered = _verifiedNicks.has(nick.toLowerCase());
+    const useUnregTimers = _unregKickEnabled && !isRegistered;
+    const idleTimeout = useUnregTimers ? UNREG_IDLE_TIMEOUT_MS : IDLE_TIMEOUT_MS;
+    const graceTimeout = useUnregTimers ? UNREG_WARN_BEFORE_KICK_MS : WARN_BEFORE_KICK_MS;
     const idleMs = now - lastTs;
 
     // Phase 2: kick (warned and grace period expired)
-    if (idleMs >= IDLE_TIMEOUT_MS + WARN_BEFORE_KICK_MS && _warned.has(actor)) {
+    if (idleMs >= idleTimeout + graceTimeout && _warned.has(actor)) {
       _sendCommand({
         cmd: 'send_chat',
         message: `<color=#FF0000>KICKED</color> <color=#FFFF00>${nick} was removed for being idle (lobby full).</color>`,
@@ -229,21 +269,39 @@ function _runIdleCheck() {
     }
 
     // Phase 1: warn (idle threshold reached, not yet warned)
-    if (idleMs >= IDLE_TIMEOUT_MS && !_warned.has(actor)) {
-      _sendCommand({
-        cmd: 'send_chat',
-        message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, lobby is full! You will be kicked for being idle in 1 minute.</color>`,
-      });
-      // Send /stay hint as a separate message after a short delay
-      setTimeout(() => {
+    if (idleMs >= idleTimeout && !_warned.has(actor)) {
+      if (!useUnregTimers) {
         _sendCommand({
           cmd: 'send_chat',
-          message: '<color=#00FF00>Type /stay in chat to remain in the server.</color>',
+          message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, lobby is full! You will be kicked for being idle in 1 minute.</color>`,
         });
-      }, 500);
+        setTimeout(() => {
+          _sendCommand({
+            cmd: 'send_chat',
+            message: '<color=#00FF00>Type /stay in chat to remain in the server.</color>',
+          });
+        }, 500);
+      } else {
+        const siteUrl = process.env.SITE_URL || '';
+        const regHint = siteUrl ? ` Register at ${siteUrl} for longer idle time.` : '';
+        _sendCommand({
+          cmd: 'send_chat',
+          message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, you will be kicked in 10 seconds!${regHint}</color>`,
+        });
+      }
       _warned.add(actor);
     }
   }
+}
+
+// ── Unregistered kick toggle ────────────────────────────────────────────────
+
+function getUnregKickEnabled() {
+  return _unregKickEnabled;
+}
+
+function setUnregKickEnabled(enabled) {
+  _unregKickEnabled = !!enabled;
 }
 
 // ── Cleanup ──────────────────────────────────────────────────────────────────
@@ -253,9 +311,14 @@ function destroy() {
     clearInterval(_checkInterval);
     _checkInterval = null;
   }
+  if (_nickRefreshInterval) {
+    clearInterval(_nickRefreshInterval);
+    _nickRefreshInterval = null;
+  }
   _lastActivity.clear();
   _warned.clear();
   _whitelist.clear();
+  _verifiedNicks.clear();
   _sendCommand = null;
   _sendCommandAwait = null;
 }
@@ -272,5 +335,8 @@ module.exports = {
   addToWhitelist,
   removeFromWhitelist,
   getIdleInfo,
+  refreshRegisteredNicks,
+  getUnregKickEnabled,
+  setUnregKickEnabled,
   destroy,
 };

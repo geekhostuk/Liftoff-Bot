@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
+import { useUserAuth } from '../../context/UserAuthContext';
 import MobileMenu from './MobileMenu';
 import './Nav.css';
 
@@ -16,6 +17,7 @@ const links = [
 
 export default function Nav({ lobby }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user, checking } = useUserAuth();
 
   const lobbyFull = lobby && lobby.count >= lobby.max;
   const lobbyLabel = lobby ? `${lobby.count}/${lobby.max}` : '';
@@ -49,9 +51,18 @@ export default function Nav({ lobby }) {
           </Link>
         )}
 
-        <Link to="/competition" className="btn btn-primary nav-cta">
-          View Season
-        </Link>
+        {!checking && (
+          user ? (
+            <Link to="/profile" className="btn btn-primary nav-cta">
+              Profile
+            </Link>
+          ) : (
+            <div className="nav-auth-links">
+              <Link to="/login" className="btn btn-secondary nav-cta-sm">Log In</Link>
+              <Link to="/register" className="btn btn-primary nav-cta">Register</Link>
+            </div>
+          )
+        )}
 
         <button
           className="mobile-toggle"

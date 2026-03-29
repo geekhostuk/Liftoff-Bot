@@ -169,6 +169,10 @@ async function removeFromIdleKickWhitelist(nick) {
   return del('/internal/idle-kick/whitelist', { nick });
 }
 
+async function setUnregKickEnabled(enabled) {
+  return post('/internal/idle-kick/unreg-kick', { enabled });
+}
+
 // ── Session sync ────────────────────────────────────────────────────────────
 
 async function syncSession(token, session) {
@@ -239,6 +243,7 @@ module.exports = {
   getIdleKickWhitelist,
   addToIdleKickWhitelist,
   removeFromIdleKickWhitelist,
+  setUnregKickEnabled,
   // Session
   syncSession,
   destroyRemoteSession,

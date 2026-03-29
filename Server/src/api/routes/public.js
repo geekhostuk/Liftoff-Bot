@@ -10,6 +10,8 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const db = require('../../database');
 const rt = require('../realtimeClient');
+const { hashPassword, verifyPassword, createSession, getSession, destroySession, extractSiteToken } = require('../../auth');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../../email');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -318,6 +320,205 @@ router.post('/browse/:env/:track/user-tags', tagLimiter, async (req, res) => {
 
   const ipHash = hashIp(req.ip || '');
   res.json(await db.addOrVoteUserTag(row.id, label.trim(), ipHash));
+});
+
+// ── Site User Authentication ────────────────────────────────────────────────
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many registrations — try again in an hour' },
+});
+
+const nicknameLimiter = rateLimit({
+  windowMs: 24 * 60 * 60_000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many nickname changes — try again tomorrow' },
+});
+
+/** Middleware: require authenticated site user */
+function requireSiteAuth(req, res, next) {
+  const token = extractSiteToken(req);
+  const session = getSession(token);
+  if (!session || session.type !== 'site') {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  req.siteUser = session;
+  next();
+}
+
+router.post('/register', registerLimiter, async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email is required' });
+  }
+  if (!password || typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  const existing = await db.getSiteUserByEmail(email.trim());
+  if (existing) return res.status(409).json({ error: 'Email already registered' });
+
+  const passwordHash = hashPassword(password);
+  const verifyToken = crypto.randomBytes(32).toString('hex');
+  const verifyExpires = new Date(Date.now() + 24 * 60 * 60_000); // 24 hours
+
+  const user = await db.createSiteUser(email.trim(), passwordHash, verifyToken, verifyExpires);
+
+  try {
+    await sendVerificationEmail(email.trim(), verifyToken);
+  } catch (err) {
+    console.error('[auth] Failed to send verification email:', err.message);
+  }
+
+  res.status(201).json({ ok: true, message: 'Account created. Check your email to verify.' });
+});
+
+router.get('/verify', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: 'Token is required' });
+
+  const result = await db.verifyEmail(token);
+  if (!result) return res.status(400).json({ error: 'Invalid or expired verification link' });
+
+  res.json({ ok: true, message: 'Email verified successfully' });
+});
+
+router.post('/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  const user = await db.getSiteUserByEmail(email.trim());
+  if (!user || !verifyPassword(password, user.password_hash)) {
+    return res.status(401).json({ error: 'Invalid email or password' });
+  }
+  if (!user.email_verified) {
+    return res.status(403).json({ error: 'Please verify your email before logging in' });
+  }
+
+  const token = createSession(user, 'site');
+  res.cookie('liftoff_user', token, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 24 * 60 * 60_000,
+    path: '/',
+  });
+  res.json({
+    ok: true,
+    user: { id: user.id, email: user.email, nickname: user.nickname, nick_verified: user.nick_verified },
+  });
+});
+
+router.post('/auth/logout', (req, res) => {
+  const token = extractSiteToken(req);
+  if (token) destroySession(token);
+  res.clearCookie('liftoff_user', { path: '/' });
+  res.json({ ok: true });
+});
+
+router.get('/auth/me', requireSiteAuth, async (req, res) => {
+  const user = await db.getSiteUserByEmail(req.siteUser.username);
+  if (!user) return res.status(401).json({ error: 'User not found' });
+  res.json({
+    id: user.id,
+    email: user.email,
+    nickname: user.nickname,
+    nick_verified: user.nick_verified,
+    email_verified: user.email_verified,
+  });
+});
+
+router.put('/auth/nickname', requireSiteAuth, nicknameLimiter, async (req, res) => {
+  const { nickname } = req.body;
+  if (!nickname || typeof nickname !== 'string' || nickname.trim().length < 1 || nickname.trim().length > 30) {
+    return res.status(400).json({ error: 'Nickname must be 1-30 characters' });
+  }
+
+  const trimmed = nickname.trim();
+
+  // Check uniqueness
+  const existing = await db.getSiteUserByNickname(trimmed);
+  if (existing && existing.id !== req.siteUser.userId) {
+    return res.status(409).json({ error: 'Nickname already claimed by another user' });
+  }
+
+  await db.setNickname(req.siteUser.userId, trimmed);
+
+  // Generate verify code
+  const code = crypto.randomBytes(3).toString('hex').toUpperCase(); // 6-char hex
+  const expires = new Date(Date.now() + 60 * 60_000); // 1 hour
+  await db.setNickVerifyCode(req.siteUser.userId, code, expires);
+
+  res.json({
+    ok: true,
+    nickname: trimmed,
+    verify_code: code,
+    message: `Type /verify ${code} in the Liftoff chat to confirm your nickname`,
+  });
+});
+
+router.put('/auth/password', requireSiteAuth, async (req, res) => {
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: 'current_password and new_password are required' });
+  }
+  if (new_password.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  }
+  const user = await db.getSiteUserByEmail(req.siteUser.username);
+  if (!user || !verifyPassword(current_password, user.password_hash)) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  await db.updateSiteUserPassword(user.id, hashPassword(new_password));
+  res.json({ ok: true });
+});
+
+const resetLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many reset requests — try again in an hour' },
+});
+
+router.post('/auth/forgot-password', resetLimiter, async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  // Always return success to prevent email enumeration
+  const user = await db.getSiteUserByEmail(email.trim());
+  if (user) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 60 * 60_000); // 1 hour
+    await db.setResetToken(user.id, token, expires);
+    try {
+      await sendPasswordResetEmail(email.trim(), token);
+    } catch (err) {
+      console.error('[auth] Failed to send reset email:', err.message);
+    }
+  }
+
+  res.json({ ok: true, message: 'If that email is registered, a reset link has been sent.' });
+});
+
+router.post('/auth/reset-password', async (req, res) => {
+  const { token, new_password } = req.body;
+  if (!token || !new_password) {
+    return res.status(400).json({ error: 'token and new_password are required' });
+  }
+  if (new_password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  const result = await db.resetPassword(token, hashPassword(new_password));
+  if (!result) return res.status(400).json({ error: 'Invalid or expired reset link' });
+
+  res.json({ ok: true, message: 'Password has been reset. You can now log in.' });
 });
 
 module.exports = router;

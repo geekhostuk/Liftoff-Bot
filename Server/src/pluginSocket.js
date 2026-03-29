@@ -369,6 +369,21 @@ async function handlePluginEvent(jsonLine) {
       skipVote.handleSkipVoteCommand(event.user_id || event.nick);
     } else if (msg === '/extend') {
       extendVote.handleExtendVoteCommand(event.user_id || event.nick);
+    } else if (msg.startsWith('/verify ')) {
+      const code = msg.slice(8).trim().toUpperCase();
+      if (code.length === 6) {
+        const nick = event.nick || '';
+        db.verifyNickname(code, nick).then(result => {
+          if (result) {
+            sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>VERIFIED</color> <color=#FFFF00>${nick}, your nickname has been linked to your account!</color>` });
+            idleKick.refreshRegisteredNicks();
+          } else {
+            sendCommand({ cmd: 'send_chat', message: `<color=#FF0000>Invalid or expired code.</color> <color=#FFFF00>Check your profile page for a valid code.</color>` });
+          }
+        }).catch(() => {
+          sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>Verification error. Try again later.</color>' });
+        });
+      }
     } else if (msg === '/stay') {
       const saved = idleKick.handleStayCommand();
       if (saved.length > 0) {
