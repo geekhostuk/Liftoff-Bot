@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useApi } from '../hooks/useApi.js';
 import { useWsEvent } from '../context/WebSocketContext.jsx';
 import RunnerBar from '../components/feedback/RunnerBar.jsx';
-import { Play, Square, SkipForward, Clock, Plus, Trash2, ArrowUp, ArrowDown, ListMusic, Tag } from 'lucide-react';
+import { Play, Square, SkipForward, Clock, Plus, Trash2, ArrowUp, ArrowDown, ListMusic, Tag, Shuffle, List } from 'lucide-react';
 
 const styles = {
   page: { display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', padding: 'var(--space-lg)' },
@@ -58,10 +58,14 @@ export default function Overseer() {
   // Start form
   const [selectedPlaylist, setSelectedPlaylist] = useState('');
   const [intervalMin, setIntervalMin] = useState(15);
-  const [nextPlaylistId, setNextPlaylistId] = useState('');
-  const [nextIntervalMin, setNextIntervalMin] = useState(15);
   const [selectedTags, setSelectedTags] = useState([]);
   const [tagIntervalMin, setTagIntervalMin] = useState(10);
+
+  // Playlist queue form
+  const [pqPlaylistId, setPqPlaylistId] = useState('');
+  const [pqIntervalMin, setPqIntervalMin] = useState(15);
+  const [pqShuffle, setPqShuffle] = useState(false);
+  const [pqStartAfter, setPqStartAfter] = useState('track');
 
   const fetchAll = useCallback(async () => {
     try {
@@ -110,17 +114,18 @@ export default function Overseer() {
     }, 'Tag mode started').then(fetchAll);
   };
 
-  const queueNextPlaylist = () => {
-    if (!nextPlaylistId) return;
-    apiCall('POST', '/api/admin/overseer/next-playlist', {
-      playlist_id: Number(nextPlaylistId),
-      interval_ms: nextIntervalMin * 60 * 1000,
-    }, 'Next playlist queued').then(fetchAll);
+  const addPlaylistToQueue = () => {
+    if (!pqPlaylistId) return;
+    apiCall('POST', '/api/admin/overseer/playlist-queue', {
+      playlist_id: Number(pqPlaylistId),
+      interval_ms: pqIntervalMin * 60 * 1000,
+      shuffle: pqShuffle,
+      start_after: pqStartAfter,
+    }, 'Playlist queued').then(fetchAll);
   };
-
-  const clearNextPlaylist = () => {
-    apiCall('DELETE', '/api/admin/overseer/next-playlist', {}, 'Next playlist cleared').then(fetchAll);
-  };
+  const removePlaylistFromQueue = (id) => apiCall('DELETE', `/api/admin/overseer/playlist-queue/${id}`, {}, 'Removed').then(fetchAll);
+  const movePlaylistInQueue = (id, dir) => apiCall('POST', `/api/admin/overseer/playlist-queue/${id}/move`, { direction: dir }).then(fetchAll);
+  const clearPlaylistQueue = () => apiCall('DELETE', '/api/admin/overseer/playlist-queue', {}, 'Playlist queue cleared').then(fetchAll);
 
   const stop = () => apiCall('POST', '/api/admin/overseer/stop', {}, 'Stopped').then(fetchAll);
   const skip = () => apiCall('POST', '/api/admin/overseer/skip', {}, 'Skipped').then(fetchAll);
@@ -168,10 +173,10 @@ export default function Overseer() {
             <span style={styles.value}>{os.tag_names?.join(', ')}</span>
           </div>
         )}
-        {os?.next_playlist && (
+        {os?.playlist_queue?.length > 0 && (
           <div style={styles.row}>
-            <span style={styles.label}>Up Next</span>
-            <span style={styles.value}>{os.next_playlist.playlistName} ({os.next_playlist.trackCount} tracks)</span>
+            <span style={styles.label}>Playlist Queue</span>
+            <span style={styles.value}>{os.playlist_queue.length} playlist{os.playlist_queue.length !== 1 ? 's' : ''} queued</span>
           </div>
         )}
 
@@ -205,38 +210,76 @@ export default function Overseer() {
             <Play size={14} /> Start Playlist
           </button>
 
-          {/* Queue Next Playlist */}
-          {os?.running && os?.mode === 'playlist' && (
+          {/* Playlist Queue */}
+          {os?.running && (
             <div style={{ marginTop: 'var(--space-md)', paddingTop: 'var(--space-md)', borderTop: '1px solid var(--border-color)' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 'var(--space-sm)' }}>Queue Next Playlist</div>
-              {os.next_playlist ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                    Up next: <strong>{os.next_playlist.playlistName}</strong> ({os.next_playlist.trackCount} tracks)
-                  </span>
-                  <button style={{ ...styles.btn, ...styles.btnDanger, marginLeft: 'auto' }} onClick={clearNextPlaylist}>
-                    <Trash2 size={14} /> Clear
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-sm)' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <List size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                  Playlist Queue ({os.playlist_queue?.length || 0})
+                </span>
+                {os.playlist_queue?.length > 0 && (
+                  <button style={{ ...styles.iconBtn, color: '#ef4444' }} onClick={clearPlaylistQueue} title="Clear all">
+                    <Trash2 size={14} />
                   </button>
+                )}
+              </div>
+
+              {os.playlist_queue?.length > 0 && os.playlist_queue.map((pq, i) => (
+                <div key={pq.id} style={{ ...styles.trackItem, gap: 'var(--space-sm)' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={styles.trackName}>{pq.playlist_name}</span>
+                    <span style={styles.trackEnv}> ({pq.track_count} tracks, {Math.round(pq.interval_ms / 60000)}m)</span>
+                    <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                      <span style={{ ...styles.badge, ...(pq.start_after === 'track' ? styles.badgeYellow : styles.badgeGray) }}>
+                        {pq.start_after === 'track' ? 'After Track' : 'After Playlist'}
+                      </span>
+                      {pq.shuffle && (
+                        <span style={{ ...styles.badge, ...styles.badgeGreen }}>
+                          <Shuffle size={10} style={{ verticalAlign: 'middle', marginRight: 2 }} />Shuffle
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 2 }}>
+                    <button style={styles.iconBtn} onClick={() => movePlaylistInQueue(pq.id, 'up')} disabled={i === 0}><ArrowUp size={14} /></button>
+                    <button style={styles.iconBtn} onClick={() => movePlaylistInQueue(pq.id, 'down')} disabled={i === os.playlist_queue.length - 1}><ArrowDown size={14} /></button>
+                    <button style={{ ...styles.iconBtn, color: '#ef4444' }} onClick={() => removePlaylistFromQueue(pq.id)}><Trash2 size={14} /></button>
+                  </div>
                 </div>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-sm)' }}>
-                    <select style={styles.select} value={nextPlaylistId} onChange={e => setNextPlaylistId(e.target.value)}>
-                      <option value="">Select playlist...</option>
-                      {playlists.filter(p => p.id !== os.playlist_id).map(p => (
-                        <option key={p.id} value={p.id}>{p.name} ({p.track_count} tracks)</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center', marginBottom: 'var(--space-sm)' }}>
-                    <span style={styles.label}>Interval:</span>
-                    <input type="number" style={styles.input} value={nextIntervalMin} onChange={e => setNextIntervalMin(Number(e.target.value))} min={1} /> min
-                  </div>
-                  <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={queueNextPlaylist} disabled={!nextPlaylistId}>
-                    <Plus size={14} /> Queue Next
-                  </button>
-                </>
-              )}
+              ))}
+
+              <div style={{ marginTop: 'var(--space-sm)', display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+                <select style={styles.select} value={pqPlaylistId} onChange={e => setPqPlaylistId(e.target.value)}>
+                  <option value="">Select playlist...</option>
+                  {playlists.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.track_count} tracks)</option>
+                  ))}
+                </select>
+                <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={styles.label}>Interval:</span>
+                  <input type="number" style={styles.input} value={pqIntervalMin} onChange={e => setPqIntervalMin(Number(e.target.value))} min={1} />
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>min</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', marginLeft: 'var(--space-sm)' }}>
+                    <input type="checkbox" checked={pqShuffle} onChange={e => setPqShuffle(e.target.checked)} />
+                    <Shuffle size={14} /> Shuffle
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
+                  <span style={styles.label}>Start:</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    <input type="radio" name="pqStartAfter" value="track" checked={pqStartAfter === 'track'} onChange={() => setPqStartAfter('track')} />
+                    After Next Track
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    <input type="radio" name="pqStartAfter" value="wrap" checked={pqStartAfter === 'wrap'} onChange={() => setPqStartAfter('wrap')} />
+                    After Playlist Ends
+                  </label>
+                </div>
+                <button style={{ ...styles.btn, ...styles.btnPrimary, alignSelf: 'flex-start' }} onClick={addPlaylistToQueue} disabled={!pqPlaylistId}>
+                  <Plus size={14} /> Add to Queue
+                </button>
+              </div>
             </div>
           )}
         </div>

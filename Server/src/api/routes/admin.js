@@ -401,19 +401,36 @@ router.post('/overseer/skip-to-index', async (req, res) => {
   res.json(await rt.skipToIndex(Number(index)));
 });
 
-router.post('/overseer/next-playlist', async (req, res) => {
-  const { playlist_id, interval_ms } = req.body;
+// ── Playlist Queue ──────────────────────────────────────────────────────────
+
+router.get('/overseer/playlist-queue', async (req, res) => {
+  res.json(await rt.getPlaylistQueue());
+});
+
+router.post('/overseer/playlist-queue', async (req, res) => {
+  const { playlist_id, interval_ms, shuffle = false, start_after = 'track' } = req.body;
   if (!playlist_id) return res.status(400).json({ error: 'playlist_id is required' });
+  if (!['track', 'wrap'].includes(start_after)) return res.status(400).json({ error: 'start_after must be track or wrap' });
   const intervalMs = Math.max(5000, Number(interval_ms) || 15 * 60 * 1000);
   try {
-    res.json(await rt.setNextPlaylist(Number(playlist_id), intervalMs));
+    res.status(201).json(await rt.addToPlaylistQueue(Number(playlist_id), intervalMs, !!shuffle, start_after));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.delete('/overseer/next-playlist', async (req, res) => {
-  res.json(await rt.clearNextPlaylist());
+router.delete('/overseer/playlist-queue/:id', async (req, res) => {
+  res.json(await rt.removeFromPlaylistQueue(Number(req.params.id)));
+});
+
+router.post('/overseer/playlist-queue/:id/move', async (req, res) => {
+  const { direction } = req.body;
+  if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'direction must be up or down' });
+  res.json(await rt.reorderPlaylistQueue(Number(req.params.id), direction));
+});
+
+router.delete('/overseer/playlist-queue', async (req, res) => {
+  res.json(await rt.clearPlaylistQueue());
 });
 
 // ── Queue (via realtime) ──────────────────────────────────────────────────────

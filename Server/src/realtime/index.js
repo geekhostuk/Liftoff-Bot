@@ -182,17 +182,32 @@ async function main() {
     res.json(trackOverseer.getState());
   });
 
-  internal.post('/internal/overseer/next-playlist', async (req, res) => {
-    const { playlist_id, interval_ms } = req.body;
+  // ── Playlist Queue ────────────────────────────────────────────────────────
+  internal.get('/internal/overseer/playlist-queue', async (req, res) => {
+    res.json(await db.getPlaylistQueue());
+  });
+
+  internal.post('/internal/overseer/playlist-queue', async (req, res) => {
+    const { playlist_id, interval_ms, shuffle, start_after } = req.body;
     try {
-      res.json(await trackOverseer.setNextPlaylist(playlist_id, interval_ms));
+      res.json(await trackOverseer.addToPlaylistQueue(playlist_id, interval_ms, shuffle, start_after));
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
   });
 
-  internal.delete('/internal/overseer/next-playlist', (req, res) => {
-    trackOverseer.setNextPlaylist(null);
+  internal.delete('/internal/overseer/playlist-queue/:id', async (req, res) => {
+    await trackOverseer.removeFromPlaylistQueue(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  internal.post('/internal/overseer/playlist-queue/:id/move', async (req, res) => {
+    await trackOverseer.reorderPlaylistQueue(Number(req.params.id), req.body.direction);
+    res.json({ ok: true });
+  });
+
+  internal.delete('/internal/overseer/playlist-queue', async (req, res) => {
+    await trackOverseer.clearPlaylistQueue();
     res.json({ ok: true });
   });
 

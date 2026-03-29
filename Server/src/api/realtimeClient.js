@@ -83,12 +83,26 @@ async function skipToIndex(index) {
   return post('/internal/overseer/skip-to-index', { index });
 }
 
-async function setNextPlaylist(playlistId, intervalMs) {
-  return post('/internal/overseer/next-playlist', { playlist_id: playlistId, interval_ms: intervalMs });
+async function getPlaylistQueue() {
+  return get('/internal/overseer/playlist-queue');
 }
 
-async function clearNextPlaylist() {
-  return del('/internal/overseer/next-playlist');
+async function addToPlaylistQueue(playlistId, intervalMs, shuffle, startAfter) {
+  return post('/internal/overseer/playlist-queue', {
+    playlist_id: playlistId, interval_ms: intervalMs, shuffle, start_after: startAfter,
+  });
+}
+
+async function removeFromPlaylistQueue(id) {
+  return del(`/internal/overseer/playlist-queue/${id}`);
+}
+
+async function reorderPlaylistQueue(id, direction) {
+  return post(`/internal/overseer/playlist-queue/${id}/move`, { direction });
+}
+
+async function clearPlaylistQueue() {
+  return del('/internal/overseer/playlist-queue');
 }
 
 // ── Queue ───────────────────────────────────────────────────────────────────
@@ -202,8 +216,11 @@ module.exports = {
   skipOverseer,
   extendOverseer,
   skipToIndex,
-  setNextPlaylist,
-  clearNextPlaylist,
+  getPlaylistQueue,
+  addToPlaylistQueue,
+  removeFromPlaylistQueue,
+  reorderPlaylistQueue,
+  clearPlaylistQueue,
   // Queue
   getQueue,
   addToQueue,

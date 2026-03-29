@@ -105,6 +105,76 @@ async function clearQueue() {
   await getPool().query('DELETE FROM track_queue');
 }
 
+// ── Playlist Queue ─────────────────────────────────────────────────────────
+
+const PLAYLIST_QUEUE_SELECT = `
+  SELECT pq.*, p.name AS playlist_name,
+    (SELECT COUNT(*)::int FROM playlist_tracks pt WHERE pt.playlist_id = pq.playlist_id) AS track_count
+  FROM playlist_queue pq
+  JOIN playlists p ON p.id = pq.playlist_id
+`;
+
+async function getPlaylistQueue() {
+  const { rows } = await getPool().query(`${PLAYLIST_QUEUE_SELECT} ORDER BY pq.position`);
+  return rows;
+}
+
+async function addToPlaylistQueue({ playlist_id, interval_ms = 900000, shuffle = false, start_after = 'track' }) {
+  const pool = getPool();
+  const { rows: [{ m }] } = await pool.query(
+    'SELECT COALESCE(MAX(position), -1) AS m FROM playlist_queue'
+  );
+  const { rows: [row] } = await pool.query(`
+    INSERT INTO playlist_queue (position, playlist_id, interval_ms, shuffle, start_after)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING *
+  `, [parseInt(m, 10) + 1, playlist_id, interval_ms, shuffle, start_after]);
+  return row;
+}
+
+async function removeFromPlaylistQueue(id) {
+  const pool = getPool();
+  await pool.query('DELETE FROM playlist_queue WHERE id = $1', [id]);
+  const { rows } = await pool.query('SELECT id FROM playlist_queue ORDER BY position');
+  for (let i = 0; i < rows.length; i++) {
+    await pool.query('UPDATE playlist_queue SET position = $1 WHERE id = $2', [i, rows[i].id]);
+  }
+}
+
+async function reorderPlaylistQueue(id, direction) {
+  const pool = getPool();
+  const { rows: [row] } = await pool.query('SELECT * FROM playlist_queue WHERE id = $1', [id]);
+  if (!row) return;
+  const { rows: items } = await pool.query('SELECT * FROM playlist_queue ORDER BY position');
+  const idx = items.findIndex(r => r.id === id);
+  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= items.length) return;
+  const a = items[idx], b = items[swapIdx];
+  await pool.query('UPDATE playlist_queue SET position = $1 WHERE id = $2', [b.position, a.id]);
+  await pool.query('UPDATE playlist_queue SET position = $1 WHERE id = $2', [a.position, b.id]);
+}
+
+async function peekPlaylistQueue() {
+  const { rows: [row] } = await getPool().query(`${PLAYLIST_QUEUE_SELECT} ORDER BY pq.position LIMIT 1`);
+  return row || null;
+}
+
+async function popPlaylistQueue() {
+  const pool = getPool();
+  const { rows: [row] } = await pool.query(`${PLAYLIST_QUEUE_SELECT} ORDER BY pq.position LIMIT 1`);
+  if (!row) return null;
+  await pool.query('DELETE FROM playlist_queue WHERE id = $1', [row.id]);
+  const { rows } = await pool.query('SELECT id FROM playlist_queue ORDER BY position');
+  for (let i = 0; i < rows.length; i++) {
+    await pool.query('UPDATE playlist_queue SET position = $1 WHERE id = $2', [i, rows[i].id]);
+  }
+  return row;
+}
+
+async function clearPlaylistQueue() {
+  await getPool().query('DELETE FROM playlist_queue');
+}
+
 // ── Track History ───────────────────────────────────────────────────────────
 
 async function recordTrackStart(env, track, race, source = 'playlist') {
@@ -210,13 +280,21 @@ module.exports = {
   saveOverseerState,
   loadOverseerState,
   clearOverseerState,
-  // Queue
+  // Track queue
   getQueue,
   addToQueue,
   removeFromQueue,
   reorderQueue,
   popQueue,
   clearQueue,
+  // Playlist queue
+  getPlaylistQueue,
+  addToPlaylistQueue,
+  removeFromPlaylistQueue,
+  reorderPlaylistQueue,
+  peekPlaylistQueue,
+  popPlaylistQueue,
+  clearPlaylistQueue,
   // History
   recordTrackStart,
   recordTrackEnd,
