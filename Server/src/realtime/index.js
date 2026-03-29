@@ -32,7 +32,22 @@ async function checkWeekTransition() {
     await scoring.finaliseWeek(expired.id);
   }
 
-  // Ensure the current week exists; broadcast if newly created
+  // Promote a scheduled week to active if its start time has arrived
+  const scheduled = await db.getNextScheduledWeek();
+  if (scheduled) {
+    console.log(`[realtime] Activating scheduled week ${scheduled.id} (week ${scheduled.week_number})`);
+    await db.updateWeekStatus(scheduled.id, 'active');
+    broadcast.broadcastAll({
+      event_type: 'competition_week_started',
+      week_id: scheduled.id,
+      week_number: scheduled.week_number,
+      starts_at: scheduled.starts_at,
+      ends_at: scheduled.ends_at,
+    });
+    return;
+  }
+
+  // Fallback: auto-create current week if none exists; broadcast if newly created
   const before = await db.getActiveWeek();
   const week = await db.getOrCreateCurrentWeek();
   if (week && !before) {
