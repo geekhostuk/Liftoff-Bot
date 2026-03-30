@@ -521,4 +521,71 @@ router.post('/auth/reset-password', async (req, res) => {
   res.json({ ok: true, message: 'Password has been reset. You can now log in.' });
 });
 
+// ── Profile Dashboard (authenticated) ──────────────────────────────────────
+
+const profileStatsLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests — slow down' },
+});
+
+const csvDownloadLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many downloads — try again in an hour' },
+});
+
+router.get('/auth/my-stats', requireSiteAuth, profileStatsLimiter, async (req, res) => {
+  const user = await db.getSiteUserByEmail(req.siteUser.username);
+  if (!user?.nickname || !user.nick_verified) {
+    return res.status(400).json({ error: 'Verified nickname required' });
+  }
+  const nick = user.nickname;
+  const comp = await db.getActiveCompetition();
+  const compId = comp ? comp.id : 0;
+
+  const [summary, personalRecords, globalRecords, weeklyTrend, recentRaces, competition, rating] = await Promise.all([
+    db.getPilotSummary(nick),
+    db.getPilotPersonalRecords(nick),
+    db.getGlobalTrackRecords(),
+    db.getPilotWeeklyTrend(nick),
+    db.getPilotRecentRaces(nick),
+    db.getPilotCompetitionHistory(compId, nick),
+    db.computePilotRating(nick),
+  ]);
+
+  // Enrich personal records with global comparison
+  for (const pr of personalRecords) {
+    const globalBest = globalRecords[`${pr.env}|${pr.track}`];
+    pr.global_best_ms = globalBest || null;
+    pr.pct_off_record = globalBest ? Math.round(((pr.best_lap_ms - globalBest) / globalBest) * 1000) / 10 : null;
+  }
+
+  res.json({ summary, personalRecords, weeklyTrend, recentRaces, competition, rating });
+});
+
+router.get('/auth/my-laps/csv', requireSiteAuth, csvDownloadLimiter, async (req, res) => {
+  const user = await db.getSiteUserByEmail(req.siteUser.username);
+  if (!user?.nickname || !user.nick_verified) {
+    return res.status(400).json({ error: 'Verified nickname required' });
+  }
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="${user.nickname}-laps.csv"`);
+  await db.streamLapsCsv(user.nickname, res);
+});
+
+router.get('/auth/my-races/csv', requireSiteAuth, csvDownloadLimiter, async (req, res) => {
+  const user = await db.getSiteUserByEmail(req.siteUser.username);
+  if (!user?.nickname || !user.nick_verified) {
+    return res.status(400).json({ error: 'Verified nickname required' });
+  }
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="${user.nickname}-races.csv"`);
+  await db.streamRacesCsv(user.nickname, res);
+});
+
 module.exports = router;

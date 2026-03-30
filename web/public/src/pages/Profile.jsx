@@ -1,8 +1,19 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserAuth } from '../context/UserAuthContext';
+import useApi from '../hooks/useApi';
+import { getMyStats } from '../lib/api';
 import ChangePassword from '../components/ChangePassword';
+import StatsHeader from '../components/profile/StatsHeader';
+import PilotRating from '../components/profile/PilotRating';
+import PerformanceTrend from '../components/profile/PerformanceTrend';
+import RacePositionChart from '../components/profile/RacePositionChart';
+import RecentRaces from '../components/profile/RecentRaces';
+import PersonalRecords from '../components/profile/PersonalRecords';
+import Achievements from '../components/profile/Achievements';
+import DataExport from '../components/profile/DataExport';
 import './AuthPages.css';
+import './Profile.css';
 
 export default function Profile() {
   const { user, logout, refresh } = useUserAuth();
@@ -11,6 +22,12 @@ export default function Profile() {
   const [verifyCode, setVerifyCode] = useState('');
   const [nickError, setNickError] = useState('');
   const [nickLoading, setNickLoading] = useState(false);
+
+  const canFetchStats = !!(user?.nick_verified);
+  const { data: stats, loading: statsLoading } = useApi(
+    () => canFetchStats ? getMyStats().catch(() => null) : Promise.resolve(null),
+    [canFetchStats]
+  );
 
   if (!user) {
     navigate('/login');
@@ -44,8 +61,11 @@ export default function Profile() {
     navigate('/');
   }
 
+  const hasData = stats?.summary?.races_entered > 0;
+
   return (
-    <div className="auth-page">
+    <div className={`profile-page ${hasData ? 'profile-page-wide' : ''}`}>
+      {/* Account card */}
       <div className="auth-card profile-card">
         <h1>Your Profile</h1>
 
@@ -110,6 +130,46 @@ export default function Profile() {
           Log Out
         </button>
       </div>
+
+      {/* Dashboard */}
+      {user.nick_verified && (
+        <div className="profile-dashboard">
+          {statsLoading && (
+            <div className="profile-dashboard-loading">Loading your racing data...</div>
+          )}
+
+          {!statsLoading && !hasData && (
+            <div className="profile-dashboard-empty">
+              No racing data found for <strong>{user.nickname}</strong>. Get out there and fly!
+            </div>
+          )}
+
+          {hasData && (
+            <>
+              <StatsHeader summary={stats.summary} />
+              <PilotRating rating={stats.rating} />
+              <PerformanceTrend weeklyTrend={stats.weeklyTrend} />
+              <RacePositionChart recentRaces={stats.recentRaces} />
+              <RecentRaces races={stats.recentRaces} />
+              <PersonalRecords records={stats.personalRecords} />
+              <Achievements data={stats} />
+              <DataExport />
+            </>
+          )}
+
+          {!statsLoading && !hasData && user.nick_verified && (
+            <div className="profile-dashboard-hint">
+              Verify your nickname is exactly as it appears in Liftoff, including capitalisation.
+            </div>
+          )}
+        </div>
+      )}
+
+      {!user.nick_verified && (
+        <div className="profile-dashboard-prompt">
+          Verify your in-game nickname above to unlock your personal racing dashboard with stats, charts, and data exports.
+        </div>
+      )}
     </div>
   );
 }
