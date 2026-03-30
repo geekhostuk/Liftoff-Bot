@@ -127,6 +127,12 @@ export async function postUserTagVote(env, track, label) {
   return res.json();
 }
 
+// ── Profile Dashboard ──────────────────────────────────────────────────────
+
+export function getMyStats() {
+  return get('/api/auth/my-stats');
+}
+
 export function imageProxyUrl(steamUrl) {
   if (!steamUrl) return null;
   return `/api/image-proxy?url=${encodeURIComponent(steamUrl)}`;

@@ -14,4 +14,5 @@ module.exports = {
   ...require('./trackOverseer'),
   ...require('./siteUsers'),
   ...require('./adminPermissions'),
+  ...require('./profileStats'),
 };
