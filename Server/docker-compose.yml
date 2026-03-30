@@ -9,6 +9,7 @@ services:
       POSTGRES_PASSWORD: liftoff
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d:ro
     networks:
       - internal
     healthcheck:
@@ -71,7 +72,7 @@ services:
     image: ghcr.io/umami-software/umami:postgresql-latest
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://liftoff:liftoff@postgres:5432/liftoff
+      DATABASE_URL: postgresql://liftoff:liftoff@postgres:5432/umami
       APP_SECRET: 7bceb5b4a95935883d9a9804079e99e500a5c16d6358bf86873bb75a5f8f2395
     networks:
       - internal
