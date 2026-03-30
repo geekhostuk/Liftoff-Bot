@@ -73,6 +73,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://liftoff:liftoff@postgres:5432/umami
+      BASE_PATH: /analytics
       APP_SECRET: 7bceb5b4a95935883d9a9804079e99e500a5c16d6358bf86873bb75a5f8f2395
     networks:
       - internal
