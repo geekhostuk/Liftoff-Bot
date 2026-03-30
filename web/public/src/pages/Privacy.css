@@ -1,0 +1,54 @@
+.privacy-page h1 {
+  margin-bottom: var(--space-xl);
+}
+
+.privacy-updated {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: var(--space-2xl);
+}
+
+.privacy-section {
+  margin-bottom: var(--space-2xl);
+  max-width: 700px;
+}
+
+.privacy-section h2 {
+  margin-bottom: var(--space-md);
+}
+
+.privacy-section p,
+.privacy-section li {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: var(--space-sm);
+}
+
+.privacy-section ul {
+  padding-left: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+.privacy-section strong {
+  color: var(--text-primary);
+}
+
+.privacy-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--space-md);
+  font-size: 0.9rem;
+}
+
+.privacy-table th,
+.privacy-table td {
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.privacy-table th {
+  color: var(--text-primary);
+  font-weight: 600;
+}

@@ -60,6 +60,10 @@
   color: var(--text-secondary);
 }
 
+.footer-meta-sep {
+  margin: 0 var(--space-sm);
+}
+
 @media (max-width: 768px) {
   .site-footer-inner {
     flex-direction: column;
