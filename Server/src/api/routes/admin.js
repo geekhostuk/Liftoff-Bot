@@ -293,6 +293,24 @@ router.post('/site-users/:id/verify', requirePermission('users'), async (req, re
   res.json({ ok: true });
 });
 
+router.patch('/site-users/:id/nickname', requirePermission('users'), async (req, res) => {
+  const { nickname } = req.body;
+  if (!nickname || !nickname.trim()) return res.status(400).json({ error: 'nickname is required' });
+  const trimmed = nickname.trim();
+  const existing = await db.getSiteUserByNickname(trimmed);
+  if (existing && existing.id !== Number(req.params.id)) {
+    return res.status(409).json({ error: 'nickname already taken' });
+  }
+  const row = await db.adminSetNickname(Number(req.params.id), trimmed);
+  if (!row) return res.status(404).json({ error: 'user not found' });
+  res.json(row);
+});
+
+router.post('/site-users/:id/verify-nick', requirePermission('users'), async (req, res) => {
+  await db.manualVerifyNickname(Number(req.params.id));
+  res.json({ ok: true });
+});
+
 // ── Idle Kick (via realtime) ────────────────────────────────────────────────
 
 router.get('/idle-kick/status', requirePermission('idle_kick'), async (req, res) => {
