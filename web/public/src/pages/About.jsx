@@ -30,9 +30,11 @@ export default function About() {
           Every race you fly on the league server is automatically tracked, scored, and ranked against other pilots.
         </p>
         <p>
-          The league is designed to be accessible and community-driven. There's no registration required &mdash;
-          just join the server, fly, and your results appear in the standings. Whether you're a casual flyer or a
-          competitive racer, there's a place for you on the leaderboard.
+          The league is designed to be accessible and community-driven. Your race results are tracked
+          automatically &mdash; just join the server, fly, and your results appear in the standings.
+          For the best experience, <Link to="/register">register an account</Link> and link your
+          in-game nickname. Registered pilots get priority lobby access &mdash; when the server is full,
+          unregistered players are kicked after 30 seconds of idle time, while registered pilots get 5 minutes.
         </p>
       </section>
 
@@ -61,6 +63,12 @@ export default function About() {
       <section className="about-section">
         <h2>Connect</h2>
         <div className="about-links">
+          <Link to="/register" className="btn btn-primary">
+            Register
+          </Link>
+          <Link to="/competition" className="btn btn-outline">
+            View Competition
+          </Link>
           <a
             href="https://store.steampowered.com/app/410340/Liftoff_FPV_Drone_Racing/"
             target="_blank"
@@ -69,9 +77,6 @@ export default function About() {
           >
             Liftoff on Steam
           </a>
-          <Link to="/competition" className="btn btn-primary">
-            View Competition
-          </Link>
         </div>
       </section>
 

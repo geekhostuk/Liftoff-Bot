@@ -68,6 +68,63 @@
   color: var(--text-dim);
 }
 
+/* Account Linking Steps */
+.hiw-link-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}
+
+.link-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+}
+
+.link-step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--bg-base);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.link-step strong {
+  display: block;
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.link-step p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.link-step code {
+  background: var(--bg-inset);
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-sm);
+  font-size: 0.85em;
+  color: var(--color-primary);
+}
+
+.link-step a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
 /* Scoring Grid */
 .hiw-scoring-grid {
   display: grid;

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import './HowItWorks.css';
 
 const SCORING = [
@@ -46,7 +47,11 @@ const SCORING = [
 const FAQ = [
   {
     q: 'Do I need to sign up?',
-    a: 'No. If you race during an active competition week, your results are automatically tracked. Just fly in Liftoff on the league server.',
+    a: 'Not for scoring — your race results are tracked automatically. However, registering and linking your account is strongly recommended. When the lobby is full, unregistered pilots are kicked after just 30 seconds of idle time, while registered pilots get 5 minutes.',
+  },
+  {
+    q: 'What happens when the lobby is full?',
+    a: 'When all 8 slots are occupied, idle players are kicked to make room. Unregistered pilots receive a warning after 30 seconds and are removed after 40 seconds. Registered pilots get a 5-minute warning and 1 minute of grace time — over 9x longer to stay in the lobby.',
   },
   {
     q: 'When do weeks start and end?',
@@ -126,6 +131,42 @@ export default function HowItWorks() {
         </div>
       </section>
 
+      {/* Registration */}
+      <section className="hiw-section">
+        <h2>Registration &amp; Account Linking</h2>
+        <div className="hiw-text">
+          <p>
+            Scoring is fully automatic — you don't need an account to earn points. However,
+            registering gives you <strong>priority lobby access</strong> when the server is full.
+            Unregistered pilots are kicked after just 30 seconds of idle time, while registered
+            pilots get 5 minutes.
+          </p>
+        </div>
+        <div className="hiw-link-steps">
+          <div className="link-step">
+            <span className="link-step-num">1</span>
+            <div>
+              <strong>Create an account</strong>
+              <p><Link to="/register">Register on the site</Link> with your email and verify it.</p>
+            </div>
+          </div>
+          <div className="link-step">
+            <span className="link-step-num">2</span>
+            <div>
+              <strong>Set your nickname</strong>
+              <p>Go to your <Link to="/profile">Profile</Link> and enter your exact Liftoff in-game nickname. You'll receive a 6-character verification code.</p>
+            </div>
+          </div>
+          <div className="link-step">
+            <span className="link-step-num">3</span>
+            <div>
+              <strong>Verify in-game</strong>
+              <p>While on the league server, type <code>/verify CODE</code> in the Liftoff chat. Your account is now linked and you have priority lobby access.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Scoring */}
       <section className="hiw-section">
         <h2>Scoring Breakdown</h2>
@@ -145,8 +186,11 @@ export default function HowItWorks() {
         <h2>Eligibility</h2>
         <div className="hiw-text">
           <p>
-            You are automatically included in the competition when you complete a race during an active week.
-            There is no registration required. Simply join the Liftoff server and race.
+            Your races are scored automatically whether or not you have an account — just join the
+            Liftoff server and race during an active week. However, registered pilots with a linked
+            nickname get priority when the lobby is full. Unregistered players are kicked after 30
+            seconds of idle time to make room, while registered pilots get 5 minutes.{' '}
+            <Link to="/register">Register here</Link> to link your account.
           </p>
         </div>
       </section>

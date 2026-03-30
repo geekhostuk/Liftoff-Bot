@@ -2,9 +2,10 @@ import { Link } from 'react-router-dom';
 import './HowItWorksPreview.css';
 
 const STEPS = [
-  { num: '1', title: 'Race', desc: 'Join a race during an active competition week. Your laps are tracked automatically.' },
-  { num: '2', title: 'Earn', desc: 'Score points for placement, laps, consistency, streaks, and more.' },
-  { num: '3', title: 'Climb', desc: 'Compete weekly to climb the season standings and earn awards.' },
+  { num: '1', title: 'Register', desc: 'Sign up on the site and link your in-game nickname for priority lobby access.' },
+  { num: '2', title: 'Race', desc: 'Join a race during an active competition week. Your laps are tracked automatically.' },
+  { num: '3', title: 'Earn', desc: 'Score points for placement, laps, consistency, streaks, and more.' },
+  { num: '4', title: 'Climb', desc: 'Compete weekly to climb the season standings and earn awards.' },
 ];
 
 export default function HowItWorksPreview() {
