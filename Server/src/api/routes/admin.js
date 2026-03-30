@@ -349,7 +349,7 @@ router.delete('/chat/templates/:id', requirePermission('auto_messages'), async (
 // ── Chat template variables & preview ────────────────────────────────────────
 
 const TEMPLATE_VARIABLES = [
-  { key: 'nick', description: 'Player nickname', triggers: ['player_joined', 'player_new', 'player_returned'] },
+  { key: 'nick', description: 'Player nickname', triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered', 'lobby_full'] },
   { key: 'env', description: 'Track environment name', triggers: ['track_change'] },
   { key: 'track', description: 'Track name', triggers: ['track_change'] },
   { key: 'race', description: 'Race mode', triggers: ['track_change'] },
@@ -361,8 +361,9 @@ const TEMPLATE_VARIABLES = [
   { key: '2nd', description: '2nd place pilot (weekly standings)', triggers: ['*'] },
   { key: '3rd', description: '3rd place pilot (weekly standings)', triggers: ['*'] },
   { key: 'playlist', description: 'Current playlist name', triggers: ['*'] },
-  { key: 'player_points', description: "Player's weekly competition points", triggers: ['player_joined', 'player_new', 'player_returned'] },
-  { key: 'player_position', description: "Player's weekly competition rank (or 'unranked')", triggers: ['player_joined', 'player_new', 'player_returned'] },
+  { key: 'player_points', description: "Player's weekly competition points", triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered'] },
+  { key: 'player_position', description: "Player's weekly competition rank (or 'unranked')", triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered'] },
+  { key: 'count', description: 'Current player count', triggers: ['lobby_full'] },
 ];
 
 router.get('/chat/template-variables', (req, res) => {

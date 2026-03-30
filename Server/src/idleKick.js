@@ -323,6 +323,10 @@ function destroy() {
   _sendCommandAwait = null;
 }
 
+function isNickVerified(nick) {
+  return _verifiedNicks.has((nick || '').toLowerCase());
+}
+
 module.exports = {
   init,
   recordActivity,
@@ -338,5 +342,7 @@ module.exports = {
   refreshRegisteredNicks,
   getUnregKickEnabled,
   setUnregKickEnabled,
+  isNickVerified,
+  MAX_LOBBY_SIZE,
   destroy,
 };
