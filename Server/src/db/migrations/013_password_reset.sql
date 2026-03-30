@@ -1,0 +1,2 @@
+ALTER TABLE site_users ADD COLUMN IF NOT EXISTS reset_token TEXT;
+ALTER TABLE site_users ADD COLUMN IF NOT EXISTS reset_expires TIMESTAMPTZ;

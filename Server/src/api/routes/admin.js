@@ -103,15 +103,54 @@ const strictLimiter = rateLimit({
 
 router.use(generalLimiter);
 
+// ── Permission middleware factory ─────────────────────────────────────────
+
+function requirePermission(module) {
+  return async (req, res, next) => {
+    if (req.adminUser.role === 'superadmin') return next();
+    if (req.adminUser.userId === 0) return next(); // ADMIN_TOKEN bypass
+    try {
+      const allowed = await db.hasPermission(req.adminUser.userId, module);
+      if (!allowed) return res.status(403).json({ error: 'Forbidden — insufficient permissions' });
+      next();
+    } catch (err) {
+      return res.status(500).json({ error: 'Permission check failed' });
+    }
+  };
+}
+
+function requireSuperadmin(req, res, next) {
+  if (req.adminUser.role === 'superadmin' || req.adminUser.userId === 0) return next();
+  return res.status(403).json({ error: 'Superadmin access required' });
+}
+
+// ── Current user info ──────────────────────────────────────────────────────
+
+router.get('/me', async (req, res) => {
+  let permissions = [];
+  if (req.adminUser.role === 'superadmin' || req.adminUser.userId === 0) {
+    permissions = ['dashboard','players','tracks','chat','playlists','tags',
+      'track_manager','overseer','scoring','competitions','auto_messages','users','idle_kick'];
+  } else {
+    permissions = await db.getPermissions(req.adminUser.userId);
+  }
+  res.json({
+    userId: req.adminUser.userId,
+    username: req.adminUser.username,
+    role: req.adminUser.role,
+    permissions,
+  });
+});
+
 // ── Plugin commands (via realtime) ──────────────────────────────────────────
 
-router.post('/track/next', async (req, res) => {
+router.post('/track/next', requirePermission('tracks'), async (req, res) => {
   const sent = await rt.sendCommand({ cmd: 'next_track' });
   if (!sent) return res.status(503).json({ error: 'Plugin not connected' });
   res.json({ ok: true });
 });
 
-router.post('/track/set', strictLimiter, async (req, res) => {
+router.post('/track/set', requirePermission('tracks'), strictLimiter, async (req, res) => {
   const { env = '', track = '', race = '', workshop_id = '' } = req.body;
   if (!env && !track && !workshop_id) {
     return res.status(400).json({ error: 'Provide at least env+track or workshop_id' });
@@ -121,7 +160,7 @@ router.post('/track/set', strictLimiter, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.put('/playlist', async (req, res) => {
+router.put('/playlist', requirePermission('playlists'), async (req, res) => {
   const { sequence, apply_immediately = false } = req.body;
   if (!sequence || typeof sequence !== 'string') {
     return res.status(400).json({ error: 'sequence is required (pipe/semicolon format)' });
@@ -137,7 +176,7 @@ router.post('/catalog/refresh', async (req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/players/kick', strictLimiter, async (req, res) => {
+router.post('/players/kick', requirePermission('players'), strictLimiter, async (req, res) => {
   const actor = parseInt(req.body.actor);
   if (!actor || isNaN(actor)) return res.status(400).json({ error: 'actor (number) is required' });
   try {
@@ -156,7 +195,7 @@ router.get('/status', async (req, res) => {
 
 // ── Chat (send via realtime) ────────────────────────────────────────────────
 
-router.post('/chat/send', async (req, res) => {
+router.post('/chat/send', requirePermission('chat'), async (req, res) => {
   const { message = '' } = req.body;
   const trimmed = message.trim();
   if (!trimmed) return res.status(400).json({ error: 'message is required' });
@@ -168,11 +207,11 @@ router.post('/chat/send', async (req, res) => {
 
 // ── User management (direct DB) ─────────────────────────────────────────────
 
-router.get('/users', async (req, res) => {
-  res.json(await db.getUsers());
+router.get('/users', requirePermission('users'), async (req, res) => {
+  res.json(await db.getAllUsersWithPermissions());
 });
 
-router.post('/users', strictLimiter, async (req, res) => {
+router.post('/users', requirePermission('users'), strictLimiter, async (req, res) => {
   const { username = '', password = '' } = req.body;
   if (!username.trim() || !password) return res.status(400).json({ error: 'username and password are required' });
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -185,7 +224,7 @@ router.post('/users', strictLimiter, async (req, res) => {
   }
 });
 
-router.delete('/users/:id', async (req, res) => {
+router.delete('/users/:id', requirePermission('users'), async (req, res) => {
   const id = Number(req.params.id);
   if (req.adminUser && req.adminUser.userId === id) return res.status(400).json({ error: 'Cannot delete your own account' });
   destroyUserSessions(id);
@@ -193,41 +232,108 @@ router.delete('/users/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+router.get('/users/:id/permissions', requireSuperadmin, async (req, res) => {
+  res.json(await db.getPermissions(Number(req.params.id)));
+});
+
+router.put('/users/:id/permissions', requireSuperadmin, async (req, res) => {
+  const { permissions } = req.body;
+  if (!Array.isArray(permissions)) return res.status(400).json({ error: 'permissions must be an array' });
+  await db.setPermissions(Number(req.params.id), permissions);
+  res.json({ ok: true });
+});
+
+router.put('/users/:id/role', requireSuperadmin, async (req, res) => {
+  const { role } = req.body;
+  if (!role || !['admin', 'superadmin'].includes(role)) {
+    return res.status(400).json({ error: 'role must be admin or superadmin' });
+  }
+  const id = Number(req.params.id);
+  await db.getPool().query('UPDATE admin_users SET role = $1 WHERE id = $2', [role, id]);
+  res.json({ ok: true });
+});
+
+// ── Admin password change ───────────────────────────────────────────────────
+
+router.put('/me/password', async (req, res) => {
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: 'current_password and new_password are required' });
+  }
+  if (new_password.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  }
+  const user = await db.getUserByUsername(req.adminUser.username);
+  if (!user || !verifyPassword(current_password, user.password_hash)) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  await db.getPool().query(
+    'UPDATE admin_users SET password_hash = $1 WHERE id = $2',
+    [hashPassword(new_password), user.id]
+  );
+  res.json({ ok: true });
+});
+
+// ── Site user management (admin view) ───────────────────────────────────────
+
+router.get('/site-users', requirePermission('users'), async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const offset = parseInt(req.query.offset) || 0;
+  const search = req.query.search || '';
+  res.json(await db.getSiteUsers(limit, offset, search));
+});
+
+router.delete('/site-users/:id', requirePermission('users'), async (req, res) => {
+  await db.deleteSiteUser(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+router.post('/site-users/:id/verify', requirePermission('users'), async (req, res) => {
+  await db.manualVerifyEmail(Number(req.params.id));
+  res.json({ ok: true });
+});
+
 // ── Idle Kick (via realtime) ────────────────────────────────────────────────
 
-router.get('/idle-kick/status', async (req, res) => {
+router.get('/idle-kick/status', requirePermission('idle_kick'), async (req, res) => {
   res.json(await rt.getIdleKickStatus());
 });
 
-router.get('/idle-kick/whitelist', async (req, res) => {
+router.get('/idle-kick/whitelist', requirePermission('idle_kick'), async (req, res) => {
   res.json(await rt.getIdleKickWhitelist());
 });
 
-router.post('/idle-kick/whitelist', async (req, res) => {
+router.post('/idle-kick/whitelist', requirePermission('idle_kick'), async (req, res) => {
   const { nick = '' } = req.body;
   if (!nick.trim()) return res.status(400).json({ error: 'nick is required' });
   res.json(await rt.addToIdleKickWhitelist(nick.trim()));
 });
 
-router.delete('/idle-kick/whitelist', async (req, res) => {
+router.delete('/idle-kick/whitelist', requirePermission('idle_kick'), async (req, res) => {
   const { nick = '' } = req.body;
   if (!nick.trim()) return res.status(400).json({ error: 'nick is required' });
   res.json(await rt.removeFromIdleKickWhitelist(nick.trim()));
 });
 
+router.post('/idle-kick/unreg-kick', requirePermission('idle_kick'), async (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled (boolean) is required' });
+  res.json(await rt.setUnregKickEnabled(enabled));
+});
+
 // ── Chat templates (direct DB) ──────────────────────────────────────────────
 
-router.get('/chat/templates', async (req, res) => {
+router.get('/chat/templates', requirePermission('auto_messages'), async (req, res) => {
   res.json(await db.getChatTemplates());
 });
 
-router.post('/chat/templates', async (req, res) => {
+router.post('/chat/templates', requirePermission('auto_messages'), async (req, res) => {
   const { trigger, template, enabled = true, delay_ms = 0 } = req.body;
   if (!trigger || !template) return res.status(400).json({ error: 'trigger and template are required' });
   res.status(201).json(await db.createChatTemplate({ trigger, template, enabled, delay_ms }));
 });
 
-router.put('/chat/templates/:id', async (req, res) => {
+router.put('/chat/templates/:id', requirePermission('auto_messages'), async (req, res) => {
   const { trigger, template, enabled = true, delay_ms = 0 } = req.body;
   if (!trigger || !template) return res.status(400).json({ error: 'trigger and template are required' });
   const row = await db.updateChatTemplate(Number(req.params.id), { trigger, template, enabled, delay_ms });
@@ -235,7 +341,7 @@ router.put('/chat/templates/:id', async (req, res) => {
   res.json(row);
 });
 
-router.delete('/chat/templates/:id', async (req, res) => {
+router.delete('/chat/templates/:id', requirePermission('auto_messages'), async (req, res) => {
   await db.deleteChatTemplate(Number(req.params.id));
   res.json({ ok: true });
 });
@@ -243,7 +349,7 @@ router.delete('/chat/templates/:id', async (req, res) => {
 // ── Chat template variables & preview ────────────────────────────────────────
 
 const TEMPLATE_VARIABLES = [
-  { key: 'nick', description: 'Player nickname', triggers: ['player_joined', 'player_new', 'player_returned'] },
+  { key: 'nick', description: 'Player nickname', triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered', 'lobby_full'] },
   { key: 'env', description: 'Track environment name', triggers: ['track_change'] },
   { key: 'track', description: 'Track name', triggers: ['track_change'] },
   { key: 'race', description: 'Race mode', triggers: ['track_change'] },
@@ -255,8 +361,9 @@ const TEMPLATE_VARIABLES = [
   { key: '2nd', description: '2nd place pilot (weekly standings)', triggers: ['*'] },
   { key: '3rd', description: '3rd place pilot (weekly standings)', triggers: ['*'] },
   { key: 'playlist', description: 'Current playlist name', triggers: ['*'] },
-  { key: 'player_points', description: "Player's weekly competition points", triggers: ['player_joined', 'player_new', 'player_returned'] },
-  { key: 'player_position', description: "Player's weekly competition rank (or 'unranked')", triggers: ['player_joined', 'player_new', 'player_returned'] },
+  { key: 'player_points', description: "Player's weekly competition points", triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered'] },
+  { key: 'player_position', description: "Player's weekly competition rank (or 'unranked')", triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered'] },
+  { key: 'count', description: 'Current player count', triggers: ['lobby_full'] },
 ];
 
 router.get('/chat/template-variables', (req, res) => {
@@ -276,11 +383,11 @@ router.post('/chat/template-preview', async (req, res) => {
 
 // ── Playlists (direct DB + realtime for start/stop/skip) ────────────────────
 
-router.get('/playlists', async (req, res) => {
+router.get('/playlists', requirePermission('playlists'), async (req, res) => {
   res.json(await db.getPlaylists());
 });
 
-router.post('/playlists', async (req, res) => {
+router.post('/playlists', requirePermission('playlists'), async (req, res) => {
   const { name = '' } = req.body;
   if (!name.trim()) return res.status(400).json({ error: 'name is required' });
   try {
@@ -290,7 +397,7 @@ router.post('/playlists', async (req, res) => {
   }
 });
 
-router.put('/playlists/:id', async (req, res) => {
+router.put('/playlists/:id', requirePermission('playlists'), async (req, res) => {
   const { name = '' } = req.body;
   if (!name.trim()) return res.status(400).json({ error: 'name is required' });
   const row = await db.renamePlaylist(Number(req.params.id), name.trim());
@@ -298,7 +405,7 @@ router.put('/playlists/:id', async (req, res) => {
   res.json(row);
 });
 
-router.delete('/playlists/:id', async (req, res) => {
+router.delete('/playlists/:id', requirePermission('playlists'), async (req, res) => {
   const id = Number(req.params.id);
   const osState = await rt.getOverseerState();
   if (osState.playlist_id === id && osState.running) {
@@ -308,29 +415,29 @@ router.delete('/playlists/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/playlists/:id/tracks', async (req, res) => {
+router.get('/playlists/:id/tracks', requirePermission('playlists'), async (req, res) => {
   res.json(await db.getPlaylistTracks(Number(req.params.id)));
 });
 
-router.post('/playlists/:id/tracks', async (req, res) => {
+router.post('/playlists/:id/tracks', requirePermission('playlists'), async (req, res) => {
   const { env = '', track = '', race = '', workshop_id = '' } = req.body;
   if (!env && !track && !workshop_id) return res.status(400).json({ error: 'Provide env+track or workshop_id' });
   res.status(201).json(await db.addPlaylistTrack(Number(req.params.id), { env, track, race, workshop_id }));
 });
 
-router.delete('/playlists/tracks/:tid', async (req, res) => {
+router.delete('/playlists/tracks/:tid', requirePermission('playlists'), async (req, res) => {
   await db.removePlaylistTrack(Number(req.params.tid));
   res.json({ ok: true });
 });
 
-router.post('/playlists/tracks/:tid/move', async (req, res) => {
+router.post('/playlists/tracks/:tid/move', requirePermission('playlists'), async (req, res) => {
   const { direction } = req.body;
   if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'direction must be up or down' });
   await db.movePlaylistTrack(Number(req.params.tid), direction);
   res.json({ ok: true });
 });
 
-router.post('/playlists/:id/start', strictLimiter, async (req, res) => {
+router.post('/playlists/:id/start', requirePermission('playlists'), strictLimiter, async (req, res) => {
   const intervalMs = Math.max(5000, Number(req.body.interval_ms) || 15 * 60 * 1000);
   const startIndex = Math.max(0, parseInt(req.body.start_index) || 0);
   try {
@@ -340,25 +447,25 @@ router.post('/playlists/:id/start', strictLimiter, async (req, res) => {
   }
 });
 
-router.post('/playlist/stop', async (req, res) => {
+router.post('/playlist/stop', requirePermission('playlists'), async (req, res) => {
   res.json(await rt.stopOverseer());
 });
 
-router.post('/playlist/skip', async (req, res) => {
+router.post('/playlist/skip', requirePermission('playlists'), async (req, res) => {
   res.json(await rt.skipOverseer());
 });
 
-router.get('/playlist/state', async (req, res) => {
+router.get('/playlist/state', requirePermission('playlists'), async (req, res) => {
   res.json(await rt.getOverseerState());
 });
 
 // ── Track Overseer (via realtime) ────────────────────────────────────────────
 
-router.get('/overseer/state', async (req, res) => {
+router.get('/overseer/state', requirePermission('overseer'), async (req, res) => {
   res.json(await rt.getOverseerState());
 });
 
-router.post('/overseer/start-playlist', strictLimiter, async (req, res) => {
+router.post('/overseer/start-playlist', requirePermission('overseer'), strictLimiter, async (req, res) => {
   const { playlist_id, interval_ms, start_index = 0 } = req.body;
   if (!playlist_id) return res.status(400).json({ error: 'playlist_id is required' });
   const intervalMs = Math.max(5000, Number(interval_ms) || 15 * 60 * 1000);
@@ -369,7 +476,7 @@ router.post('/overseer/start-playlist', strictLimiter, async (req, res) => {
   }
 });
 
-router.post('/overseer/start-tags', strictLimiter, async (req, res) => {
+router.post('/overseer/start-tags', requirePermission('overseer'), strictLimiter, async (req, res) => {
   const { tag_names, interval_ms } = req.body;
   if (!Array.isArray(tag_names) || tag_names.length === 0) {
     return res.status(400).json({ error: 'tag_names must be a non-empty array' });
@@ -382,20 +489,20 @@ router.post('/overseer/start-tags', strictLimiter, async (req, res) => {
   }
 });
 
-router.post('/overseer/stop', async (req, res) => {
+router.post('/overseer/stop', requirePermission('overseer'), async (req, res) => {
   res.json(await rt.stopOverseer());
 });
 
-router.post('/overseer/skip', async (req, res) => {
+router.post('/overseer/skip', requirePermission('overseer'), async (req, res) => {
   res.json(await rt.skipOverseer());
 });
 
-router.post('/overseer/extend', async (req, res) => {
+router.post('/overseer/extend', requirePermission('overseer'), async (req, res) => {
   const ms = Math.max(10000, Number(req.body.ms) || 300000);
   res.json(await rt.extendOverseer(ms));
 });
 
-router.post('/overseer/skip-to-index', async (req, res) => {
+router.post('/overseer/skip-to-index', requirePermission('overseer'), async (req, res) => {
   const { index } = req.body;
   if (index === undefined) return res.status(400).json({ error: 'index is required' });
   res.json(await rt.skipToIndex(Number(index)));
@@ -403,11 +510,11 @@ router.post('/overseer/skip-to-index', async (req, res) => {
 
 // ── Playlist Queue ──────────────────────────────────────────────────────────
 
-router.get('/overseer/playlist-queue', async (req, res) => {
+router.get('/overseer/playlist-queue', requirePermission('overseer'), async (req, res) => {
   res.json(await rt.getPlaylistQueue());
 });
 
-router.post('/overseer/playlist-queue', async (req, res) => {
+router.post('/overseer/playlist-queue', requirePermission('overseer'), async (req, res) => {
   const { playlist_id, interval_ms, shuffle = false, start_after = 'track' } = req.body;
   if (!playlist_id) return res.status(400).json({ error: 'playlist_id is required' });
   if (!['track', 'wrap'].includes(start_after)) return res.status(400).json({ error: 'start_after must be track or wrap' });
@@ -419,17 +526,17 @@ router.post('/overseer/playlist-queue', async (req, res) => {
   }
 });
 
-router.delete('/overseer/playlist-queue/:id', async (req, res) => {
+router.delete('/overseer/playlist-queue/:id', requirePermission('overseer'), async (req, res) => {
   res.json(await rt.removeFromPlaylistQueue(Number(req.params.id)));
 });
 
-router.post('/overseer/playlist-queue/:id/move', async (req, res) => {
+router.post('/overseer/playlist-queue/:id/move', requirePermission('overseer'), async (req, res) => {
   const { direction } = req.body;
   if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'direction must be up or down' });
   res.json(await rt.reorderPlaylistQueue(Number(req.params.id), direction));
 });
 
-router.delete('/overseer/playlist-queue', async (req, res) => {
+router.delete('/overseer/playlist-queue', requirePermission('overseer'), async (req, res) => {
   res.json(await rt.clearPlaylistQueue());
 });
 
@@ -439,7 +546,7 @@ router.get('/queue', async (req, res) => {
   res.json(await rt.getQueue());
 });
 
-router.post('/queue', async (req, res) => {
+router.post('/queue', requirePermission('overseer'), async (req, res) => {
   const { env = '', track = '', race = '', workshop_id = '' } = req.body;
   if (!env && !track && !workshop_id) {
     return res.status(400).json({ error: 'Provide at least env+track or workshop_id' });
@@ -451,28 +558,28 @@ router.post('/queue', async (req, res) => {
   }
 });
 
-router.delete('/queue/:id', async (req, res) => {
+router.delete('/queue/:id', requirePermission('overseer'), async (req, res) => {
   res.json(await rt.removeFromQueue(Number(req.params.id)));
 });
 
-router.post('/queue/:id/move', async (req, res) => {
+router.post('/queue/:id/move', requirePermission('overseer'), async (req, res) => {
   const { direction } = req.body;
   if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'direction must be up or down' });
   res.json(await rt.reorderQueue(Number(req.params.id), direction));
 });
 
-router.delete('/queue', async (req, res) => {
+router.delete('/queue', requirePermission('overseer'), async (req, res) => {
   res.json(await rt.clearQueue());
 });
 
 // ── Tracks upcoming & history (via realtime) ─────────────────────────────────
 
-router.get('/tracks/upcoming', async (req, res) => {
+router.get('/tracks/upcoming', requirePermission('tracks'), async (req, res) => {
   const count = parseInt(req.query.count || '10', 10);
   res.json(await rt.getUpcomingTracks(count));
 });
 
-router.get('/tracks/history', async (req, res) => {
+router.get('/tracks/history', requirePermission('tracks'), async (req, res) => {
   const limit = parseInt(req.query.limit || '50', 10);
   const offset = parseInt(req.query.offset || '0', 10);
   res.json(await rt.getTrackHistory(limit, offset));
@@ -480,7 +587,7 @@ router.get('/tracks/history', async (req, res) => {
 
 // ── Scoring (recalculate) ───────────────────────────────────────────────────
 
-router.post('/scoring/recalculate/:weekId', strictLimiter, async (req, res) => {
+router.post('/scoring/recalculate/:weekId', requirePermission('scoring'), strictLimiter, async (req, res) => {
   try {
     res.json(await recalculateWeek(Number(req.params.weekId)));
   } catch (err) {
@@ -488,7 +595,7 @@ router.post('/scoring/recalculate/:weekId', strictLimiter, async (req, res) => {
   }
 });
 
-router.get('/scoring/current-week', async (req, res) => {
+router.get('/scoring/current-week', requirePermission('scoring'), async (req, res) => {
   const week = await getOrCreateCurrentWeek();
   if (!week) return res.status(404).json({ error: 'No active scoring period' });
   const standings = await db.getWeeklyStandings(week.id);
@@ -497,45 +604,45 @@ router.get('/scoring/current-week', async (req, res) => {
 
 // ── Competitions (direct DB) ────────────────────────────────────────────────
 
-router.post('/competition', async (req, res) => {
+router.post('/competition', requirePermission('competitions'), async (req, res) => {
   const { name = '' } = req.body;
   if (!name.trim()) return res.status(400).json({ error: 'name is required' });
   res.status(201).json(await db.createCompetition(name.trim()));
 });
 
-router.get('/competitions', async (req, res) => {
+router.get('/competitions', requirePermission('competitions'), async (req, res) => {
   res.json(await db.getCompetitions());
 });
 
-router.post('/competition/:id/archive', async (req, res) => {
+router.post('/competition/:id/archive', requirePermission('competitions'), async (req, res) => {
   await db.archiveCompetition(Number(req.params.id));
   res.json({ ok: true });
 });
 
-router.post('/competition/:id/activate', async (req, res) => {
+router.post('/competition/:id/activate', requirePermission('competitions'), async (req, res) => {
   await db.activateCompetition(Number(req.params.id));
   res.json({ ok: true });
 });
 
-router.delete('/competition/:id', async (req, res) => {
+router.delete('/competition/:id', requirePermission('competitions'), async (req, res) => {
   const id = Number(req.params.id);
   if (id === 0) return res.status(400).json({ error: 'Cannot delete Auto Season' });
   await db.deleteCompetition(id);
   res.json({ ok: true });
 });
 
-router.post('/competition/:id/weeks', async (req, res) => {
+router.post('/competition/:id/weeks', requirePermission('competitions'), async (req, res) => {
   const { count = 4, start_date } = req.body;
   if (!start_date) return res.status(400).json({ error: 'start_date is required (ISO format)' });
   const weeks = await db.generateWeeks(Number(req.params.id), Number(count), start_date);
   res.status(201).json(weeks);
 });
 
-router.get('/competition/:id/weeks', async (req, res) => {
+router.get('/competition/:id/weeks', requirePermission('competitions'), async (req, res) => {
   res.json(await db.getWeeks(Number(req.params.id)));
 });
 
-router.put('/competition/week/:id', async (req, res) => {
+router.put('/competition/week/:id', requirePermission('competitions'), async (req, res) => {
   const { status, starts_at, ends_at, week_number } = req.body;
   if (status && !['scheduled', 'active', 'finalised'].includes(status)) {
     return res.status(400).json({ error: 'status must be scheduled, active, or finalised' });
@@ -549,12 +656,12 @@ router.put('/competition/week/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-router.delete('/competition/week/:id', async (req, res) => {
+router.delete('/competition/week/:id', requirePermission('competitions'), async (req, res) => {
   await db.deleteWeek(Number(req.params.id));
   res.json({ ok: true });
 });
 
-router.post('/competition/recalculate/:weekId', strictLimiter, async (req, res) => {
+router.post('/competition/recalculate/:weekId', requirePermission('competitions'), strictLimiter, async (req, res) => {
   try {
     const result = await recalculateWeek(Number(req.params.weekId));
     res.json(result);
@@ -563,23 +670,23 @@ router.post('/competition/recalculate/:weekId', strictLimiter, async (req, res) 
   }
 });
 
-router.get('/competition/week/:id/standings', async (req, res) => {
+router.get('/competition/week/:id/standings', requirePermission('competitions'), async (req, res) => {
   const standings = await db.getWeeklyStandings(Number(req.params.id));
   res.json(standings);
 });
 
-router.get('/competition/:id/season-standings', async (req, res) => {
+router.get('/competition/:id/season-standings', requirePermission('competitions'), async (req, res) => {
   const standings = await db.getSeasonStandings(Number(req.params.id));
   res.json(standings);
 });
 
 // ── Tags (direct DB) ────────────────────────────────────────────────────────
 
-router.get('/tags', async (req, res) => {
+router.get('/tags', requirePermission('tags'), async (req, res) => {
   res.json(await db.getTags());
 });
 
-router.post('/tags', async (req, res) => {
+router.post('/tags', requirePermission('tags'), async (req, res) => {
   const { name = '' } = req.body;
   if (!name.trim()) return res.status(400).json({ error: 'name is required' });
   try {
@@ -590,7 +697,7 @@ router.post('/tags', async (req, res) => {
   }
 });
 
-router.put('/tags/:id', async (req, res) => {
+router.put('/tags/:id', requirePermission('tags'), async (req, res) => {
   const { name = '' } = req.body;
   if (!name.trim()) return res.status(400).json({ error: 'name is required' });
   try {
@@ -603,41 +710,41 @@ router.put('/tags/:id', async (req, res) => {
   }
 });
 
-router.delete('/tags/:id', async (req, res) => {
+router.delete('/tags/:id', requirePermission('tags'), async (req, res) => {
   await db.deleteTag(Number(req.params.id));
   res.json({ ok: true });
 });
 
 // ── Tracks (direct DB — catalog-discovered only) ─────────────────────────────
 
-router.get('/tracks', async (req, res) => {
+router.get('/tracks', requirePermission('tracks'), async (req, res) => {
   res.json(await db.getTracks());
 });
 
-router.get('/tracks/:id/tags', async (req, res) => {
+router.get('/tracks/:id/tags', requirePermission('tags'), async (req, res) => {
   res.json(await db.getTagsForTrack(Number(req.params.id)));
 });
 
-router.put('/tracks/:id/tags', async (req, res) => {
+router.put('/tracks/:id/tags', requirePermission('tags'), async (req, res) => {
   const { tag_ids } = req.body;
   if (!Array.isArray(tag_ids)) return res.status(400).json({ error: 'tag_ids must be an array' });
   await db.setTrackTags(Number(req.params.id), tag_ids.map(Number));
   res.json(await db.getTagsForTrack(Number(req.params.id)));
 });
 
-router.post('/tracks/:id/tags', async (req, res) => {
+router.post('/tracks/:id/tags', requirePermission('tags'), async (req, res) => {
   const { tag_id } = req.body;
   if (!tag_id) return res.status(400).json({ error: 'tag_id is required' });
   await db.addTagToTrack(Number(req.params.id), Number(tag_id));
   res.json({ ok: true });
 });
 
-router.delete('/tracks/:id/tags/:tagId', async (req, res) => {
+router.delete('/tracks/:id/tags/:tagId', requirePermission('tags'), async (req, res) => {
   await db.removeTagFromTrack(Number(req.params.id), Number(req.params.tagId));
   res.json({ ok: true });
 });
 
-router.put('/tracks/:id/steam-id', async (req, res) => {
+router.put('/tracks/:id/steam-id', requirePermission('tracks'), async (req, res) => {
   const { steam_id } = req.body;
   if (steam_id === undefined) return res.status(400).json({ error: 'steam_id is required' });
   const row = await db.updateTrackSteamId(Number(req.params.id), steam_id);
@@ -645,7 +752,7 @@ router.put('/tracks/:id/steam-id', async (req, res) => {
   res.json(row);
 });
 
-router.post('/tracks/:id/steam-fetch', strictLimiter, async (req, res) => {
+router.post('/tracks/:id/steam-fetch', requirePermission('tracks'), strictLimiter, async (req, res) => {
   const track = await db.getTrackById(Number(req.params.id));
   if (!track) return res.status(404).json({ error: 'Track not found' });
   if (!track.steam_id) return res.status(400).json({ error: 'Track has no steam_id set' });
@@ -659,7 +766,7 @@ router.post('/tracks/:id/steam-fetch', strictLimiter, async (req, res) => {
   res.json(row);
 });
 
-router.post('/tracks/steam-fetch-all', strictLimiter, async (req, res) => {
+router.post('/tracks/steam-fetch-all', requirePermission('tracks'), strictLimiter, async (req, res) => {
   const tracks = await db.getTracks();
   const withSteamId = tracks.filter(t => t.steam_id && !t.steam_fetched_at);
 
@@ -697,7 +804,7 @@ router.get('/tracks/steam-image-proxy', async (req, res) => {
   res.send(Buffer.from(buffer));
 });
 
-router.put('/tracks/:id/duration', async (req, res) => {
+router.put('/tracks/:id/duration', requirePermission('tracks'), async (req, res) => {
   const { duration_ms } = req.body;
   const value = duration_ms === null || duration_ms === undefined ? null : Number(duration_ms);
   if (value !== null && (isNaN(value) || value < 0)) return res.status(400).json({ error: 'duration_ms must be a positive number or null' });
@@ -706,13 +813,13 @@ router.put('/tracks/:id/duration', async (req, res) => {
   res.json(row);
 });
 
-router.get('/tracks/by-tag/:tagId', async (req, res) => {
+router.get('/tracks/by-tag/:tagId', requirePermission('tags'), async (req, res) => {
   res.json(await db.getTracksForTag(Number(req.params.tagId)));
 });
 
 // ── Tag runner (backward compat — routes through overseer) ──────────────────
 
-router.post('/tag-runner/start', strictLimiter, async (req, res) => {
+router.post('/tag-runner/start', requirePermission('tags'), strictLimiter, async (req, res) => {
   const { tag_names, interval_ms } = req.body;
   if (!Array.isArray(tag_names) || tag_names.length === 0) {
     return res.status(400).json({ error: 'tag_names must be a non-empty array' });
@@ -725,21 +832,21 @@ router.post('/tag-runner/start', strictLimiter, async (req, res) => {
   }
 });
 
-router.post('/tag-runner/stop', async (req, res) => {
+router.post('/tag-runner/stop', requirePermission('tags'), async (req, res) => {
   res.json(await rt.stopOverseer());
 });
 
-router.post('/tag-runner/skip', async (req, res) => {
+router.post('/tag-runner/skip', requirePermission('tags'), async (req, res) => {
   res.json(await rt.skipOverseer());
 });
 
-router.get('/tag-runner/state', async (req, res) => {
+router.get('/tag-runner/state', requirePermission('tags'), async (req, res) => {
   res.json(await rt.getOverseerState());
 });
 
 // ── Tag vote (via realtime) ──────────────────────────────────────────────────
 
-router.post('/tag-vote/start', strictLimiter, async (req, res) => {
+router.post('/tag-vote/start', requirePermission('tags'), strictLimiter, async (req, res) => {
   const { tag_options, duration_ms } = req.body;
   if (!Array.isArray(tag_options) || tag_options.length < 2) {
     return res.status(400).json({ error: 'tag_options must be an array with at least 2 tags' });
@@ -755,24 +862,24 @@ router.post('/tag-vote/start', strictLimiter, async (req, res) => {
   }
 });
 
-router.post('/tag-vote/cancel', async (req, res) => {
+router.post('/tag-vote/cancel', requirePermission('tags'), async (req, res) => {
   res.json(await rt.cancelTagVote());
 });
 
-router.get('/tag-vote/state', async (req, res) => {
+router.get('/tag-vote/state', requirePermission('tags'), async (req, res) => {
   res.json(await rt.getTagVoteState());
 });
 
 // ── Track comment moderation ────────────────────────────────────────────────
 
-router.delete('/track-comments/:commentId', async (req, res) => {
+router.delete('/track-comments/:commentId', requirePermission('track_manager'), async (req, res) => {
   await db.deleteTrackComment(Number(req.params.commentId));
   res.json({ ok: true });
 });
 
 // ── Track Manager ─────────────────────────────────────────────────────────────
 
-router.get('/track-manager', async (req, res) => {
+router.get('/track-manager', requirePermission('track_manager'), async (req, res) => {
   const search = req.query.search || '';
   const env = req.query.env || '';
   const sort = req.query.sort || 'name';
@@ -781,24 +888,24 @@ router.get('/track-manager', async (req, res) => {
   res.json(await db.getAdminTrackList({ search, env, sort, limit, offset }));
 });
 
-router.get('/track-manager/envs', async (req, res) => {
+router.get('/track-manager/envs', requirePermission('track_manager'), async (req, res) => {
   const { rows } = await db.getPool().query('SELECT DISTINCT env FROM tracks ORDER BY env');
   res.json(rows.map(r => r.env));
 });
 
-router.get('/track-manager/:id/playlists', async (req, res) => {
+router.get('/track-manager/:id/playlists', requirePermission('track_manager'), async (req, res) => {
   res.json(await db.getTrackPlaylistMemberships(Number(req.params.id)));
 });
 
-router.get('/track-manager/:id/comments', async (req, res) => {
+router.get('/track-manager/:id/comments', requirePermission('track_manager'), async (req, res) => {
   res.json(await db.getAdminTrackComments(Number(req.params.id)));
 });
 
-router.get('/track-manager/:id/user-tags', async (req, res) => {
+router.get('/track-manager/:id/user-tags', requirePermission('track_manager'), async (req, res) => {
   res.json(await db.getTrackUserTags(Number(req.params.id)));
 });
 
-router.delete('/track-manager/:id/user-tags/:label', async (req, res) => {
+router.delete('/track-manager/:id/user-tags/:label', requirePermission('track_manager'), async (req, res) => {
   await db.deleteUserTagLabel(Number(req.params.id), req.params.label);
   res.json({ ok: true });
 });

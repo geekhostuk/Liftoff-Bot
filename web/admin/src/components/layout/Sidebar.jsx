@@ -1,27 +1,35 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Map, MessageSquare, BotMessageSquare, ListMusic, Tag, Radio, Library, Trophy, Award, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { LayoutDashboard, Users, UserCog, Map, MessageSquare, BotMessageSquare, ListMusic, Tag, Radio, Library, Trophy, Award, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { useWs } from '../../context/WebSocketContext.jsx';
 import StatusDot from '../feedback/StatusDot.jsx';
 import './Sidebar.css';
 
 const navItems = [
-  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  { to: '/admin/players', icon: Users, label: 'Players' },
-  { to: '/admin/tracks', icon: Map, label: 'Tracks' },
-  { to: '/admin/chat', icon: MessageSquare, label: 'Chat' },
-  { to: '/admin/chat-beta', icon: MessageSquare, label: 'Chat', beta: true },
-  { to: '/admin/playlists', icon: ListMusic, label: 'Playlists' },
-  { to: '/admin/playlists-beta', icon: ListMusic, label: 'Playlists (beta)' },
-  { to: '/admin/tags', icon: Tag, label: 'Tags' },
-  { to: '/admin/track-manager', icon: Library, label: 'Track Manager' },
-  { to: '/admin/overseer', icon: Radio, label: 'Track Overseer' },
-  { to: '/admin/scoring', icon: Trophy, label: 'Scoring' },
-  { to: '/admin/competitions', icon: Award, label: 'Competitions' },
-  { to: '/admin/auto-messages', icon: BotMessageSquare, label: 'Auto Messages', beta: true },
+  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true, module: 'dashboard' },
+  { to: '/admin/players', icon: Users, label: 'Players', module: 'players' },
+  { to: '/admin/tracks', icon: Map, label: 'Tracks', module: 'tracks' },
+  { to: '/admin/chat', icon: MessageSquare, label: 'Chat', module: 'chat' },
+  { to: '/admin/chat-beta', icon: MessageSquare, label: 'Chat', beta: true, module: 'chat' },
+  { to: '/admin/playlists', icon: ListMusic, label: 'Playlists', module: 'playlists' },
+  { to: '/admin/playlists-beta', icon: ListMusic, label: 'Playlists (beta)', module: 'playlists' },
+  { to: '/admin/tags', icon: Tag, label: 'Tags', module: 'tags' },
+  { to: '/admin/track-manager', icon: Library, label: 'Track Manager', module: 'track_manager' },
+  { to: '/admin/overseer', icon: Radio, label: 'Track Overseer', module: 'overseer' },
+  { to: '/admin/scoring', icon: Trophy, label: 'Scoring', module: 'scoring' },
+  { to: '/admin/competitions', icon: Award, label: 'Competitions', module: 'competitions' },
+  { to: '/admin/auto-messages', icon: BotMessageSquare, label: 'Auto Messages', beta: true, module: 'auto_messages' },
+  { to: '/admin/users', icon: UserCog, label: 'Users', module: 'users' },
 ];
 
 export default function Sidebar({ collapsed, onToggle, pluginConnected }) {
+  const { user } = useAuth();
   const { connected: wsConnected } = useWs();
+  const permissions = user?.permissions || [];
+
+  const visibleItems = navItems.filter(item =>
+    permissions.includes(item.module)
+  );
 
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
@@ -31,7 +39,7 @@ export default function Sidebar({ collapsed, onToggle, pluginConnected }) {
       </div>
 
       <nav className="sidebar__nav">
-        {navItems.map(({ to, icon: Icon, label, end, beta }) => (
+        {visibleItems.map(({ to, icon: Icon, label, end, beta }) => (
           <NavLink
             key={to}
             to={to}

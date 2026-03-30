@@ -27,6 +27,7 @@ const IDLE_KICK_IGNORE = new Set([
  */
 
 let pluginSocket = null;
+let _lobbyWasFull = false;
 
 // Messages recently sent by the server — used to suppress echo-back from the plugin.
 // The plugin hooks GenerateUserMessage which fires for every message rendered in chat,
@@ -305,6 +306,9 @@ async function handlePluginEvent(jsonLine) {
         break;
       case E.PLAYER_LEFT:
         state.removeOnlinePlayer(event.actor);
+        if (_lobbyWasFull && state.getOnlinePlayerCount() < idleKick.MAX_LOBBY_SIZE) {
+          _lobbyWasFull = false;
+        }
         break;
       case E.PLAYER_LIST:
         state.clearOnlinePlayers();
@@ -369,6 +373,21 @@ async function handlePluginEvent(jsonLine) {
       skipVote.handleSkipVoteCommand(event.user_id || event.nick);
     } else if (msg === '/extend') {
       extendVote.handleExtendVoteCommand(event.user_id || event.nick);
+    } else if (msg.startsWith('/verify ')) {
+      const code = msg.slice(8).trim().toUpperCase();
+      if (code.length === 6) {
+        const nick = event.nick || '';
+        db.verifyNickname(code, nick).then(result => {
+          if (result) {
+            sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>VERIFIED</color> <color=#FFFF00>${nick}, your nickname has been linked to your account!</color>` });
+            idleKick.refreshRegisteredNicks();
+          } else {
+            sendCommand({ cmd: 'send_chat', message: `<color=#FF0000>Invalid or expired code.</color> <color=#FFFF00>Check your profile page for a valid code.</color>` });
+          }
+        }).catch(() => {
+          sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>Verification error. Try again later.</color>' });
+        });
+      }
     } else if (msg === '/stay') {
       const saved = idleKick.handleStayCommand();
       if (saved.length > 0) {
@@ -393,6 +412,14 @@ async function handlePluginEvent(jsonLine) {
     db.isKnownPilot(nick).then(known => {
       fireTemplates(known ? 'player_returned' : 'player_new', { nick });
     }).catch(() => {});
+    if (!idleKick.isNickVerified(nick)) {
+      fireTemplates('player_unregistered', { nick });
+    }
+    const count = state.getOnlinePlayerCount();
+    if (count >= idleKick.MAX_LOBBY_SIZE && !_lobbyWasFull) {
+      _lobbyWasFull = true;
+      fireTemplates('lobby_full', { nick, count: String(count) });
+    }
   } else if (eventType === E.RACE_RESET) {
     fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) });
   } else if (eventType === E.RACE_END) {

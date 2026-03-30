@@ -12,4 +12,6 @@ module.exports = {
   ...require('./tags'),
   ...require('./trackBrowser'),
   ...require('./trackOverseer'),
+  ...require('./siteUsers'),
+  ...require('./adminPermissions'),
 };

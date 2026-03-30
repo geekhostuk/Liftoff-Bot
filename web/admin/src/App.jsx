@@ -17,6 +17,7 @@ import AutoMessages from './pages/AutoMessages.jsx';
 import TrackManager from './pages/TrackManager.jsx';
 import Scoring from './pages/Scoring.jsx';
 import Competitions from './pages/Competitions.jsx';
+import UserManagement from './pages/UserManagement.jsx';
 
 function AuthGate({ children }) {
   const { user, checking } = useAuth();
@@ -47,6 +48,7 @@ export default function App() {
                   <Route path="/admin/track-manager" element={<TrackManager />} />
                   <Route path="/admin/scoring" element={<Scoring />} />
                   <Route path="/admin/competitions" element={<Competitions />} />
+                  <Route path="/admin/users" element={<UserManagement />} />
                 </Route>
               </Routes>
             </WebSocketProvider>
