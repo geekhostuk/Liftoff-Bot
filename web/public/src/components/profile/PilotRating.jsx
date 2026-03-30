@@ -2,10 +2,10 @@ export default function PilotRating({ rating }) {
   if (!rating) return null;
 
   const BREAKDOWN = [
-    { key: 'speed', label: 'Speed' },
-    { key: 'consistency', label: 'Consistency' },
-    { key: 'competitive', label: 'Competitive' },
-    { key: 'activity', label: 'Activity' },
+    { key: 'speed', label: 'Speed', hint: 'How close to track records across your tracks' },
+    { key: 'consistency', label: 'Consistency', hint: 'Lap time repeatability within each track' },
+    { key: 'competitive', label: 'Competitive', hint: 'Finish position vs other pilots' },
+    { key: 'activity', label: 'Activity', hint: 'Days active in the last 30 days' },
   ];
 
   return (
@@ -21,7 +21,7 @@ export default function PilotRating({ rating }) {
       </div>
       <div className="rating-breakdown">
         {BREAKDOWN.map(b => (
-          <div key={b.key} className="rating-bar-row">
+          <div key={b.key} className="rating-bar-row" title={b.hint}>
             <span className="rating-bar-label">{b.label}</span>
             <div className="rating-bar-track">
               <div

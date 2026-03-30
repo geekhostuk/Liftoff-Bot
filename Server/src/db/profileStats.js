@@ -48,22 +48,31 @@ async function getGlobalTrackRecords() {
   return map;
 }
 
-// ── Weekly Trend (last 20 weeks) ───────────────────────────────────────────
+// ── Weekly Trend (last 20 weeks, normalised % off track record) ───────────
 
 async function getPilotWeeklyTrend(nick) {
   const { rows } = await getPool().query(`
+    WITH track_records AS (
+      SELECT r.env, r.track, MIN(l.lap_ms) AS global_best
+      FROM laps l JOIN races r ON r.id = l.race_id
+      WHERE r.env IS NOT NULL AND r.track IS NOT NULL
+      GROUP BY r.env, r.track
+    )
     SELECT
       date_trunc('week', l.recorded_at)::date AS week,
-      AVG(l.lap_ms)::int  AS avg_lap_ms,
-      MIN(l.lap_ms)       AS best_lap_ms,
-      COUNT(*)::int        AS lap_count
+      AVG((l.lap_ms - tr.global_best)::float / tr.global_best * 100)::float AS avg_pct_off,
+      MIN((l.lap_ms - tr.global_best)::float / tr.global_best * 100)::float AS best_pct_off,
+      COUNT(*)::int AS lap_count,
+      COUNT(DISTINCT r.env || '|' || r.track)::int AS tracks_flown
     FROM laps l
+    JOIN races r ON r.id = l.race_id
+    JOIN track_records tr ON tr.env = r.env AND tr.track = r.track
     WHERE l.nick = $1
     GROUP BY date_trunc('week', l.recorded_at)
     ORDER BY week DESC
     LIMIT 20
   `, [nick]);
-  return rows.reverse(); // chronological order for charts
+  return rows.reverse();
 }
 
 // ── Recent Races ───────────────────────────────────────────────────────────
@@ -87,37 +96,61 @@ async function getPilotRecentRaces(nick) {
 async function computePilotRating(nick) {
   const pool = getPool();
 
-  // Speed: percentile of pilot's best lap vs all pilots
-  const { rows: [pilotBest] } = await pool.query(
-    'SELECT MIN(lap_ms) AS best FROM laps WHERE nick = $1', [nick]
-  );
-  if (!pilotBest?.best) return null;
-
-  const [{ rows: [{ better }] }, { rows: [{ total }] }] = await Promise.all([
-    pool.query(`
-      SELECT COUNT(*)::int AS better FROM (
-        SELECT MIN(lap_ms) AS best FROM laps GROUP BY COALESCE(steam_id, pilot_guid, nick)
-      ) sub WHERE sub.best < $1
-    `, [pilotBest.best]),
-    pool.query(`
-      SELECT COUNT(DISTINCT COALESCE(steam_id, pilot_guid, nick))::int AS total FROM laps
-    `),
-  ]);
-
-  const speedScore = total > 1 ? (1 - better / total) * 100 : 50;
-
-  // Consistency: coefficient of variation of recent lap times
-  const { rows: [cvRow] } = await pool.query(`
+  // Speed: percentile of pilot's avg % off track record vs all pilots
+  const { rows: [speedRow] } = await pool.query(`
+    WITH track_records AS (
+      SELECT r.env, r.track, MIN(l.lap_ms) AS global_best
+      FROM laps l JOIN races r ON r.id = l.race_id
+      WHERE r.env IS NOT NULL AND r.track IS NOT NULL
+      GROUP BY r.env, r.track
+    ),
+    pilot_track_bests AS (
+      SELECT l.nick, r.env, r.track, MIN(l.lap_ms) AS best_ms
+      FROM laps l JOIN races r ON r.id = l.race_id
+      WHERE r.env IS NOT NULL AND r.track IS NOT NULL
+      GROUP BY l.nick, r.env, r.track
+    ),
+    pilot_avg_pct AS (
+      SELECT ptb.nick,
+        AVG((ptb.best_ms - tr.global_best)::float / NULLIF(tr.global_best, 0) * 100) AS avg_pct_off
+      FROM pilot_track_bests ptb
+      JOIN track_records tr ON tr.env = ptb.env AND tr.track = ptb.track
+      GROUP BY ptb.nick
+      HAVING COUNT(*) >= 3
+    )
     SELECT
-      STDDEV(lap_ms)::float / NULLIF(AVG(lap_ms)::float, 0) AS cv
-    FROM laps
-    WHERE nick = $1
-      AND race_id IN (
-        SELECT DISTINCT race_id FROM laps WHERE nick = $1
-        ORDER BY race_id DESC LIMIT 50
-      )
+      (SELECT avg_pct_off FROM pilot_avg_pct WHERE nick = $1) AS my_pct,
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE avg_pct_off < (SELECT avg_pct_off FROM pilot_avg_pct WHERE nick = $1))::int AS better
+    FROM pilot_avg_pct
   `, [nick]);
-  const cv = cvRow?.cv ?? 0.2;
+
+  if (!speedRow) return null;
+  const speedScore = speedRow.my_pct != null && speedRow.total > 1
+    ? (1 - speedRow.better / speedRow.total) * 100
+    : 50;
+
+  // Consistency: per-track CV weighted by lap count (last 50 races)
+  const { rows: [cvRow] } = await pool.query(`
+    WITH recent_race_ids AS (
+      SELECT DISTINCT race_id FROM laps WHERE nick = $1
+      ORDER BY race_id DESC LIMIT 50
+    ),
+    per_track_cv AS (
+      SELECT r.env, r.track,
+        STDDEV(l.lap_ms)::float / NULLIF(AVG(l.lap_ms)::float, 0) AS cv,
+        COUNT(*)::int AS n
+      FROM laps l
+      JOIN races r ON r.id = l.race_id
+      WHERE l.nick = $1 AND l.race_id IN (SELECT race_id FROM recent_race_ids)
+        AND r.env IS NOT NULL AND r.track IS NOT NULL
+      GROUP BY r.env, r.track
+      HAVING COUNT(*) >= 3
+    )
+    SELECT SUM(cv * n)::float / NULLIF(SUM(n)::float, 0) AS weighted_cv
+    FROM per_track_cv
+  `, [nick]);
+  const cv = cvRow?.weighted_cv ?? 0.2;
   const consistencyScore = Math.max(0, Math.min(100, 100 - cv * 500));
 
   // Competitive: average finish position percentile in last 30 races
@@ -163,13 +196,34 @@ async function computePilotRating(nick) {
   else if (score >= 30) tier = 'Novice';
   else tier = 'Rookie';
 
-  // Percentile among all pilots with laps
-  const { rows: [{ worse }] } = await pool.query(`
-    SELECT COUNT(*)::int AS worse FROM (
-      SELECT MIN(lap_ms) AS best FROM laps GROUP BY COALESCE(steam_id, pilot_guid, nick)
-    ) sub WHERE sub.best > $1
-  `, [pilotBest.best]);
-  const percentile = total > 1 ? Math.round((worse / (total - 1)) * 100) : 50;
+  // Percentile: rank by avg % off record among all pilots with 3+ tracks
+  const { rows: [pctRow] } = await pool.query(`
+    WITH track_records AS (
+      SELECT r.env, r.track, MIN(l.lap_ms) AS global_best
+      FROM laps l JOIN races r ON r.id = l.race_id
+      WHERE r.env IS NOT NULL AND r.track IS NOT NULL
+      GROUP BY r.env, r.track
+    ),
+    pilot_track_bests AS (
+      SELECT l.nick, r.env, r.track, MIN(l.lap_ms) AS best_ms
+      FROM laps l JOIN races r ON r.id = l.race_id
+      WHERE r.env IS NOT NULL AND r.track IS NOT NULL
+      GROUP BY l.nick, r.env, r.track
+    ),
+    pilot_avg_pct AS (
+      SELECT ptb.nick,
+        AVG((ptb.best_ms - tr.global_best)::float / NULLIF(tr.global_best, 0) * 100) AS avg_pct_off
+      FROM pilot_track_bests ptb
+      JOIN track_records tr ON tr.env = ptb.env AND tr.track = ptb.track
+      GROUP BY ptb.nick
+      HAVING COUNT(*) >= 3
+    )
+    SELECT COUNT(*)::int AS worse
+    FROM pilot_avg_pct
+    WHERE avg_pct_off > (SELECT avg_pct_off FROM pilot_avg_pct WHERE nick = $1)
+  `, [nick]);
+  const totalPilots = speedRow.total || 1;
+  const percentile = totalPilots > 1 ? Math.round((pctRow?.worse ?? 0) / (totalPilots - 1) * 100) : 50;
 
   return {
     score,
@@ -182,6 +236,24 @@ async function computePilotRating(nick) {
       activity: Math.round(activityScore),
     },
   };
+}
+
+// ── Per-Track Trend (for drill-down) ──────────────────────────────────────
+
+async function getPilotTrackTrend(nick, env, track) {
+  const { rows } = await getPool().query(`
+    SELECT
+      l.recorded_at::date AS session_date,
+      MIN(l.lap_ms)       AS best_lap_ms,
+      AVG(l.lap_ms)::int  AS avg_lap_ms,
+      COUNT(*)::int        AS lap_count
+    FROM laps l
+    JOIN races r ON r.id = l.race_id
+    WHERE l.nick = $1 AND r.env = $2 AND r.track = $3
+    GROUP BY l.recorded_at::date
+    ORDER BY session_date ASC
+  `, [nick, env, track]);
+  return rows;
 }
 
 // ── CSV Streaming ──────────────────────────────────────────────────────────
@@ -254,6 +326,7 @@ module.exports = {
   getGlobalTrackRecords,
   getPilotWeeklyTrend,
   getPilotRecentRaces,
+  getPilotTrackTrend,
   computePilotRating,
   streamLapsCsv,
   streamRacesCsv,
