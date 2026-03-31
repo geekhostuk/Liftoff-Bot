@@ -68,6 +68,15 @@ export default function Profile() {
             <span className="profile-label">Email</span>
             <span className="profile-value">{user.email}</span>
           </div>
+          {user.role && (
+            <div className="profile-row">
+              <span className="profile-label">Role</span>
+              <span className="profile-value">
+                {user.role.name}
+                <a href="/admin/" className="btn btn-secondary profile-admin-link">Open Admin Panel</a>
+              </span>
+            </div>
+          )}
           <div className="profile-row">
             <span className="profile-label">Nickname</span>
             <span className="profile-value">

@@ -79,13 +79,16 @@ async function getSiteUsers(limit = 50, offset = 0, search = '') {
   const params = [limit, offset];
   let where = '';
   if (search) {
-    where = 'WHERE email ILIKE $3 OR nickname ILIKE $3';
+    where = 'WHERE su.email ILIKE $3 OR su.nickname ILIKE $3';
     params.push(`%${search}%`);
   }
   const { rows } = await getPool().query(`
-    SELECT id, email, nickname, nick_verified, email_verified, created_at, updated_at
-    FROM site_users ${where}
-    ORDER BY created_at DESC
+    SELECT su.id, su.email, su.nickname, su.nick_verified, su.email_verified,
+           su.created_at, su.updated_at, su.role_id, cr.name AS role_name
+    FROM site_users su
+    LEFT JOIN custom_roles cr ON cr.id = su.role_id
+    ${where}
+    ORDER BY su.created_at DESC
     LIMIT $1 OFFSET $2
   `, params);
 

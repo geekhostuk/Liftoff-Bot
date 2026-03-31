@@ -25,9 +25,16 @@ export default function MobileMenu({ open, links, onClose }) {
       {!checking && (
         <div className="mobile-auth">
           {user ? (
-            <Link to="/profile" className="btn btn-primary mobile-cta" onClick={onClose}>
-              Profile
-            </Link>
+            <>
+              {user.role && (
+                <a href="/admin/" className="btn btn-secondary mobile-cta" onClick={onClose}>
+                  Admin Panel
+                </a>
+              )}
+              <Link to="/profile" className="btn btn-primary mobile-cta" onClick={onClose}>
+                Profile
+              </Link>
+            </>
           ) : (
             <div className="mobile-auth-buttons">
               <Link to="/login" className="btn btn-secondary mobile-cta" onClick={onClose}>

@@ -32,7 +32,7 @@ export default function LoginOverlay() {
         </div>
         {error && <div className="login-error">{error}</div>}
         <div className="form-group">
-          <label className="form-label" htmlFor="login-user">Username</label>
+          <label className="form-label" htmlFor="login-user">Username or Email</label>
           <input
             id="login-user"
             className="form-input"
