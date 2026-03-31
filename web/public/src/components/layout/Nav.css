@@ -144,7 +144,7 @@
   position: relative;
   width: 22px;
   height: 2px;
-  background: var(--text-primary);
+  background: #F8FAFC;
   transition: all var(--transition-fast);
 }
 
@@ -155,7 +155,7 @@
   left: 0;
   width: 100%;
   height: 2px;
-  background: var(--text-primary);
+  background: #F8FAFC;
   transition: all var(--transition-fast);
 }
 

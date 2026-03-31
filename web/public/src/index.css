@@ -1,5 +1,6 @@
 /* ── Design Tokens ─────────────────────────────────────────────────────── */
 :root {
+  color-scheme: dark;
   /* Backgrounds */
   --bg-primary: #0B0F14;
   --bg-surface: #121923;
