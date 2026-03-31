@@ -34,6 +34,8 @@ export default function UserManagement() {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
+  const [editingNick, setEditingNick] = useState(null);
+  const [editNickValue, setEditNickValue] = useState('');
   const [editingPerms, setEditingPerms] = useState(null);
   const [editPerms, setEditPerms] = useState([]);
   const isSuperadmin = currentUser?.role === 'superadmin' || currentUser?.userId === 0;
@@ -92,6 +94,28 @@ export default function UserManagement() {
 
   async function verifySiteUser(id) {
     await fetch(`/api/admin/site-users/${id}/verify`, { method: 'POST' });
+    loadSiteUsers();
+  }
+
+  async function verifyNick(id) {
+    await fetch(`/api/admin/site-users/${id}/verify-nick`, { method: 'POST' });
+    loadSiteUsers();
+  }
+
+  async function saveNickname(id) {
+    const nick = editNickValue.trim();
+    if (!nick) return;
+    const res = await fetch(`/api/admin/site-users/${id}/nickname`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: nick }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || 'Failed to update nickname');
+      return;
+    }
+    setEditingNick(null);
     loadSiteUsers();
   }
 
@@ -268,7 +292,26 @@ export default function UserManagement() {
               {siteUsers.rows.map(u => (
                 <tr key={u.id}>
                   <td>{u.email}</td>
-                  <td>{u.nickname || '-'}</td>
+                  <td>
+                    {editingNick === u.id ? (
+                      <span className="inline-edit">
+                        <input
+                          type="text"
+                          value={editNickValue}
+                          onChange={e => setEditNickValue(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && saveNickname(u.id)}
+                          autoFocus
+                        />
+                        <button className="btn btn-primary btn-xs" onClick={() => saveNickname(u.id)}>Save</button>
+                        <button className="btn btn-ghost btn-xs" onClick={() => setEditingNick(null)}>Cancel</button>
+                      </span>
+                    ) : (
+                      <span className="inline-edit">
+                        {u.nickname || '-'}
+                        <button className="btn btn-ghost btn-xs" onClick={() => { setEditingNick(u.id); setEditNickValue(u.nickname || ''); }}>Edit</button>
+                      </span>
+                    )}
+                  </td>
                   <td>
                     {u.email_verified ? (
                       <span className="badge badge-success">Yes</span>
@@ -288,6 +331,11 @@ export default function UserManagement() {
                     {!u.email_verified && (
                       <button className="btn btn-ghost btn-xs" onClick={() => verifySiteUser(u.id)}>
                         Verify Email
+                      </button>
+                    )}
+                    {u.nickname && !u.nick_verified && (
+                      <button className="btn btn-ghost btn-xs" onClick={() => verifyNick(u.id)}>
+                        Verify Nick
                       </button>
                     )}
                     <button className="btn btn-danger btn-xs" onClick={() => deleteSiteUser(u.id)}>Delete</button>

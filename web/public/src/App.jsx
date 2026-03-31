@@ -17,6 +17,7 @@ import Verify from './pages/Verify';
 import Profile from './pages/Profile';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Privacy from './pages/Privacy';
 import useLobbyCount from './hooks/useLobbyCount';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/privacy" element={<Privacy />} />
         </Routes>
       </main>
       <Footer />

@@ -133,6 +133,10 @@ export function getMyStats() {
   return get('/api/auth/my-stats');
 }
 
+export function getMyTrackTrend(env, track) {
+  return get(`/api/auth/my-track-trend?env=${encodeURIComponent(env)}&track=${encodeURIComponent(track)}`);
+}
+
 export function imageProxyUrl(steamUrl) {
   if (!steamUrl) return null;
   return `/api/image-proxy?url=${encodeURIComponent(steamUrl)}`;

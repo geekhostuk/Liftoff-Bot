@@ -565,7 +565,24 @@ router.get('/auth/my-stats', requireSiteAuth, profileStatsLimiter, async (req, r
     pr.pct_off_record = globalBest ? Math.round(((pr.best_lap_ms - globalBest) / globalBest) * 1000) / 10 : null;
   }
 
+  // Compute average % off record across all tracks
+  const pctValues = personalRecords.filter(pr => pr.pct_off_record != null).map(pr => pr.pct_off_record);
+  summary.avg_pct_off_record = pctValues.length > 0
+    ? Math.round(pctValues.reduce((a, b) => a + b, 0) / pctValues.length * 10) / 10
+    : null;
+
   res.json({ summary, personalRecords, weeklyTrend, recentRaces, competition, rating });
+});
+
+router.get('/auth/my-track-trend', requireSiteAuth, profileStatsLimiter, async (req, res) => {
+  const user = await db.getSiteUserByEmail(req.siteUser.username);
+  if (!user?.nickname || !user.nick_verified) {
+    return res.status(400).json({ error: 'Verified nickname required' });
+  }
+  const { env, track } = req.query;
+  if (!env || !track) return res.status(400).json({ error: 'env and track required' });
+  const trend = await db.getPilotTrackTrend(user.nickname, env, track);
+  res.json({ trend });
 });
 
 router.get('/auth/my-laps/csv', requireSiteAuth, csvDownloadLimiter, async (req, res) => {

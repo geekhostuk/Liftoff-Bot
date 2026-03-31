@@ -17,6 +17,8 @@ export default function Footer() {
           <Link to="/about">About</Link>
         </nav>
         <div className="footer-meta">
+          <Link to="/privacy">Privacy Policy</Link>
+          <span className="footer-meta-sep">&middot;</span>
           Powered by <a href="https://store.steampowered.com/app/410340/Liftoff_FPV_Drone_Racing/" target="_blank" rel="noopener noreferrer">Liftoff</a>
         </div>
       </div>

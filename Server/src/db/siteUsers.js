@@ -104,6 +104,26 @@ async function manualVerifyEmail(id) {
   `, [id]);
 }
 
+async function adminSetNickname(id, nickname) {
+  const { rows: [row] } = await getPool().query(`
+    UPDATE site_users
+    SET nickname = $1, nick_verified = FALSE, nick_verify_code = NULL, nick_verify_expires = NULL,
+        updated_at = NOW()
+    WHERE id = $2
+    RETURNING id, nickname
+  `, [nickname, id]);
+  return row || undefined;
+}
+
+async function manualVerifyNickname(id) {
+  await getPool().query(`
+    UPDATE site_users
+    SET nick_verified = TRUE, nick_verify_code = NULL, nick_verify_expires = NULL,
+        updated_at = NOW()
+    WHERE id = $1 AND nickname IS NOT NULL
+  `, [id]);
+}
+
 async function setResetToken(userId, token, expires) {
   await getPool().query(
     'UPDATE site_users SET reset_token = $1, reset_expires = $2, updated_at = NOW() WHERE id = $3',
@@ -140,6 +160,8 @@ module.exports = {
   getSiteUsers,
   deleteSiteUser,
   manualVerifyEmail,
+  adminSetNickname,
+  manualVerifyNickname,
   setResetToken,
   resetPassword,
   updateSiteUserPassword,
