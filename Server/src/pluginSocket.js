@@ -377,16 +377,22 @@ async function handlePluginEvent(jsonLine) {
       const code = msg.slice(8).trim().toUpperCase();
       if (code.length === 6) {
         const nick = event.nick || '';
-        db.verifyNickname(code, nick).then(result => {
-          if (result) {
-            sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>VERIFIED</color> <color=#FFFF00>${nick}, your nickname has been linked to your account!</color>` });
-            idleKick.refreshRegisteredNicks();
-          } else {
-            sendCommand({ cmd: 'send_chat', message: `<color=#FF0000>Invalid or expired code.</color> <color=#FFFF00>Check your profile page for a valid code.</color>` });
-          }
-        }).catch(() => {
-          sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>Verification error. Try again later.</color>' });
-        });
+        if (!nick) {
+          sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>Could not detect your in-game name.</color>' });
+        } else {
+          db.verifyNicknameByCode(code, nick).then(result => {
+            if (!result) {
+              sendCommand({ cmd: 'send_chat', message: `<color=#FF0000>Invalid or expired code.</color> <color=#FFFF00>Check your profile page for a valid code.</color>` });
+            } else if (result.error === 'nickname_taken') {
+              sendCommand({ cmd: 'send_chat', message: `<color=#FF0000>That name is already linked to another account.</color> <color=#FFFF00>Contact an admin for help.</color>` });
+            } else {
+              sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>VERIFIED</color> <color=#FFFF00>${nick}, your account has been linked!</color>` });
+              idleKick.refreshRegisteredNicks();
+            }
+          }).catch(() => {
+            sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>Verification error. Try again later.</color>' });
+          });
+        }
       }
     } else if (msg === '/stay') {
       const saved = idleKick.handleStayCommand();

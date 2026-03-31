@@ -44,21 +44,28 @@ async function setNickname(userId, nickname) {
 async function setNickVerifyCode(userId, code, expires) {
   await getPool().query(`
     UPDATE site_users
-    SET nick_verify_code = $1, nick_verify_expires = $2, updated_at = NOW()
+    SET nick_verify_code = $1, nick_verify_expires = $2,
+        nickname = NULL, nick_verified = FALSE, updated_at = NOW()
     WHERE id = $3
   `, [code, expires, userId]);
 }
 
-async function verifyNickname(code, nick) {
-  const { rows: [row] } = await getPool().query(`
-    UPDATE site_users
-    SET nick_verified = TRUE, nick_verify_code = NULL, nick_verify_expires = NULL,
-        updated_at = NOW()
-    WHERE nick_verify_code = $1 AND nick_verify_expires > NOW()
-      AND nick_verified = FALSE AND LOWER(nickname) = LOWER($2)
-    RETURNING id, nickname
-  `, [code, nick]);
-  return row || undefined;
+async function verifyNicknameByCode(code, inGameNick) {
+  try {
+    const { rows: [row] } = await getPool().query(`
+      UPDATE site_users
+      SET nickname = $2, nick_verified = TRUE, nick_verify_code = NULL,
+          nick_verify_expires = NULL, updated_at = NOW()
+      WHERE nick_verify_code = $1 AND nick_verify_expires > NOW()
+        AND nick_verified = FALSE
+      RETURNING id, nickname
+    `, [code, inGameNick]);
+    if (!row) return undefined;
+    return { ok: true, id: row.id, nickname: row.nickname };
+  } catch (err) {
+    if (err.code === '23505') return { error: 'nickname_taken' };
+    throw err;
+  }
 }
 
 async function getVerifiedNicknames() {
@@ -155,7 +162,7 @@ module.exports = {
   verifyEmail,
   setNickname,
   setNickVerifyCode,
-  verifyNickname,
+  verifyNicknameByCode,
   getVerifiedNicknames,
   getSiteUsers,
   deleteSiteUser,
