@@ -29,8 +29,17 @@
   background: var(--bg-hover);
 }
 
-.mobile-cta {
+.mobile-auth {
   margin-top: var(--space-md);
+}
+
+.mobile-auth-buttons {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.mobile-cta {
+  flex: 1;
   text-align: center;
   justify-content: center;
 }
