@@ -14,11 +14,12 @@
 .standings-search {
   padding: 0.45rem 0.75rem;
   border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font-size: 0.85rem;
-  width: 220px;
+  width: 100%;
+  max-width: 220px;
   outline: none;
   transition: border-color 0.2s;
 }
@@ -28,7 +29,7 @@
 }
 
 .standings-search:focus {
-  border-color: var(--primary);
+  border-color: var(--color-primary);
 }
 
 .standings-count {
@@ -45,26 +46,27 @@
   align-self: center;
   padding: 0.4rem 1.2rem;
   border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--secondary);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--color-secondary);
   font-size: 0.8rem;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
 }
 
 .standings-toggle:hover {
-  background: var(--surface-hover, #1a2433);
-  border-color: var(--secondary);
+  background: var(--bg-hover);
+  border-color: var(--color-secondary);
 }
 
 @media (max-width: 768px) {
   .standings-table {
     font-size: 0.8rem;
+    min-width: 0;
   }
 
   .standings-search {
-    width: 100%;
+    max-width: none;
   }
 
   .standings-toolbar {

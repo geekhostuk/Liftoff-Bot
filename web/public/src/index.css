@@ -1,5 +1,6 @@
 /* ── Design Tokens ─────────────────────────────────────────────────────── */
 :root {
+  color-scheme: dark;
   /* Backgrounds */
   --bg-primary: #0B0F14;
   --bg-surface: #121923;
@@ -310,6 +311,17 @@ a:hover {
 .btn-outline:hover {
   background: var(--color-primary-muted);
   color: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--color-secondary);
+  border: 1px solid var(--color-secondary);
+}
+.btn-secondary:hover {
+  background: var(--color-secondary-muted);
+  color: var(--color-secondary);
+  box-shadow: var(--glow-secondary);
 }
 
 .btn-ghost {

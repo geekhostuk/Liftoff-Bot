@@ -126,9 +126,20 @@
   color: var(--text-muted);
 }
 
+@media (max-width: 768px) {
+  .race-table .col-rank { width: 40px; }
+  .race-table .col-laps { width: 45px; }
+  .race-table .col-best,
+  .race-table .col-last { width: 80px; }
+}
+
 @media (max-width: 480px) {
-  .race-table .col-delta { display: none; }
-  .race-table thead .col-delta { display: none; }
+  .race-table .col-delta,
+  .race-table thead .col-delta,
+  .race-table .col-last,
+  .race-table thead .col-last { display: none; }
+
+  .race-table .col-best { width: auto; }
 
   .race-panel-winner {
     flex-direction: column;

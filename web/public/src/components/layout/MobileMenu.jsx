@@ -1,7 +1,10 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, Link } from 'react-router-dom';
+import { useUserAuth } from '../../context/UserAuthContext';
 import './MobileMenu.css';
 
 export default function MobileMenu({ open, links, onClose }) {
+  const { user, checking } = useUserAuth();
+
   if (!open) return null;
 
   return (
@@ -19,9 +22,24 @@ export default function MobileMenu({ open, links, onClose }) {
           </NavLink>
         ))}
       </nav>
-      <NavLink to="/competition" className="btn btn-primary mobile-cta" onClick={onClose}>
-        View Current Season
-      </NavLink>
+      {!checking && (
+        <div className="mobile-auth">
+          {user ? (
+            <Link to="/profile" className="btn btn-primary mobile-cta" onClick={onClose}>
+              Profile
+            </Link>
+          ) : (
+            <div className="mobile-auth-buttons">
+              <Link to="/login" className="btn btn-secondary mobile-cta" onClick={onClose}>
+                Log In
+              </Link>
+              <Link to="/register" className="btn btn-primary mobile-cta" onClick={onClose}>
+                Register
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
