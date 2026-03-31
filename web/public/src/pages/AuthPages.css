@@ -139,6 +139,11 @@
   color: #ff9800;
 }
 
+.profile-admin-link {
+  font-size: 0.78rem;
+  padding: 0.3em 0.8em;
+}
+
 .profile-section {
   margin-top: 2rem;
   padding-top: 1.5rem;

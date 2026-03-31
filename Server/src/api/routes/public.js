@@ -424,12 +424,18 @@ router.post('/auth/logout', (req, res) => {
 router.get('/auth/me', requireSiteAuth, async (req, res) => {
   const user = await db.getSiteUserByEmail(req.siteUser.username);
   if (!user) return res.status(401).json({ error: 'User not found' });
+  let role = null;
+  if (user.role_id) {
+    const roleData = await db.getRoleById(user.role_id);
+    if (roleData) role = { id: roleData.id, name: roleData.name };
+  }
   res.json({
     id: user.id,
     email: user.email,
     nickname: user.nickname,
     nick_verified: user.nick_verified,
     email_verified: user.email_verified,
+    role,
   });
 });
 

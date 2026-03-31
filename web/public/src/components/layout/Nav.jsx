@@ -53,9 +53,14 @@ export default function Nav({ lobby }) {
 
         {!checking && (
           user ? (
-            <Link to="/profile" className="btn btn-primary nav-cta">
-              Profile
-            </Link>
+            <div className="nav-auth-links">
+              {user.role && (
+                <a href="/admin/" className="btn btn-secondary nav-cta-sm">Admin</a>
+              )}
+              <Link to="/profile" className="btn btn-primary nav-cta">
+                Profile
+              </Link>
+            </div>
           ) : (
             <div className="nav-auth-links">
               <Link to="/login" className="btn btn-secondary nav-cta-sm">Log In</Link>

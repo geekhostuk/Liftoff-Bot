@@ -54,18 +54,43 @@ router.post('/login', async (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
   }
-  const user = await db.getUserByUsername(username);
-  if (!user || !verifyPassword(password, user.password_hash)) {
+
+  // Try admin_users first (by username)
+  const adminUser = await db.getUserByUsername(username);
+  if (adminUser && verifyPassword(password, adminUser.password_hash)) {
+    const sessionToken = createSession(adminUser);
+    const session = getSession(sessionToken);
+    rt.syncSession(sessionToken, session).catch(() => {});
+    res.cookie(COOKIE_NAME, sessionToken, {
+      httpOnly: true, sameSite: 'strict', path: '/', maxAge: 24 * 60 * 60 * 1000,
+    });
+    return res.json({ ok: true, username: adminUser.username });
+  }
+
+  // Fallback: try site_users (by email) with a custom role
+  const siteUser = await db.getSiteUserWithRole(username);
+  if (!siteUser || !verifyPassword(password, siteUser.password_hash)) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
-  const sessionToken = createSession(user);
-  // Sync session to realtime server so admin WebSocket auth works
+  if (!siteUser.role_id) {
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+  if (!siteUser.email_verified) {
+    return res.status(403).json({ error: 'Email not verified' });
+  }
+  const sessionToken = createSession({
+    id: siteUser.id,
+    email: siteUser.email,
+    role: siteUser.role_name,
+    source: 'site',
+    permissions: siteUser.permissions || [],
+  });
   const session = getSession(sessionToken);
   rt.syncSession(sessionToken, session).catch(() => {});
   res.cookie(COOKIE_NAME, sessionToken, {
     httpOnly: true, sameSite: 'strict', path: '/', maxAge: 24 * 60 * 60 * 1000,
   });
-  res.json({ ok: true, username: user.username });
+  res.json({ ok: true, username: siteUser.email });
 });
 
 router.post('/logout', (req, res) => {
@@ -109,6 +134,12 @@ function requirePermission(module) {
   return async (req, res, next) => {
     if (req.adminUser.role === 'superadmin') return next();
     if (req.adminUser.userId === 0) return next(); // ADMIN_TOKEN bypass
+    // Site users: check cached permissions from session
+    if (req.adminUser.source === 'site') {
+      if ((req.adminUser.permissions || []).includes(module)) return next();
+      return res.status(403).json({ error: 'Forbidden — insufficient permissions' });
+    }
+    // Admin users: check admin_permissions table
     try {
       const allowed = await db.hasPermission(req.adminUser.userId, module);
       if (!allowed) return res.status(403).json({ error: 'Forbidden — insufficient permissions' });
@@ -131,6 +162,8 @@ router.get('/me', async (req, res) => {
   if (req.adminUser.role === 'superadmin' || req.adminUser.userId === 0) {
     permissions = ['dashboard','players','tracks','chat','playlists','tags',
       'track_manager','overseer','scoring','competitions','auto_messages','users','idle_kick'];
+  } else if (req.adminUser.source === 'site') {
+    permissions = req.adminUser.permissions || [];
   } else {
     permissions = await db.getPermissions(req.adminUser.userId);
   }
@@ -138,6 +171,7 @@ router.get('/me', async (req, res) => {
     userId: req.adminUser.userId,
     username: req.adminUser.username,
     role: req.adminUser.role,
+    source: req.adminUser.source || 'admin',
     permissions,
   });
 });
@@ -308,6 +342,61 @@ router.patch('/site-users/:id/nickname', requirePermission('users'), async (req,
 
 router.post('/site-users/:id/verify-nick', requirePermission('users'), async (req, res) => {
   await db.manualVerifyNickname(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+// ── Site user role assignment ──────────────────────────────────────────────
+
+router.put('/site-users/:id/role', requireSuperadmin, async (req, res) => {
+  const { role_id } = req.body;
+  const id = Number(req.params.id);
+  if (role_id === null || role_id === undefined) {
+    await db.removeRoleFromSiteUser(id);
+  } else {
+    const role = await db.getRoleById(Number(role_id));
+    if (!role) return res.status(404).json({ error: 'Role not found' });
+    await db.assignRoleToSiteUser(id, role.id);
+  }
+  res.json({ ok: true });
+});
+
+// ── Custom roles CRUD ─────────────────────────────────────────────────────
+
+router.get('/roles', requireSuperadmin, async (req, res) => {
+  res.json(await db.getRoles());
+});
+
+router.post('/roles', requireSuperadmin, strictLimiter, async (req, res) => {
+  const { name = '', permissions = [] } = req.body;
+  if (!name.trim()) return res.status(400).json({ error: 'name is required' });
+  if (!Array.isArray(permissions)) return res.status(400).json({ error: 'permissions must be an array' });
+  try {
+    const role = await db.createRole(name.trim(), permissions);
+    res.status(201).json(role);
+  } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Role name already exists' });
+    throw err;
+  }
+});
+
+router.put('/roles/:id', requireSuperadmin, async (req, res) => {
+  const { name = '', permissions = [] } = req.body;
+  if (!name.trim()) return res.status(400).json({ error: 'name is required' });
+  if (!Array.isArray(permissions)) return res.status(400).json({ error: 'permissions must be an array' });
+  const id = Number(req.params.id);
+  const existing = await db.getRoleById(id);
+  if (!existing) return res.status(404).json({ error: 'Role not found' });
+  try {
+    await db.updateRole(id, name.trim(), permissions);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Role name already exists' });
+    throw err;
+  }
+});
+
+router.delete('/roles/:id', requireSuperadmin, async (req, res) => {
+  await db.deleteRole(Number(req.params.id));
   res.json({ ok: true });
 });
 

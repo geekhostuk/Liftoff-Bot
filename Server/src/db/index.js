@@ -15,4 +15,5 @@ module.exports = {
   ...require('./siteUsers'),
   ...require('./adminPermissions'),
   ...require('./profileStats'),
+  ...require('./customRoles'),
 };

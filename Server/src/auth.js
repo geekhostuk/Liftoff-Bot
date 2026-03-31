@@ -31,6 +31,8 @@ function createSession(user, type = 'admin') {
     username: user.username || user.email,
     role: user.role || 'member',
     type,
+    source: user.source || type,
+    permissions: user.permissions || [],
     expiresAt: Date.now() + SESSION_MAX_AGE,
   });
   return token;

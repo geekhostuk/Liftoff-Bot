@@ -38,6 +38,16 @@ export default function UserManagement() {
   const [editNickValue, setEditNickValue] = useState('');
   const [editingPerms, setEditingPerms] = useState(null);
   const [editPerms, setEditPerms] = useState([]);
+
+  // Roles state
+  const [roles, setRoles] = useState([]);
+  const [newRoleName, setNewRoleName] = useState('');
+  const [newRolePerms, setNewRolePerms] = useState([]);
+  const [roleError, setRoleError] = useState('');
+  const [editingRole, setEditingRole] = useState(null);
+  const [editRoleName, setEditRoleName] = useState('');
+  const [editRolePerms, setEditRolePerms] = useState([]);
+
   const isSuperadmin = currentUser?.role === 'superadmin' || currentUser?.userId === 0;
 
   const loadAdminUsers = useCallback(async () => {
@@ -56,8 +66,16 @@ export default function UserManagement() {
     } catch {}
   }, [siteSearch, sitePage]);
 
+  const loadRoles = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/roles');
+      if (res.ok) setRoles(await res.json());
+    } catch {}
+  }, []);
+
   useEffect(() => { loadAdminUsers(); }, [loadAdminUsers]);
   useEffect(() => { loadSiteUsers(); }, [loadSiteUsers]);
+  useEffect(() => { if (isSuperadmin) loadRoles(); }, [isSuperadmin, loadRoles]);
 
   async function createAdminUser(e) {
     e.preventDefault();
@@ -152,6 +170,78 @@ export default function UserManagement() {
     );
   }
 
+  // ── Role management ──────────────────────────────────────────────────────
+
+  async function createRole(e) {
+    e.preventDefault();
+    setRoleError('');
+    try {
+      const res = await fetch('/api/admin/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newRoleName, permissions: newRolePerms }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to create role');
+      }
+      setNewRoleName('');
+      setNewRolePerms([]);
+      loadRoles();
+    } catch (err) {
+      setRoleError(err.message);
+    }
+  }
+
+  async function deleteRoleById(id) {
+    if (!confirm('Delete this role? Users with this role will lose admin access.')) return;
+    await fetch(`/api/admin/roles/${id}`, { method: 'DELETE' });
+    loadRoles();
+    loadSiteUsers();
+  }
+
+  function openEditRole(role) {
+    setEditRoleName(role.name);
+    setEditRolePerms([...(role.permissions || [])]);
+    setEditingRole(role.id);
+  }
+
+  async function saveRole() {
+    const res = await fetch(`/api/admin/roles/${editingRole}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editRoleName, permissions: editRolePerms }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || 'Failed to update role');
+      return;
+    }
+    setEditingRole(null);
+    loadRoles();
+  }
+
+  function toggleNewRolePerm(mod) {
+    setNewRolePerms(prev =>
+      prev.includes(mod) ? prev.filter(m => m !== mod) : [...prev, mod]
+    );
+  }
+
+  function toggleEditRolePerm(mod) {
+    setEditRolePerms(prev =>
+      prev.includes(mod) ? prev.filter(m => m !== mod) : [...prev, mod]
+    );
+  }
+
+  async function assignSiteUserRole(userId, roleId) {
+    await fetch(`/api/admin/site-users/${userId}/role`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role_id: roleId || null }),
+    });
+    loadSiteUsers();
+  }
+
   return (
     <div className="user-mgmt">
       <div className="user-mgmt__tabs">
@@ -161,6 +251,11 @@ export default function UserManagement() {
         <button className={`tab ${tab === 'site' ? 'active' : ''}`} onClick={() => setTab('site')}>
           Registered Users
         </button>
+        {isSuperadmin && (
+          <button className={`tab ${tab === 'roles' ? 'active' : ''}`} onClick={() => setTab('roles')}>
+            Roles
+          </button>
+        )}
       </div>
 
       {tab === 'admin' && (
@@ -284,6 +379,7 @@ export default function UserManagement() {
                 <th>Nickname</th>
                 <th>Email Verified</th>
                 <th>Nick Verified</th>
+                {isSuperadmin && <th>Role</th>}
                 <th>Registered</th>
                 <th></th>
               </tr>
@@ -326,6 +422,20 @@ export default function UserManagement() {
                       <span className="badge badge-muted">No</span>
                     )}
                   </td>
+                  {isSuperadmin && (
+                    <td>
+                      <select
+                        className="role-select"
+                        value={u.role_id || ''}
+                        onChange={e => assignSiteUserRole(u.id, e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">No Role</option>
+                        {roles.map(r => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
                   <td className="text-muted">{new Date(u.created_at).toLocaleDateString()}</td>
                   <td className="actions-cell">
                     {!u.email_verified && (
@@ -343,7 +453,7 @@ export default function UserManagement() {
                 </tr>
               ))}
               {siteUsers.rows.length === 0 && (
-                <tr><td colSpan="6" className="text-muted text-center">No registered users found</td></tr>
+                <tr><td colSpan={isSuperadmin ? '7' : '6'} className="text-muted text-center">No registered users found</td></tr>
               )}
             </tbody>
           </table>
@@ -353,6 +463,108 @@ export default function UserManagement() {
               <button disabled={sitePage === 0} onClick={() => setSitePage(p => p - 1)}>Prev</button>
               <span>Page {sitePage + 1} of {Math.ceil(siteUsers.total / 50)}</span>
               <button disabled={(sitePage + 1) * 50 >= siteUsers.total} onClick={() => setSitePage(p => p + 1)}>Next</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'roles' && isSuperadmin && (
+        <div className="user-mgmt__section">
+          <form onSubmit={createRole} className="user-mgmt__create role-create-form">
+            <input
+              type="text"
+              placeholder="Role name"
+              value={newRoleName}
+              onChange={e => setNewRoleName(e.target.value)}
+              required
+            />
+            <button type="submit" className="btn btn-primary btn-sm">Create Role</button>
+            {roleError && <span className="user-mgmt__error">{roleError}</span>}
+          </form>
+
+          {newRoleName.trim() && (
+            <div className="role-perm-picker">
+              <p className="role-perm-hint">Select modules for the new role:</p>
+              <div className="perm-grid">
+                {ALL_MODULES.map(mod => (
+                  <label key={mod} className="perm-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={newRolePerms.includes(mod)}
+                      onChange={() => toggleNewRolePerm(mod)}
+                    />
+                    {MODULE_LABELS[mod]}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Role Name</th>
+                <th>Modules</th>
+                <th>Created</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {roles.map(r => (
+                <tr key={r.id}>
+                  <td><strong>{r.name}</strong></td>
+                  <td>
+                    <span className="perm-count">{(r.permissions || []).length}/{ALL_MODULES.length}</span>
+                    {r.permissions.length > 0 && (
+                      <span className="perm-list-hint" title={r.permissions.map(m => MODULE_LABELS[m] || m).join(', ')}>
+                        {r.permissions.slice(0, 3).map(m => MODULE_LABELS[m] || m).join(', ')}
+                        {r.permissions.length > 3 && ` +${r.permissions.length - 3} more`}
+                      </span>
+                    )}
+                  </td>
+                  <td className="text-muted">{new Date(r.created_at).toLocaleDateString()}</td>
+                  <td className="actions-cell">
+                    <button className="btn btn-ghost btn-xs" onClick={() => openEditRole(r)}>Edit</button>
+                    <button className="btn btn-danger btn-xs" onClick={() => deleteRoleById(r.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+              {roles.length === 0 && (
+                <tr><td colSpan="4" className="text-muted text-center">No roles created yet</td></tr>
+              )}
+            </tbody>
+          </table>
+
+          {editingRole !== null && (
+            <div className="perm-modal-overlay" onClick={() => setEditingRole(null)}>
+              <div className="perm-modal" onClick={e => e.stopPropagation()}>
+                <h3>Edit Role</h3>
+                <div className="role-edit-name">
+                  <label className="form-label">Name</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={editRoleName}
+                    onChange={e => setEditRoleName(e.target.value)}
+                  />
+                </div>
+                <div className="perm-grid">
+                  {ALL_MODULES.map(mod => (
+                    <label key={mod} className="perm-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={editRolePerms.includes(mod)}
+                        onChange={() => toggleEditRolePerm(mod)}
+                      />
+                      {MODULE_LABELS[mod]}
+                    </label>
+                  ))}
+                </div>
+                <div className="perm-modal-actions">
+                  <button className="btn btn-primary btn-sm" onClick={saveRole}>Save</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setEditingRole(null)}>Cancel</button>
+                </div>
+              </div>
             </div>
           )}
         </div>
