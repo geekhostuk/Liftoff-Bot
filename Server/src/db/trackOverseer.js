@@ -6,15 +6,31 @@ const KV_PREFIX = 'overseer_';
 
 async function saveOverseerState(state) {
   const pool = getPool();
-  const upsert = `INSERT INTO kv_store (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
-  await pool.query(upsert, [`${KV_PREFIX}mode`, state.mode || 'idle']);
-  await pool.query(upsert, [`${KV_PREFIX}playlist_id`, state.playlistId != null ? String(state.playlistId) : '']);
-  await pool.query(upsert, [`${KV_PREFIX}current_index`, String(state.currentIndex || 0)]);
-  await pool.query(upsert, [`${KV_PREFIX}interval_ms`, String(state.intervalMs || 900000)]);
-  await pool.query(upsert, [`${KV_PREFIX}next_change_at`, state.nextChangeAt ? state.nextChangeAt.toISOString() : '']);
-  await pool.query(upsert, [`${KV_PREFIX}tag_names`, JSON.stringify(state.tagNames || [])]);
-  await pool.query(upsert, [`${KV_PREFIX}default_interval_ms`, String(state.defaultIntervalMs || 600000)]);
-  await pool.query(upsert, [`${KV_PREFIX}current_track`, JSON.stringify(state.currentTrack || null)]);
+  const keys = [
+    `${KV_PREFIX}mode`,
+    `${KV_PREFIX}playlist_id`,
+    `${KV_PREFIX}current_index`,
+    `${KV_PREFIX}interval_ms`,
+    `${KV_PREFIX}next_change_at`,
+    `${KV_PREFIX}tag_names`,
+    `${KV_PREFIX}default_interval_ms`,
+    `${KV_PREFIX}current_track`,
+  ];
+  const values = [
+    state.mode || 'idle',
+    state.playlistId != null ? String(state.playlistId) : '',
+    String(state.currentIndex || 0),
+    String(state.intervalMs || 900000),
+    state.nextChangeAt ? state.nextChangeAt.toISOString() : '',
+    JSON.stringify(state.tagNames || []),
+    String(state.defaultIntervalMs || 600000),
+    JSON.stringify(state.currentTrack || null),
+  ];
+  await pool.query(`
+    INSERT INTO kv_store (key, value)
+    SELECT * FROM unnest($1::text[], $2::text[])
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+  `, [keys, values]);
 }
 
 async function loadOverseerState() {
@@ -66,11 +82,14 @@ async function addToQueue({ env = '', track = '', race = '', workshop_id = '' })
 async function removeFromQueue(id) {
   const pool = getPool();
   await pool.query('DELETE FROM track_queue WHERE id = $1', [id]);
-  // Compact positions
-  const { rows } = await pool.query('SELECT id FROM track_queue ORDER BY position');
-  for (let i = 0; i < rows.length; i++) {
-    await pool.query('UPDATE track_queue SET position = $1 WHERE id = $2', [i, rows[i].id]);
-  }
+  await pool.query(`
+    WITH ranked AS (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY position) - 1 AS new_pos
+      FROM track_queue
+    )
+    UPDATE track_queue SET position = ranked.new_pos
+    FROM ranked WHERE track_queue.id = ranked.id
+  `);
 }
 
 async function reorderQueue(id, direction) {
@@ -93,11 +112,14 @@ async function popQueue() {
   );
   if (!row) return null;
   await pool.query('DELETE FROM track_queue WHERE id = $1', [row.id]);
-  // Compact positions
-  const { rows } = await pool.query('SELECT id FROM track_queue ORDER BY position');
-  for (let i = 0; i < rows.length; i++) {
-    await pool.query('UPDATE track_queue SET position = $1 WHERE id = $2', [i, rows[i].id]);
-  }
+  await pool.query(`
+    WITH ranked AS (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY position) - 1 AS new_pos
+      FROM track_queue
+    )
+    UPDATE track_queue SET position = ranked.new_pos
+    FROM ranked WHERE track_queue.id = ranked.id
+  `);
   return row;
 }
 
@@ -135,10 +157,14 @@ async function addToPlaylistQueue({ playlist_id, interval_ms = 900000, shuffle =
 async function removeFromPlaylistQueue(id) {
   const pool = getPool();
   await pool.query('DELETE FROM playlist_queue WHERE id = $1', [id]);
-  const { rows } = await pool.query('SELECT id FROM playlist_queue ORDER BY position');
-  for (let i = 0; i < rows.length; i++) {
-    await pool.query('UPDATE playlist_queue SET position = $1 WHERE id = $2', [i, rows[i].id]);
-  }
+  await pool.query(`
+    WITH ranked AS (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY position) - 1 AS new_pos
+      FROM playlist_queue
+    )
+    UPDATE playlist_queue SET position = ranked.new_pos
+    FROM ranked WHERE playlist_queue.id = ranked.id
+  `);
 }
 
 async function reorderPlaylistQueue(id, direction) {
@@ -164,10 +190,14 @@ async function popPlaylistQueue() {
   const { rows: [row] } = await pool.query(`${PLAYLIST_QUEUE_SELECT} ORDER BY pq.position LIMIT 1`);
   if (!row) return null;
   await pool.query('DELETE FROM playlist_queue WHERE id = $1', [row.id]);
-  const { rows } = await pool.query('SELECT id FROM playlist_queue ORDER BY position');
-  for (let i = 0; i < rows.length; i++) {
-    await pool.query('UPDATE playlist_queue SET position = $1 WHERE id = $2', [i, rows[i].id]);
-  }
+  await pool.query(`
+    WITH ranked AS (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY position) - 1 AS new_pos
+      FROM playlist_queue
+    )
+    UPDATE playlist_queue SET position = ranked.new_pos
+    FROM ranked WHERE playlist_queue.id = ranked.id
+  `);
   return row;
 }
 

@@ -300,7 +300,10 @@ async function handlePluginEvent(jsonLine) {
       case E.RACE_RESET:       await db.handleRaceReset(event, state.getCurrentTrack());  break;
       case E.LAP_RECORDED:     await db.handleLapRecorded(event, state.getCurrentTrack()); break;
       case E.RACE_END:         await db.handleRaceEnd(event);         break;
-      case E.TRACK_CATALOG:    await db.handleTrackCatalog(event);    break;
+      case E.TRACK_CATALOG:
+        await db.handleTrackCatalog(event);
+        require('./trackOverseer').setCatalogCache(event);
+        break;
       case E.PLAYER_ENTERED:
         state.setOnlinePlayer(event.actor, { actor: event.actor, nick: event.nick, user_id: event.user_id || null });
         break;
