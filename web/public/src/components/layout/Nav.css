@@ -176,7 +176,7 @@
 
 @media (max-width: 768px) {
   .site-nav-desktop,
-  .nav-cta,
+  .nav-cta.nav-cta,
   .nav-auth-links {
     display: none;
   }
