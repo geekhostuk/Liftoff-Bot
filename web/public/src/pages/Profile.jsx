@@ -18,7 +18,6 @@ import './Profile.css';
 export default function Profile() {
   const { user, logout, refresh } = useUserAuth();
   const navigate = useNavigate();
-  const [nickname, setNickname] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [nickError, setNickError] = useState('');
   const [nickLoading, setNickLoading] = useState(false);
@@ -34,19 +33,14 @@ export default function Profile() {
     return null;
   }
 
-  async function handleNickname(e) {
-    e.preventDefault();
+  async function handleGenerateCode() {
     setNickError('');
     setVerifyCode('');
     setNickLoading(true);
     try {
-      const res = await fetch('/api/auth/nickname', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname }),
-      });
+      const res = await fetch('/api/auth/verify-code', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to set nickname');
+      if (!res.ok) throw new Error(data.error || 'Failed to generate code');
       setVerifyCode(data.verify_code);
       await refresh();
     } catch (err) {
@@ -87,32 +81,17 @@ export default function Profile() {
           </div>
         </div>
 
-        {!user.nick_verified && (
+        {!user.nick_verified && user.email_verified && (
           <div className="profile-section">
-            <h2>{user.nickname ? 'Verify Your Nickname' : 'Set Your Nickname'}</h2>
+            <h2>Link Your In-Game Nickname</h2>
             <p className="auth-subtitle">
-              Enter your in-game Liftoff nickname.
-              {user.nickname && !verifyCode && ' You can re-claim to get a new verification code.'}
+              Generate a verification code below, then type it in the Liftoff in-game chat. Your in-game name will be linked to this account automatically.
             </p>
 
-            <form onSubmit={handleNickname} className="auth-form">
-              {nickError && <div className="auth-error">{nickError}</div>}
-              <label className="auth-label">
-                In-Game Nickname
-                <input
-                  type="text"
-                  value={nickname}
-                  onChange={e => setNickname(e.target.value)}
-                  placeholder={user.nickname || 'Your Liftoff nickname'}
-                  required
-                  maxLength={30}
-                  className="auth-input"
-                />
-              </label>
-              <button type="submit" className="btn btn-primary auth-btn" disabled={nickLoading}>
-                {nickLoading ? 'Setting...' : user.nickname ? 'Update Nickname' : 'Set Nickname'}
-              </button>
-            </form>
+            {nickError && <div className="auth-error">{nickError}</div>}
+            <button onClick={handleGenerateCode} className="btn btn-primary auth-btn" disabled={nickLoading}>
+              {nickLoading ? 'Generating...' : 'Generate Verification Code'}
+            </button>
 
             {verifyCode && (
               <div className="verify-code-box">
@@ -121,6 +100,15 @@ export default function Profile() {
                 <p className="auth-subtitle">This code expires in 1 hour.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {!user.nick_verified && !user.email_verified && (
+          <div className="profile-section">
+            <h2>Verify Your Email</h2>
+            <p className="auth-subtitle">
+              Check your inbox and verify your email address to unlock nickname linking.
+            </p>
           </div>
         )}
 
@@ -159,7 +147,7 @@ export default function Profile() {
 
           {!statsLoading && !hasData && user.nick_verified && (
             <div className="profile-dashboard-hint">
-              Verify your nickname is exactly as it appears in Liftoff, including capitalisation.
+              No stats yet for <strong>{user.nickname}</strong>. Race some laps and check back!
             </div>
           )}
         </div>

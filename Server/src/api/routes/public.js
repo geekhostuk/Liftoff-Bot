@@ -433,32 +433,20 @@ router.get('/auth/me', requireSiteAuth, async (req, res) => {
   });
 });
 
-router.put('/auth/nickname', requireSiteAuth, nicknameLimiter, async (req, res) => {
-  const { nickname } = req.body;
-  if (!nickname || typeof nickname !== 'string' || nickname.trim().length < 1 || nickname.trim().length > 30) {
-    return res.status(400).json({ error: 'Nickname must be 1-30 characters' });
+router.post('/auth/verify-code', requireSiteAuth, nicknameLimiter, async (req, res) => {
+  const user = await db.getSiteUserByEmail(req.siteUser.username);
+  if (!user || !user.email_verified) {
+    return res.status(403).json({ error: 'You must verify your email first' });
   }
 
-  const trimmed = nickname.trim();
-
-  // Check uniqueness
-  const existing = await db.getSiteUserByNickname(trimmed);
-  if (existing && existing.id !== req.siteUser.userId) {
-    return res.status(409).json({ error: 'Nickname already claimed by another user' });
-  }
-
-  await db.setNickname(req.siteUser.userId, trimmed);
-
-  // Generate verify code
   const code = crypto.randomBytes(3).toString('hex').toUpperCase(); // 6-char hex
   const expires = new Date(Date.now() + 60 * 60_000); // 1 hour
   await db.setNickVerifyCode(req.siteUser.userId, code, expires);
 
   res.json({
     ok: true,
-    nickname: trimmed,
     verify_code: code,
-    message: `Type /verify ${code} in the Liftoff chat to confirm your nickname`,
+    message: `Type /verify ${code} in the Liftoff in-game chat to link your account`,
   });
 });
 
