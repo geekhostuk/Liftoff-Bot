@@ -17,6 +17,7 @@ async function handleSessionStarted(event) {
 
 async function handleRaceReset(event, currentTrack = {}) {
   const pool = getPool();
+  const closedRaces = [];
 
   // Close any open races for this session and populate results from laps
   const { rows: openRaces } = await pool.query(`
@@ -59,6 +60,11 @@ async function handleRaceReset(event, currentTrack = {}) {
       race.id,
     ]);
 
+    closedRaces.push({
+      winner_nick: winner?.nick ?? null,
+      winner_total_ms: winner?.best_ms ?? null,
+    });
+
     // Competition scoring — award points for this race if a competition week is active
     try { await getProcessRaceClose()(race.id); } catch (err) {
       console.error('[competition] Scoring error for race', race.id, err.message);
@@ -77,6 +83,8 @@ async function handleRaceReset(event, currentTrack = {}) {
     currentTrack.env || null,
     currentTrack.track || null,
   ]);
+
+  return closedRaces;
 }
 
 async function handleLapRecorded(event, currentTrack = {}) {
