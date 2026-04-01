@@ -304,10 +304,11 @@ async function handlePluginEvent(jsonLine) {
   validateEvent(event);
 
   // Persist to database
+  let closedRaces;
   try {
     switch (eventType) {
       case E.SESSION_STARTED:  await db.handleSessionStarted(event);  break;
-      case E.RACE_RESET:       await db.handleRaceReset(event, state.getCurrentTrack());  break;
+      case E.RACE_RESET:       closedRaces = await db.handleRaceReset(event, state.getCurrentTrack());  break;
       case E.LAP_RECORDED:     await db.handleLapRecorded(event, state.getCurrentTrack()); break;
       case E.RACE_END:         await db.handleRaceEnd(event);         break;
       case E.TRACK_CATALOG:
@@ -433,6 +434,13 @@ async function handlePluginEvent(jsonLine) {
       fireTemplates('lobby_full', { nick, count: String(count) });
     }
   } else if (eventType === E.RACE_RESET) {
+    if (closedRaces?.length) {
+      const prev = closedRaces[0];
+      fireTemplates('race_end', {
+        winner: prev.winner_nick || '',
+        time: fmtMs(prev.winner_total_ms),
+      });
+    }
     fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) });
   } else if (eventType === E.RACE_END) {
     fireTemplates('race_end', {
