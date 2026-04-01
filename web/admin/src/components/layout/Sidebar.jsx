@@ -10,15 +10,13 @@ const navItems = [
   { to: '/admin/players', icon: Users, label: 'Players', module: 'players' },
   { to: '/admin/tracks', icon: Map, label: 'Tracks', module: 'tracks' },
   { to: '/admin/chat', icon: MessageSquare, label: 'Chat', module: 'chat' },
-  { to: '/admin/chat-beta', icon: MessageSquare, label: 'Chat', beta: true, module: 'chat' },
   { to: '/admin/playlists', icon: ListMusic, label: 'Playlists', module: 'playlists' },
-  { to: '/admin/playlists-beta', icon: ListMusic, label: 'Playlists (beta)', module: 'playlists' },
   { to: '/admin/tags', icon: Tag, label: 'Tags', module: 'tags' },
   { to: '/admin/track-manager', icon: Library, label: 'Track Manager', module: 'track_manager' },
   { to: '/admin/overseer', icon: Radio, label: 'Track Overseer', module: 'overseer' },
   { to: '/admin/scoring', icon: Trophy, label: 'Scoring', module: 'scoring' },
   { to: '/admin/competitions', icon: Award, label: 'Competitions', module: 'competitions' },
-  { to: '/admin/auto-messages', icon: BotMessageSquare, label: 'Auto Messages', beta: true, module: 'auto_messages' },
+  { to: '/admin/auto-messages', icon: BotMessageSquare, label: 'Auto Messages', module: 'auto_messages' },
   { to: '/admin/users', icon: UserCog, label: 'Users', module: 'users' },
 ];
 

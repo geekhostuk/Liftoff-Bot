@@ -1,47 +1,34 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageSquare, Send, Plus, Trash2 } from 'lucide-react';
-import { createColumnHelper } from '@tanstack/react-table';
+import { MessageSquare, Send, Search, X } from 'lucide-react';
 import { useApi } from '../hooks/useApi.js';
 import { useToast } from '../components/feedback/Toast.jsx';
 import { useWsEvent } from '../context/WebSocketContext.jsx';
-import DataTable from '../components/data/DataTable.jsx';
-import Badge from '../components/feedback/Badge.jsx';
 import EmptyState from '../components/data/EmptyState.jsx';
-import ConfirmButton from '../components/form/ConfirmButton.jsx';
-import { fmtMs } from '../lib/fmt.js';
 
 const MAX_MESSAGES = 100;
-
-const TRIGGER_OPTIONS = ['track_change', 'race_start', 'race_end'];
-
-const columnHelper = createColumnHelper();
+const CHAR_LIMIT = 255;
 
 export default function Chat() {
   const { apiFetch, apiCall } = useApi();
   const { toast } = useToast();
 
-  // Chat log state
+  // Chat log
   const [messages, setMessages] = useState([]);
+  const [filter, setFilter] = useState('');
   const logEndRef = useRef(null);
 
-  // Send message state
+  // Send message
   const [sendText, setSendText] = useState('');
+  const textareaRef = useRef(null);
 
-  // Templates state
-  const [templates, setTemplates] = useState([]);
-  const [newTemplate, setNewTemplate] = useState({
-    trigger: 'track_change',
-    template: '',
-    delay_ms: 0,
-    enabled: true,
-  });
+  // Variables
+  const [variables, setVariables] = useState([]);
+  const [preview, setPreview] = useState(null);
 
-  // Auto-scroll on new messages
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // WS chat messages
   useWsEvent('chat_message', useCallback((data) => {
     setMessages((prev) => {
       const next = [...prev, { ...data, ts: new Date() }];
@@ -49,113 +36,66 @@ export default function Chat() {
     });
   }, []));
 
-  // Load templates on mount
-  const loadTemplates = useCallback(async () => {
-    try {
-      const data = await apiFetch('GET', '/api/admin/chat/templates');
-      setTemplates(data);
-    } catch {
-      toast('Failed to load templates', 'error');
-    }
-  }, [apiFetch, toast]);
-
+  // Load available variables
   useEffect(() => {
-    loadTemplates();
-  }, [loadTemplates]);
+    apiFetch('GET', '/api/admin/chat/template-variables')
+      .then(setVariables)
+      .catch(() => {});
+  }, [apiFetch]);
 
-  // Send chat message
+  const filteredMessages = filter
+    ? messages.filter((m) => {
+        const q = filter.toLowerCase();
+        return m.nick?.toLowerCase().includes(q) || m.message?.toLowerCase().includes(q);
+      })
+    : messages;
+
+  // Send
   const handleSend = async () => {
     const text = sendText.trim();
     if (!text) return;
     await apiCall('POST', '/api/admin/chat/send', { message: text }, 'Message sent');
     setSendText('');
+    setPreview(null);
   };
 
-  const handleSendKeyDown = (e) => {
+  const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
-  // Toggle template enabled
-  const handleToggleEnabled = async (row) => {
-    const updated = { ...row, enabled: !row.enabled };
+  // Insert variable at cursor
+  const insertVariable = (key) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const token = `{${key}}`;
+    const next = sendText.slice(0, start) + token + sendText.slice(end);
+    setSendText(next);
+    setPreview(null);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.selectionStart = el.selectionEnd = start + token.length;
+    });
+  };
+
+  // Preview
+  const handlePreview = async () => {
+    if (!sendText.trim()) return;
     try {
-      await apiCall('PUT', `/api/admin/chat/templates/${row.id}`, updated, 'Template updated');
-      setTemplates((prev) => prev.map((t) => (t.id === row.id ? updated : t)));
-    } catch { /* toast handled by apiCall */ }
-  };
-
-  // Delete template
-  const handleDelete = async (id) => {
-    await apiCall('DELETE', `/api/admin/chat/templates/${id}`, null, 'Template deleted');
-    setTemplates((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  // Add template
-  const handleAdd = async () => {
-    if (!newTemplate.template.trim()) {
-      toast('Message is required', 'warning');
-      return;
+      const result = await apiFetch('POST', '/api/admin/chat/template-preview', { template: sendText });
+      setPreview(result);
+    } catch {
+      toast('Preview failed', 'error');
     }
-    try {
-      const created = await apiCall('POST', '/api/admin/chat/templates', {
-        trigger: newTemplate.trigger,
-        template: newTemplate.template.trim(),
-        enabled: newTemplate.enabled,
-        delay_ms: Number(newTemplate.delay_ms) || 0,
-      }, 'Template added');
-      if (created) {
-        setTemplates((prev) => [...prev, created]);
-      } else {
-        await loadTemplates();
-      }
-      setNewTemplate({ trigger: 'track_change', template: '', delay_ms: 0, enabled: true });
-    } catch { /* toast handled by apiCall */ }
   };
 
-  // Table columns
-  const columns = [
-    columnHelper.accessor('trigger', {
-      header: 'Trigger',
-      cell: (info) => <Badge variant="accent">{info.getValue()}</Badge>,
-    }),
-    columnHelper.accessor('template', {
-      header: 'Message',
-      cell: (info) => <span style={{ color: 'var(--text-secondary)' }}>{info.getValue()}</span>,
-    }),
-    columnHelper.accessor('delay_ms', {
-      header: 'Delay',
-      cell: (info) => <span style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{fmtMs(info.getValue())}</span>,
-    }),
-    columnHelper.accessor('enabled', {
-      header: 'Enabled',
-      cell: (info) => (
-        <input
-          type="checkbox"
-          checked={info.getValue()}
-          onChange={() => handleToggleEnabled(info.row.original)}
-          style={{ cursor: 'pointer', accentColor: 'var(--color-primary)' }}
-        />
-      ),
-    }),
-    columnHelper.display({
-      id: 'actions',
-      header: 'Actions',
-      cell: (info) => (
-        <ConfirmButton
-          onConfirm={() => handleDelete(info.row.original.id)}
-          className="btn-icon"
-          confirmText="Delete?"
-        >
-          <Trash2 size={15} />
-        </ConfirmButton>
-      ),
-    }),
-  ];
+  const charCount = sendText.length;
+  const charColor = charCount > CHAR_LIMIT ? 'var(--color-danger)' : charCount > 240 ? '#f97316' : charCount > 200 ? '#eab308' : 'var(--text-muted)';
 
-  // Format timestamp as HH:MM:SS
   const fmtTime = (d) => {
     const dt = d instanceof Date ? d : new Date(d);
     return dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -165,17 +105,34 @@ export default function Chat() {
     <div style={styles.page}>
       <h1 style={styles.heading}>
         <MessageSquare size={22} style={{ marginRight: 8 }} />
-        Chat Management
+        Chat
       </h1>
 
-      {/* Card 1: Chat Log */}
+      {/* Chat Log */}
       <div style={styles.card}>
-        <h2 style={styles.cardTitle}>Chat Log</h2>
-        {messages.length === 0 ? (
-          <EmptyState icon={MessageSquare} message="No chat messages yet" />
+        <div style={styles.cardHeader}>
+          <h2 style={styles.cardTitle}>Chat Log</h2>
+          <div style={styles.filterWrap}>
+            <Search size={14} style={{ color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter messages..."
+              style={styles.filterInput}
+            />
+            {filter && (
+              <button onClick={() => setFilter('')} style={styles.filterClear}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+        {filteredMessages.length === 0 ? (
+          <EmptyState icon={MessageSquare} message={filter ? 'No matching messages' : 'No chat messages yet'} />
         ) : (
           <div style={styles.chatLog}>
-            {messages.map((m, i) => (
+            {filteredMessages.map((m, i) => (
               <div key={i} style={styles.chatMessage}>
                 <span style={styles.chatTime}>{fmtTime(m.ts)}</span>
                 <span style={styles.chatNick}>{m.nick}</span>
@@ -187,91 +144,70 @@ export default function Chat() {
         )}
       </div>
 
-      {/* Card 2: Send Message */}
+      {/* Send Message */}
       <div style={styles.card}>
         <h2 style={styles.cardTitle}>Send Message</h2>
-        <div style={styles.sendRow}>
-          <input
-            type="text"
-            value={sendText}
-            onChange={(e) => setSendText(e.target.value)}
-            onKeyDown={handleSendKeyDown}
-            placeholder="Type a message..."
-            style={styles.input}
-          />
-          <button
-            className="btn-primary"
-            style={styles.sendBtn}
-            onClick={handleSend}
-            disabled={!sendText.trim()}
-          >
-            <Send size={14} style={{ marginRight: 6 }} />
-            Send
-          </button>
-        </div>
-      </div>
 
-      {/* Card 3: Automated Templates */}
-      <div style={styles.card}>
-        <h2 style={styles.cardTitle}>Automated Templates</h2>
+        {/* Variable chips */}
+        {variables.length > 0 && (
+          <div style={styles.varsSection}>
+            <span style={styles.varsLabel}>Insert variable:</span>
+            <div style={styles.varsChips}>
+              {variables.map((v) => (
+                <button
+                  key={v.key}
+                  onClick={() => insertVariable(v.key)}
+                  style={styles.varChip}
+                  title={v.description}
+                >
+                  {`{${v.key}}`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
-        <DataTable
-          data={templates}
-          columns={columns}
-          emptyMessage="No templates configured"
+        <textarea
+          ref={textareaRef}
+          value={sendText}
+          onChange={(e) => { setSendText(e.target.value); setPreview(null); }}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message..."
+          rows={3}
+          style={styles.textarea}
         />
 
-        <div style={styles.addForm}>
-          <h3 style={styles.addFormTitle}>Add Template</h3>
-          <div style={styles.addRow}>
-            <select
-              value={newTemplate.trigger}
-              onChange={(e) => setNewTemplate((p) => ({ ...p, trigger: e.target.value }))}
-              style={styles.select}
+        <div style={styles.sendFooter}>
+          <span style={{ ...styles.charCount, color: charColor }}>
+            {charCount} / {CHAR_LIMIT}
+          </span>
+          <div style={styles.sendActions}>
+            <button
+              className="btn-outline"
+              style={styles.previewBtn}
+              onClick={handlePreview}
+              disabled={!sendText.trim()}
             >
-              {TRIGGER_OPTIONS.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-
-            <input
-              type="text"
-              placeholder="Message template"
-              value={newTemplate.template}
-              onChange={(e) => setNewTemplate((p) => ({ ...p, template: e.target.value }))}
-              style={{ ...styles.input, flex: 2 }}
-            />
-
-            <input
-              type="number"
-              placeholder="Delay (ms)"
-              value={newTemplate.delay_ms}
-              onChange={(e) => setNewTemplate((p) => ({ ...p, delay_ms: e.target.value }))}
-              style={{ ...styles.input, width: 110, flex: 'none' }}
-              min={0}
-              step={500}
-            />
-
-            <label style={styles.checkLabel}>
-              <input
-                type="checkbox"
-                checked={newTemplate.enabled}
-                onChange={(e) => setNewTemplate((p) => ({ ...p, enabled: e.target.checked }))}
-                style={{ accentColor: 'var(--color-primary)', marginRight: 4 }}
-              />
-              Enabled
-            </label>
-
+              Preview
+            </button>
             <button
               className="btn-primary"
-              style={styles.addBtn}
-              onClick={handleAdd}
+              style={styles.sendBtn}
+              onClick={handleSend}
+              disabled={!sendText.trim()}
             >
-              <Plus size={14} style={{ marginRight: 4 }} />
-              Add
+              <Send size={14} style={{ marginRight: 6 }} />
+              Send
             </button>
           </div>
         </div>
+
+        {preview && (
+          <div style={styles.previewBox}>
+            <span style={styles.previewLabel}>Preview ({preview.length} chars):</span>
+            <span style={styles.previewText}>{preview.resolved}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -299,16 +235,49 @@ const styles = {
     borderRadius: 'var(--radius-md)',
     padding: '1.25rem 1.5rem',
   },
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '1rem',
+    gap: '1rem',
+  },
   cardTitle: {
     fontSize: '1.1rem',
     fontWeight: 600,
     color: 'var(--text-primary)',
-    margin: '0 0 1rem 0',
+    margin: 0,
+    flexShrink: 0,
   },
-
-  /* Chat log */
+  filterWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    padding: '0.35rem 0.6rem',
+    background: 'var(--bg-surface-alt)',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--radius-md)',
+    maxWidth: 240,
+    flex: 1,
+  },
+  filterInput: {
+    flex: 1,
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--text-primary)',
+    fontSize: '0.85rem',
+    outline: 'none',
+  },
+  filterClear: {
+    background: 'none',
+    border: 'none',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    padding: 0,
+    display: 'flex',
+  },
   chatLog: {
-    maxHeight: 400,
+    maxHeight: 500,
     overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
@@ -340,15 +309,35 @@ const styles = {
     fontSize: '0.9rem',
     wordBreak: 'break-word',
   },
-
-  /* Send */
-  sendRow: {
+  varsSection: {
     display: 'flex',
-    gap: '0.75rem',
     alignItems: 'center',
+    gap: '0.5rem',
+    marginBottom: '0.75rem',
+    flexWrap: 'wrap',
   },
-  input: {
-    flex: 1,
+  varsLabel: {
+    color: 'var(--text-muted)',
+    fontSize: '0.8rem',
+    flexShrink: 0,
+  },
+  varsChips: {
+    display: 'flex',
+    gap: '0.35rem',
+    flexWrap: 'wrap',
+  },
+  varChip: {
+    padding: '0.2rem 0.5rem',
+    background: 'rgba(139, 92, 246, 0.12)',
+    color: '#a78bfa',
+    border: '1px solid rgba(139, 92, 246, 0.25)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '0.75rem',
+    fontFamily: 'monospace',
+    cursor: 'pointer',
+  },
+  textarea: {
+    width: '100%',
     padding: '0.5rem 0.75rem',
     background: 'var(--bg-surface-alt)',
     border: '1px solid var(--border-color)',
@@ -356,55 +345,53 @@ const styles = {
     color: 'var(--text-primary)',
     fontSize: '0.9rem',
     outline: 'none',
+    resize: 'vertical',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+  },
+  sendFooter: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: '0.5rem',
+  },
+  charCount: {
+    fontSize: '0.8rem',
+    fontFamily: 'monospace',
+  },
+  sendActions: {
+    display: 'flex',
+    gap: '0.5rem',
+  },
+  previewBtn: {
+    padding: '0.4rem 0.8rem',
+    fontSize: '0.85rem',
+    cursor: 'pointer',
   },
   sendBtn: {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '0.5rem 1rem',
+    padding: '0.4rem 1rem',
     cursor: 'pointer',
-    flexShrink: 0,
   },
-
-  /* Templates add form */
-  addForm: {
-    marginTop: '1.25rem',
-    paddingTop: '1rem',
-    borderTop: '1px solid var(--border-color)',
-  },
-  addFormTitle: {
-    fontSize: '0.95rem',
-    fontWeight: 600,
-    color: 'var(--text-primary)',
-    margin: '0 0 0.75rem 0',
-  },
-  addRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '0.6rem',
-    alignItems: 'center',
-  },
-  select: {
-    padding: '0.5rem 0.75rem',
+  previewBox: {
+    marginTop: '0.75rem',
+    padding: '0.6rem 0.75rem',
     background: 'var(--bg-surface-alt)',
     border: '1px solid var(--border-color)',
     borderRadius: 'var(--radius-md)',
-    color: 'var(--text-primary)',
-    fontSize: '0.9rem',
-    outline: 'none',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.3rem',
   },
-  checkLabel: {
-    display: 'inline-flex',
-    alignItems: 'center',
+  previewLabel: {
+    color: 'var(--text-muted)',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+  },
+  previewText: {
     color: 'var(--text-secondary)',
     fontSize: '0.9rem',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  },
-  addBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '0.5rem 1rem',
-    cursor: 'pointer',
-    flexShrink: 0,
+    wordBreak: 'break-word',
   },
 };

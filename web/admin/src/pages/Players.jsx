@@ -8,7 +8,7 @@ import ConfirmButton from '../components/form/ConfirmButton.jsx';
 import EmptyState from '../components/data/EmptyState.jsx';
 import { createColumnHelper } from '@tanstack/react-table';
 import { fmtIdleTime } from '../lib/fmt.js';
-import { Users, ShieldCheck, LogOut } from 'lucide-react';
+import { Users, ShieldCheck, LogOut, UserCheck, UserX } from 'lucide-react';
 
 const columnHelper = createColumnHelper();
 
@@ -64,6 +64,7 @@ export default function Players() {
   const [idleTimes, setIdleTimes] = useState({});
   const [warned, setWarned] = useState([]);
   const [whitelist, setWhitelist] = useState([]);
+  const [registrationStatus, setRegistrationStatus] = useState({});
   const [globalFilter, setGlobalFilter] = useState('');
 
   // Fetch status data
@@ -82,6 +83,7 @@ export default function Players() {
       setIdleTimes(data.idleTimes || {});
       setWarned(data.warned || []);
       setWhitelist(data.whitelist || []);
+      setRegistrationStatus(data.registrationStatus || {});
     } catch {
       // handled by apiCall
     }
@@ -174,6 +176,17 @@ export default function Players() {
       cell: (info) => <span style={styles.actorCell}>{info.getValue()}</span>,
     }),
     columnHelper.display({
+      id: 'registered',
+      header: 'Registered',
+      cell: ({ row }) => {
+        const isReg = registrationStatus[row.original.actor];
+        if (isReg === undefined) return <span style={{ color: 'var(--text-muted)' }}>--</span>;
+        return isReg
+          ? <UserCheck size={16} style={{ color: 'var(--color-success, #22c55e)' }} />
+          : <UserX size={16} style={{ color: 'var(--text-muted)' }} />;
+      },
+    }),
+    columnHelper.display({
       id: 'idle',
       header: 'Idle Time',
       cell: ({ row }) => {
@@ -213,7 +226,7 @@ export default function Players() {
         );
       },
     }),
-  ], [idleTimes, warnedSet, whitelistLower, handleKick, handleWhitelistToggle]);
+  ], [idleTimes, warnedSet, whitelistLower, registrationStatus, handleKick, handleWhitelistToggle]);
 
   return (
     <div style={styles.page}>
