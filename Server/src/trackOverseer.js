@@ -23,6 +23,27 @@ const DEFAULT_TAG_INTERVAL_MS = 10 * 60 * 1000;      // 10 minutes
 const RECENT_HISTORY_SIZE = 5;
 const TAG_RACE_MODE = 'InfiniteRace';
 
+// ── Catalog cache (populated from track_catalog events, avoids DB query per tag pick)
+let _catalogEnvTracksCache = null;
+
+function setCatalogCache(catalogJson) {
+  try {
+    const catalog = typeof catalogJson === 'string' ? JSON.parse(catalogJson) : catalogJson;
+    _catalogEnvTracksCache = [];
+    for (const env of (catalog.environments || [])) {
+      for (const t of (env.tracks || [])) {
+        _catalogEnvTracksCache.push({ env: env.internal_name || env.name, track: t.name });
+      }
+    }
+  } catch {
+    _catalogEnvTracksCache = null;
+  }
+}
+
+function clearCatalogCache() {
+  _catalogEnvTracksCache = null;
+}
+
 // ── State ────────────────────────────────────────────────────────────────────
 
 const state = {
@@ -250,7 +271,7 @@ function skipToIndex(index) {
   state.currentIndex = index;
   const t = _getPlaylistTrack(index);
   _applyTrack(t, 'playlist').then(async () => {
-    await _persistState();
+    _persistState();
     _armTimer(state.intervalMs);
     _broadcastState();
   });
@@ -333,7 +354,7 @@ async function tryResume() {
       }
 
       const delay = remainingMs || saved.intervalMs;
-      await _persistState();
+      _persistState();
       state.nextChangeAt = new Date(Date.now() + delay);
       await _schedulePreTimers(delay);
       _timer = setTimeout(() => _advance().then(() => _broadcastState()), delay);
@@ -373,7 +394,7 @@ async function tryResume() {
       if (remainingMs !== null && remainingMs < 5000) remainingMs = state.intervalMs;
 
       const delay = remainingMs || state.intervalMs;
-      await _persistState();
+      _persistState();
       _armTimer(delay);
 
       console.log(`[overseer] Resumed tag mode [${saved.tagNames.join(', ')}] (next change in ${Math.round(delay / 1000)}s)`);
@@ -406,7 +427,7 @@ async function _advance() {
   if (queued) {
     const trackInfo = { env: queued.env, track: queued.track, race: queued.race, workshop_id: queued.workshop_id };
     await _applyTrack(trackInfo, 'queue');
-    await _persistState();
+    _persistState();
     _armTimer(state.intervalMs);
     return;
   }
@@ -443,7 +464,7 @@ async function _advance() {
     }
     const t = _getPlaylistTrack(state.currentIndex);
     await _applyTrack(t, 'playlist');
-    await _persistState();
+    _persistState();
     _armTimer(state.intervalMs);
 
   } else if (state.mode === 'tag') {
@@ -456,7 +477,7 @@ async function _advance() {
     }
     await _applyTrack(picked, 'tag');
     state.intervalMs = picked.duration_ms || state.defaultIntervalMs;
-    await _persistState();
+    _persistState();
     _armTimer(state.intervalMs);
   }
 }
@@ -476,13 +497,13 @@ async function _applyTrack(trackInfo, source) {
   state.skipCount = 0;
   state.extendCount = 0;
 
-  // Record in history
-  try {
-    state.currentHistoryId = await db.recordTrackStart(env, track, race, source);
-  } catch (err) {
-    console.error('[overseer] Failed to record track history:', err.message);
-    state.currentHistoryId = null;
-  }
+  // Record in history (non-blocking — ID only needed later by _closeHistory)
+  state.currentHistoryId = null;
+  db.recordTrackStart(env, track, race, source)
+    .then(id => { state.currentHistoryId = id; })
+    .catch(err => {
+      console.error('[overseer] Failed to record track history:', err.message);
+    });
 
   const modeInfo = state.mode === 'playlist'
     ? `Track ${state.currentIndex + 1}/${state.tracks.length}: ${env} / ${track}`
@@ -542,23 +563,20 @@ async function _schedulePreTimers(delayMs) {
 }
 
 async function _pickTagTrack() {
-  // Get catalog env/track pairs for filtering
-  let catalogEnvTracks = null;
-  try {
-    const pool = db.getPool();
-    const catalogRow = await pool.query(
-      'SELECT catalog_json FROM track_catalog ORDER BY id DESC LIMIT 1'
-    );
-    if (catalogRow.rows.length > 0) {
-      const catalog = JSON.parse(catalogRow.rows[0].catalog_json);
-      catalogEnvTracks = [];
-      for (const env of (catalog.environments || [])) {
-        for (const t of (env.tracks || [])) {
-          catalogEnvTracks.push({ env: env.internal_name || env.name, track: t.name });
-        }
+  // Use cached catalog (populated from track_catalog events); fall back to DB if not cached
+  let catalogEnvTracks = _catalogEnvTracksCache;
+  if (!catalogEnvTracks) {
+    try {
+      const pool = db.getPool();
+      const catalogRow = await pool.query(
+        'SELECT catalog_json FROM track_catalog ORDER BY id DESC LIMIT 1'
+      );
+      if (catalogRow.rows.length > 0) {
+        setCatalogCache(catalogRow.rows[0].catalog_json);
+        catalogEnvTracks = _catalogEnvTracksCache;
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   const track = await db.getRandomTrackByTags(state.tagNames, state.recentHistory, catalogEnvTracks);
   if (!track) return null;
@@ -633,4 +651,6 @@ module.exports = {
   clearPlaylistQueue,
   getUpcoming,
   tryResume,
+  setCatalogCache,
+  clearCatalogCache,
 };
