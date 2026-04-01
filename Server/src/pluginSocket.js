@@ -230,9 +230,12 @@ async function fireTemplates(trigger, vars = {}) {
   let templates;
   try {
     templates = await db.getChatTemplatesByTrigger(trigger);
-  } catch {
+  } catch (err) {
+    console.error(`[templates] DB error fetching templates for "${trigger}":`, err.message);
     return;
   }
+  if (templates.length === 0) return;
+  console.log(`[templates] Firing ${templates.length} template(s) for "${trigger}"`);
   const enriched = await buildTemplateVars(vars);
   for (const tmpl of templates) {
     if (tmpl.delay_ms < 0) continue; // negative = pre-scheduled by playlist runner
@@ -241,8 +244,15 @@ async function fireTemplates(trigger, vars = {}) {
       message = message.replaceAll(`{${key}}`, val ?? '');
     }
     message = message.trim();
-    if (!message) continue;
-    const send = () => sendCommand({ cmd: 'send_chat', message });
+    if (!message) {
+      console.warn(`[templates] Template id=${tmpl.id} for "${trigger}" resolved to empty — skipped`);
+      continue;
+    }
+    const send = () => {
+      if (!sendCommand({ cmd: 'send_chat', message })) {
+        console.warn(`[templates] Plugin not connected — could not send "${trigger}" template id=${tmpl.id}`);
+      }
+    };
     if (tmpl.delay_ms > 0) {
       setTimeout(send, tmpl.delay_ms);
     } else {
@@ -393,13 +403,6 @@ async function handlePluginEvent(jsonLine) {
             sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>Verification error. Try again later.</color>' });
           });
         }
-      }
-    } else if (msg === '/stay') {
-      const saved = idleKick.handleStayCommand();
-      if (saved.length > 0) {
-        sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>STAY</color> <color=#FFFF00>${saved.join(', ')} idle timer has been reset.</color>` });
-      } else {
-        sendCommand({ cmd: 'send_chat', message: '<color=#FFFF00>No one is about to be kicked.</color>' });
       }
     } else if (msg === '/tagvote') {
       tagVote.handleTagVoteCommand(event.user_id || event.nick);

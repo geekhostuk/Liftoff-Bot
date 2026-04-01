@@ -3,7 +3,7 @@
  *
  * Automatically warns and kicks pilots who have been inactive for too long.
  * Activity is tracked per Photon actor number; any gameplay event (lap, checkpoint,
- * chat message, etc.) resets the timer. Players can type /stay to buy more time.
+ * chat message, etc.) resets the timer.
  *
  * JMT-Bot (the host) and whitelisted nicks are always immune.
  *
@@ -126,28 +126,6 @@ function handlePlayerListSync(actors) {
       _lastActivity.set(actor, Date.now());
     }
   }
-}
-
-/**
- * Handle /stay command — resets the idle timer for all currently warned players.
- * Returns an array of nicks that were saved, or empty if nobody was warned.
- */
-function handleStayCommand() {
-  if (_warned.size === 0) return [];
-
-  const onlinePlayers = state.getOnlinePlayers();
-  const playerByActor = new Map();
-  for (const p of onlinePlayers) {
-    playerByActor.set(p.actor, p);
-  }
-
-  const saved = [];
-  for (const actor of [..._warned]) {
-    const player = playerByActor.get(actor);
-    if (player) saved.push(player.nick || 'Unknown');
-    recordActivity(actor); // resets timestamp and clears warned flag
-  }
-  return saved;
 }
 
 /**
@@ -275,12 +253,6 @@ function _runIdleCheck() {
           cmd: 'send_chat',
           message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, lobby is full! You will be kicked for being idle in 1 minute.</color>`,
         });
-        setTimeout(() => {
-          _sendCommand({
-            cmd: 'send_chat',
-            message: '<color=#00FF00>Type /stay in chat to remain in the server.</color>',
-          });
-        }, 500);
       } else {
         const siteUrl = process.env.SITE_URL || '';
         const regHint = siteUrl ? ` Register at ${siteUrl} for longer idle time.` : '';
@@ -333,7 +305,6 @@ module.exports = {
   handlePlayerEntered,
   handlePlayerLeft,
   handlePlayerListSync,
-  handleStayCommand,
   resetAllTimers,
   getWhitelist,
   addToWhitelist,
