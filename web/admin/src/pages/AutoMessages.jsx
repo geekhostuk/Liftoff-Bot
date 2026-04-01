@@ -235,7 +235,6 @@ export default function AutoMessages() {
       <h1 style={styles.heading}>
         <BotMessageSquare size={22} style={{ marginRight: 8 }} />
         Auto Messages
-        <Badge variant="beta" style={{ marginLeft: 8 }}>Beta</Badge>
       </h1>
 
       {/* Template List */}
