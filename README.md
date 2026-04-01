@@ -109,7 +109,6 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - When the lobby is full (8 players), idle pilots inactive for 5 minutes receive an in-game warning
 - After 1 additional minute without activity, they are automatically kicked to free up a slot
 - Activity is tracked via gameplay events: checkpoints, laps, race completions, resets, chat messages, race starts, and race ends — so slow pilots on long tracks won't be falsely kicked
-- Players can type `/stay` in chat to reset their idle timer (adds 5 more minutes)
 - JMT_Bot (the host) is always immune and hidden from the admin player list
 - Additional players can be whitelisted via admin API, admin dashboard, or `IDLE_KICK_WHITELIST` env var
 - Only active when the track overseer is running — free lobbies are unaffected
@@ -119,7 +118,6 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - `/info` — shows available player commands, current mode, and time remaining
 - `/next` — vote to skip the current track
 - `/extend` — vote to extend the current track by 5 minutes
-- `/stay` — reset your idle timer (prevents auto-kick)
 - `/tagvote` — start a tag category vote (up to 4 random tags)
 - `/1` `/2` `/3` `/4` — cast your vote during an active tag vote
 - `/tags` — list all available track tags

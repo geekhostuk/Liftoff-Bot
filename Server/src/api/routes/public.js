@@ -332,14 +332,6 @@ const registerLimiter = rateLimit({
   message: { error: 'Too many registrations — try again in an hour' },
 });
 
-const nicknameLimiter = rateLimit({
-  windowMs: 24 * 60 * 60_000,
-  max: 3,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many nickname changes — try again tomorrow' },
-});
-
 /** Middleware: require authenticated site user */
 function requireSiteAuth(req, res, next) {
   const token = extractSiteToken(req);
@@ -439,7 +431,7 @@ router.get('/auth/me', requireSiteAuth, async (req, res) => {
   });
 });
 
-router.post('/auth/verify-code', requireSiteAuth, nicknameLimiter, async (req, res) => {
+router.post('/auth/verify-code', requireSiteAuth, async (req, res) => {
   const user = await db.getSiteUserByEmail(req.siteUser.username);
   if (!user || !user.email_verified) {
     return res.status(403).json({ error: 'You must verify your email first' });
