@@ -18,7 +18,9 @@ function loadValidators() {
 
   try {
     const Ajv = require('ajv');
+    const addFormats = require('ajv-formats');
     const ajv = new Ajv({ allErrors: true, strict: false, validateSchema: false });
+    addFormats(ajv);
 
     // Docker layout: /app/contracts; repo layout: ../../contracts
     const contractsDir = [

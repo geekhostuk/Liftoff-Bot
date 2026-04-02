@@ -434,14 +434,17 @@ async function handlePluginEvent(jsonLine) {
       fireTemplates('lobby_full', { nick, count: String(count) });
     }
   } else if (eventType === E.RACE_RESET) {
-    if (closedRaces?.length) {
+    // Only fire templates when a real race closed (had a winner with laps).
+    // Normal player resets produce a RACE_RESET with no closedRaces or an
+    // empty winner, so those are silently ignored.
+    if (closedRaces?.length && closedRaces[0].winner_nick) {
       const prev = closedRaces[0];
       fireTemplates('race_end', {
-        winner: prev.winner_nick || '',
+        winner: prev.winner_nick,
         time: fmtMs(prev.winner_total_ms),
       });
+      fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) });
     }
-    fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) });
   } else if (eventType === E.RACE_END) {
     fireTemplates('race_end', {
       winner: event.winner_nick || '',
