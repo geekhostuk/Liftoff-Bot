@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserCog, Map, MessageSquare, BotMessageSquare, ListMusic, Tag, Radio, Library, Trophy, Award, UserX, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { LayoutDashboard, Users, UserCog, Map, MessageSquare, BotMessageSquare, ListMusic, Tag, Radio, Library, Trophy, Award, UserX, Bot, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useWs } from '../../context/WebSocketContext.jsx';
 import StatusDot from '../feedback/StatusDot.jsx';
@@ -18,6 +18,7 @@ const navItems = [
   { to: '/admin/competitions', icon: Award, label: 'Competitions', module: 'competitions' },
   { to: '/admin/auto-messages', icon: BotMessageSquare, label: 'Auto Messages', module: 'auto_messages' },
   { to: '/admin/idle-kick', icon: UserX, label: 'Idle Kick', module: 'idle_kick' },
+  { to: '/admin/bot-remote', icon: Bot, label: 'Bot1 Remote', module: 'bot_remote' },
   { to: '/admin/users', icon: UserCog, label: 'Users', module: 'users' },
 ];
 
