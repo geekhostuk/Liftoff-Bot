@@ -81,16 +81,14 @@ async function generateWeeks(competitionId, count, startDate) {
 }
 
 async function getWeeks(competitionId) {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    'SELECT * FROM competition_weeks WHERE competition_id = $1 ORDER BY week_number', [competitionId]
-  );
-  for (const w of rows) {
-    const { rows: [{ n }] } = await pool.query(
-      'SELECT COUNT(*) AS n FROM week_playlists WHERE week_id = $1', [w.id]
-    );
-    w.playlist_count = parseInt(n, 10);
-  }
+  const { rows } = await getPool().query(`
+    SELECT w.*, COUNT(wp.id)::int AS playlist_count
+    FROM competition_weeks w
+    LEFT JOIN week_playlists wp ON wp.week_id = w.id
+    WHERE w.competition_id = $1
+    GROUP BY w.id
+    ORDER BY w.week_number
+  `, [competitionId]);
   return rows;
 }
 
@@ -195,16 +193,23 @@ async function getRaceResults(raceId) {
 }
 
 async function getRaceResultsWithPoints(raceId) {
-  const pool = getPool();
-  const results = await getRaceResults(raceId);
-  for (const r of results) {
-    const { rows } = await pool.query(
-      'SELECT category, points, detail FROM weekly_points WHERE week_id = $1 AND pilot_key = $2 AND detail LIKE $3',
-      [r.week_id, r.pilot_key, `%${raceId}%`]
-    );
-    r.points = rows;
-  }
-  return results;
+  const { rows } = await getPool().query(`
+    SELECT rr.*,
+      COALESCE(
+        json_agg(json_build_object('category', wp.category, 'points', wp.points, 'detail', wp.detail))
+        FILTER (WHERE wp.id IS NOT NULL),
+        '[]'
+      ) AS points
+    FROM race_results rr
+    LEFT JOIN weekly_points wp
+      ON wp.week_id = rr.week_id
+      AND wp.pilot_key = rr.pilot_key
+      AND wp.detail LIKE '%' || $1 || '%'
+    WHERE rr.race_id = $1
+    GROUP BY rr.id
+    ORDER BY rr.position
+  `, [raceId]);
+  return rows;
 }
 
 // ── Points ──────────────────────────────────────────────────────────────────
@@ -256,36 +261,47 @@ async function refreshWeeklyStandings(weekId) {
     ORDER BY total_points DESC
   `, [weekId]);
 
-  // Get display names from most recent race_results
-  const nameMap = {};
-  const { rows: names } = await pool.query(`
-    SELECT pilot_key, display_name FROM race_results
-    WHERE week_id = $1 AND display_name IS NOT NULL
-    ORDER BY id DESC
-  `, [weekId]);
-  for (const n of names) {
-    if (!nameMap[n.pilot_key]) nameMap[n.pilot_key] = n.display_name;
-  }
-
-  // Clear and rebuild standings
+  // Clear and rebuild standings in a single batch
   await pool.query('DELETE FROM weekly_standings WHERE week_id = $1', [weekId]);
 
-  for (let i = 0; i < pilots.length; i++) {
-    const p = pilots[i];
+  if (pilots.length > 0) {
+    // Build batch VALUES for all pilots at once
+    const values = [];
+    const params = [];
+    let n = 1;
+    for (let i = 0; i < pilots.length; i++) {
+      const p = pilots[i];
+      // Get display name from most recent race_results via subquery
+      values.push(`($${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, NOW())`);
+      params.push(
+        weekId, week.competition_id, p.pilot_key, p.pilot_key,
+        p.total_points, p.position_points, p.laps_points,
+        p.improved_points, p.consistency_points,
+        p.participation_points, p.streak_points,
+        i + 1,
+      );
+    }
+
     await pool.query(`
       INSERT INTO weekly_standings
         (week_id, competition_id, pilot_key, display_name, total_points,
          position_points, laps_points, improved_points, consistency_points,
          participation_points, streak_points, rank, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
-    `, [
-      weekId, week.competition_id, p.pilot_key,
-      nameMap[p.pilot_key] || p.pilot_key,
-      p.total_points, p.position_points, p.laps_points,
-      p.improved_points, p.consistency_points,
-      p.participation_points, p.streak_points,
-      i + 1,
-    ]);
+      VALUES ${values.join(', ')}
+    `, params);
+
+    // Update display names from most recent race_results in one statement
+    await pool.query(`
+      UPDATE weekly_standings ws
+      SET display_name = sub.display_name
+      FROM (
+        SELECT DISTINCT ON (pilot_key) pilot_key, display_name
+        FROM race_results
+        WHERE week_id = $1 AND display_name IS NOT NULL
+        ORDER BY pilot_key, id DESC
+      ) sub
+      WHERE ws.week_id = $1 AND ws.pilot_key = sub.pilot_key
+    `, [weekId]);
   }
 }
 

@@ -56,7 +56,7 @@ async function loadOverseerState() {
 }
 
 async function clearOverseerState() {
-  await getPool().query(`DELETE FROM kv_store WHERE key LIKE '${KV_PREFIX}%'`);
+  await getPool().query(`DELETE FROM kv_store WHERE key LIKE $1`, [`${KV_PREFIX}%`]);
 }
 
 // ── Track Queue ─────────────────────────────────────────────────────────────
