@@ -22,6 +22,9 @@ function parseCookies(header) {
  *   /ws/live  — public, unauthenticated, receives only whitelisted events
  *   /ws/admin — authenticated via cookie or query param, receives all events
  */
+let _lastAdminRejectLog = 0;
+let _adminRejectCount = 0;
+
 function createLiveSocketServer(httpServer) {
   const publicWss = new WebSocketServer({ noServer: true });
   const adminWss  = new WebSocketServer({ noServer: true });
@@ -40,7 +43,13 @@ function createLiveSocketServer(httpServer) {
       const session = getSession(token);
       const isLegacyValid = ADMIN_TOKEN && token === ADMIN_TOKEN;
       if (!session && !isLegacyValid) {
-        console.warn('[admin-ws] Rejected connection: invalid token');
+        _adminRejectCount++;
+        const now = Date.now();
+        if (now - _lastAdminRejectLog > 10000) {
+          console.warn(`[admin-ws] Rejected ${_adminRejectCount} connection(s): invalid token`);
+          _adminRejectCount = 0;
+          _lastAdminRejectLog = now;
+        }
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;

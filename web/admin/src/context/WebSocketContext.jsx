@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import { useAuth } from './AuthContext.jsx';
 
 const WebSocketContext = createContext(null);
 
@@ -7,18 +8,34 @@ export function WebSocketProvider({ children }) {
   const listenersRef = useRef(new Map());
   const [connected, setConnected] = useState(false);
   const reconnectTimer = useRef(null);
+  const backoffRef = useRef(3000);
+  const failCountRef = useRef(0);
+  const { logout } = useAuth();
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/ws/admin`);
 
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      setConnected(true);
+      backoffRef.current = 3000;
+      failCountRef.current = 0;
+    };
     ws.onclose = () => {
       setConnected(false);
       wsRef.current = null;
+      failCountRef.current += 1;
+
+      // 3 consecutive failures without a successful open = session is dead
+      if (failCountRef.current >= 3) {
+        logout();
+        return;
+      }
+
       clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = setTimeout(connect, 3000);
+      reconnectTimer.current = setTimeout(connect, backoffRef.current);
+      backoffRef.current = Math.min(backoffRef.current * 2, 30000);
     };
     ws.onmessage = ({ data }) => {
       try {
@@ -39,7 +56,7 @@ export function WebSocketProvider({ children }) {
     };
 
     wsRef.current = ws;
-  }, []);
+  }, [logout]);
 
   useEffect(() => {
     connect();
