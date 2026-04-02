@@ -1,12 +1,13 @@
 const { getPool } = require('./connection');
 
 async function getPlaylists() {
-  const pool = getPool();
-  const { rows } = await pool.query('SELECT * FROM playlists ORDER BY id');
-  for (const p of rows) {
-    const { rows: [{ n }] } = await pool.query('SELECT COUNT(*) AS n FROM playlist_tracks WHERE playlist_id = $1', [p.id]);
-    p.track_count = parseInt(n, 10);
-  }
+  const { rows } = await getPool().query(`
+    SELECT p.*, COUNT(pt.id)::int AS track_count
+    FROM playlists p
+    LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
+    GROUP BY p.id
+    ORDER BY p.id
+  `);
   return rows;
 }
 

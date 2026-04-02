@@ -96,7 +96,7 @@ async function getPilotRecentRaces(nick) {
 async function computePilotRating(nick) {
   const pool = getPool();
 
-  // Speed: percentile of pilot's avg % off track record vs all pilots
+  // Speed + percentile: single query for avg % off track record vs all pilots
   const { rows: [speedRow] } = await pool.query(`
     WITH track_records AS (
       SELECT r.env, r.track, MIN(l.lap_ms) AS global_best
@@ -121,7 +121,8 @@ async function computePilotRating(nick) {
     SELECT
       (SELECT avg_pct_off FROM pilot_avg_pct WHERE nick = $1) AS my_pct,
       COUNT(*)::int AS total,
-      COUNT(*) FILTER (WHERE avg_pct_off < (SELECT avg_pct_off FROM pilot_avg_pct WHERE nick = $1))::int AS better
+      COUNT(*) FILTER (WHERE avg_pct_off < (SELECT avg_pct_off FROM pilot_avg_pct WHERE nick = $1))::int AS better,
+      COUNT(*) FILTER (WHERE avg_pct_off > (SELECT avg_pct_off FROM pilot_avg_pct WHERE nick = $1))::int AS worse
     FROM pilot_avg_pct
   `, [nick]);
 
@@ -196,34 +197,9 @@ async function computePilotRating(nick) {
   else if (score >= 30) tier = 'Novice';
   else tier = 'Rookie';
 
-  // Percentile: rank by avg % off record among all pilots with 3+ tracks
-  const { rows: [pctRow] } = await pool.query(`
-    WITH track_records AS (
-      SELECT r.env, r.track, MIN(l.lap_ms) AS global_best
-      FROM laps l JOIN races r ON r.id = l.race_id
-      WHERE r.env IS NOT NULL AND r.track IS NOT NULL
-      GROUP BY r.env, r.track
-    ),
-    pilot_track_bests AS (
-      SELECT l.nick, r.env, r.track, MIN(l.lap_ms) AS best_ms
-      FROM laps l JOIN races r ON r.id = l.race_id
-      WHERE r.env IS NOT NULL AND r.track IS NOT NULL
-      GROUP BY l.nick, r.env, r.track
-    ),
-    pilot_avg_pct AS (
-      SELECT ptb.nick,
-        AVG((ptb.best_ms - tr.global_best)::float / NULLIF(tr.global_best, 0) * 100) AS avg_pct_off
-      FROM pilot_track_bests ptb
-      JOIN track_records tr ON tr.env = ptb.env AND tr.track = ptb.track
-      GROUP BY ptb.nick
-      HAVING COUNT(*) >= 3
-    )
-    SELECT COUNT(*)::int AS worse
-    FROM pilot_avg_pct
-    WHERE avg_pct_off > (SELECT avg_pct_off FROM pilot_avg_pct WHERE nick = $1)
-  `, [nick]);
+  // Percentile: reuse worse count from the speed query (same CTE, no duplicate scan)
   const totalPilots = speedRow.total || 1;
-  const percentile = totalPilots > 1 ? Math.round((pctRow?.worse ?? 0) / (totalPilots - 1) * 100) : 50;
+  const percentile = totalPilots > 1 ? Math.round((speedRow?.worse ?? 0) / (totalPilots - 1) * 100) : 50;
 
   return {
     score,
