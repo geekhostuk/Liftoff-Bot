@@ -16,6 +16,7 @@ const routeTitles = {
   '/admin/tags': 'Tags',
   '/admin/overseer': 'Track Overseer',
   '/admin/auto-messages': 'Auto Messages Beta',
+  '/admin/idle-kick': 'Idle Kick',
   '/admin/users': 'User Management',
 };
 

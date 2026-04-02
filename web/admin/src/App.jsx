@@ -16,6 +16,7 @@ import TrackManager from './pages/TrackManager.jsx';
 import Scoring from './pages/Scoring.jsx';
 import Competitions from './pages/Competitions.jsx';
 import UserManagement from './pages/UserManagement.jsx';
+import IdleKick from './pages/IdleKick.jsx';
 
 function AuthGate({ children }) {
   const { user, checking } = useAuth();
@@ -45,6 +46,7 @@ export default function App() {
                   <Route path="/admin/scoring" element={<Scoring />} />
                   <Route path="/admin/competitions" element={<Competitions />} />
                   <Route path="/admin/users" element={<UserManagement />} />
+                  <Route path="/admin/idle-kick" element={<IdleKick />} />
                 </Route>
               </Routes>
             </WebSocketProvider>
