@@ -21,7 +21,7 @@ export default function BotRemote() {
       </div>
       <div style={styles.card}>
         <iframe
-          src="https://gs2.jesusmctwos.co.uk/?token=8d86c847460d6aef61e0d4e4e3f49ad3304076caab8ae77256bbbf0e0c9f5f6d"
+          src="https://gameserver1.jesusmctwos.co.uk/auth?token=0013d777444d8863fcb13a88659a321401925ac75d0ba35dd326ab99538edeeb"
           style={styles.iframe}
           title="Bot1 Remote"
           allow="clipboard-read; clipboard-write"
