@@ -20,6 +20,7 @@ module.exports = {
   CHECKPOINT: 'checkpoint',
   PILOT_COMPLETE: 'pilot_complete',
   PILOT_RESET: 'pilot_reset',
+  PILOT_ACTIVE: 'pilot_active',
   COMMAND_ACK: 'command_ack',
 
   // Server → Browser
