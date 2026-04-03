@@ -161,7 +161,7 @@ router.get('/me', async (req, res) => {
   let permissions = [];
   if (req.adminUser.role === 'superadmin' || req.adminUser.userId === 0) {
     permissions = ['dashboard','players','tracks','chat','playlists','tags',
-      'track_manager','overseer','scoring','competitions','auto_messages','users','idle_kick','bot_remote'];
+      'track_manager','overseer','scoring','competitions','auto_messages','users','idle_kick','bot_remote','bot2_remote'];
   } else if (req.adminUser.source === 'site') {
     permissions = req.adminUser.permissions || [];
   } else {
