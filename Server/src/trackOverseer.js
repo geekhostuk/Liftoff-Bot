@@ -139,8 +139,8 @@ async function startPlaylist(playlistId, intervalMs, startIndex = 0, shuffle = f
   await _refreshPlaylistQueue();
 
   await _applyTrack(_getPlaylistTrack(idx), 'playlist');
-  await _persistState();
   _armTimer(state.intervalMs);
+  await _persistState();
 
   console.log(`[overseer] Playlist "${playlist.name}" started at track ${idx + 1}/${tracks.length} (interval=${state.intervalMs}ms${shuffle ? ', shuffled' : ''})`);
   _broadcastState();
@@ -172,8 +172,8 @@ async function startTagMode(tagNames, intervalMs = DEFAULT_TAG_INTERVAL_MS) {
 
   await _applyTrack(picked, 'tag');
   state.intervalMs = picked.duration_ms || state.defaultIntervalMs;
-  await _persistState();
   _armTimer(state.intervalMs);
+  await _persistState();
 
   console.log(`[overseer] Tag mode started [${tagNames.join(', ')}] (interval=${state.intervalMs}ms)`);
   _broadcastState();
@@ -276,8 +276,8 @@ function skipToIndex(index) {
   state.currentIndex = index;
   const t = _getPlaylistTrack(index);
   _applyTrack(t, 'playlist').then(async () => {
-    _persistState();
     _armTimer(state.intervalMs);
+    _persistState();
     _broadcastState();
   });
 }
@@ -362,10 +362,10 @@ async function tryResume() {
       }
 
       const delay = remainingMs || saved.intervalMs;
-      _persistState();
       state.nextChangeAt = new Date(Date.now() + delay);
       await _schedulePreTimers(delay);
       _timer = setTimeout(() => _advance().then(() => _broadcastState()), delay);
+      _persistState();
 
       console.log(`[overseer] Resumed playlist "${playlist.name}" at track ${idx + 1}/${tracks.length} (next change in ${Math.round(delay / 1000)}s)`);
       _broadcastState();
@@ -472,8 +472,8 @@ async function _advance() {
     }
     const t = _getPlaylistTrack(state.currentIndex);
     await _applyTrack(t, 'playlist');
-    _persistState();
     _armTimer(state.intervalMs);
+    _persistState();
 
   } else if (state.mode === 'tag') {
     const picked = await _pickTagTrack();
@@ -485,8 +485,8 @@ async function _advance() {
     }
     await _applyTrack(picked, 'tag');
     state.intervalMs = picked.duration_ms || state.defaultIntervalMs;
-    _persistState();
     _armTimer(state.intervalMs);
+    _persistState();
   }
 }
 

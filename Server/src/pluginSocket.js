@@ -85,6 +85,16 @@ async function _firePodium() {
     second_time: fmtMs(results[1]?.best_lap_ms),
     third:       results[2]?.nick ?? '',
     third_time:  fmtMs(results[2]?.best_lap_ms),
+    '4th':       results[3]?.nick ?? '',
+    '4th_time':  fmtMs(results[3]?.best_lap_ms),
+    '5th':       results[4]?.nick ?? '',
+    '5th_time':  fmtMs(results[4]?.best_lap_ms),
+    '6th':       results[5]?.nick ?? '',
+    '6th_time':  fmtMs(results[5]?.best_lap_ms),
+    '7th':       results[6]?.nick ?? '',
+    '7th_time':  fmtMs(results[6]?.best_lap_ms),
+    '8th':       results[7]?.nick ?? '',
+    '8th_time':  fmtMs(results[7]?.best_lap_ms),
     pilots:      String(results.length),
   });
 }
@@ -364,6 +374,7 @@ async function buildTemplateVars(baseVars = {}) {
     const os = require('./trackOverseer').getState();
     enriched.playlist ??= os.playlist_name || '';
   } catch {}
+  enriched.players ??= String(state.getOnlinePlayerCount());
   try {
     const week = await db.getActiveWeek() || await db.getOrCreateCurrentWeek();
     if (week) {
