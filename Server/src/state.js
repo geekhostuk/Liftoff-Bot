@@ -24,6 +24,7 @@ const onlinePlayers = new Map();
 // so timestamp-based filtering is not reliable — a cooldown window is the only
 // option.
 let _chatCommandsAllowedFrom = 0;
+const _chatCooldownPerBot = new Map(); // botId → epoch ms
 const TRACK_CHANGE_CHAT_COOLDOWN_MS = 30_000;
 
 function _key(botId, actor) {
@@ -82,12 +83,27 @@ function getOnlinePlayerCountForBot(botId) {
 
 // ── Chat cooldown helpers ────────────────────────────────────────────────────
 
-function areChatCommandsAllowed() {
-  return Date.now() >= _chatCommandsAllowedFrom;
+function areChatCommandsAllowed(botId) {
+  const now = Date.now();
+  if (now < _chatCommandsAllowedFrom) return false;
+  if (botId) {
+    const perBot = _chatCooldownPerBot.get(botId) || 0;
+    if (now < perBot) return false;
+  }
+  return true;
 }
 
 function applyChatCooldown() {
-  _chatCommandsAllowedFrom = Date.now() + TRACK_CHANGE_CHAT_COOLDOWN_MS;
+  const until = Date.now() + TRACK_CHANGE_CHAT_COOLDOWN_MS;
+  _chatCommandsAllowedFrom = until;
+  // Also set per-bot so late-loading bots stay cooldown-protected
+  for (const [botId] of _chatCooldownPerBot) {
+    _chatCooldownPerBot.set(botId, until);
+  }
+}
+
+function applyChatCooldownForBot(botId) {
+  _chatCooldownPerBot.set(botId, Date.now() + TRACK_CHANGE_CHAT_COOLDOWN_MS);
 }
 
 module.exports = {
@@ -103,4 +119,5 @@ module.exports = {
   getOnlinePlayerCountForBot,
   areChatCommandsAllowed,
   applyChatCooldown,
+  applyChatCooldownForBot,
 };

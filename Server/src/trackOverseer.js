@@ -15,7 +15,7 @@
  */
 
 const db = require('./database');
-const { sendCommand, setCurrentTrack, fireTemplates } = require('./pluginSocket');
+const { sendCommand, sendCommandAwaitToBot, getConnectedBotIds, setCurrentTrack, fireTemplates } = require('./pluginSocket');
 const broadcast = require('./broadcast');
 
 const DEFAULT_PLAYLIST_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
@@ -487,7 +487,24 @@ async function _applyTrack(trackInfo, source) {
 
   const { env, track, race, workshop_id } = trackInfo;
 
-  sendCommand({ cmd: 'set_track', env, track, race, workshop_id: workshop_id || '' });
+  const trackCmd = { cmd: 'set_track', env, track, race, workshop_id: workshop_id || '' };
+  const dispatchTime = Date.now();
+  const botIds = getConnectedBotIds();
+
+  // Send to each bot individually with non-blocking ack tracking
+  for (const botId of botIds) {
+    console.log(`[timing] set_track -> bot="${botId}" at ${dispatchTime}`);
+    sendCommandAwaitToBot(botId, { ...trackCmd }, 60_000)
+      .then(result => {
+        const elapsed = Date.now() - dispatchTime;
+        console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status})`);
+      })
+      .catch(err => {
+        const elapsed = Date.now() - dispatchTime;
+        console.warn(`[timing] set_track FAILED for bot="${botId}" after ${elapsed}ms: ${err.message}`);
+      });
+  }
+
   setCurrentTrack({ env, track, race });
 
   broadcast.broadcastAll({ event_type: 'track_changed', env, track, race });
@@ -529,6 +546,24 @@ function _armTimer(delayMs) {
 }
 
 async function _schedulePreTimers(delayMs) {
+  // Determine what the next track will be for template variable substitution and pre-loading
+  let nextTrackInfo = { env: '?', track: '?', race: '', workshop_id: '' };
+  if (state.mode === 'playlist' && state.tracks.length > 0) {
+    const nextIdx = (state.currentIndex + 1) % state.tracks.length;
+    const t = state.tracks[nextIdx];
+    if (t) nextTrackInfo = { env: t.env, track: t.track, race: t.race, workshop_id: t.workshop_id || '' };
+  }
+
+  // Send prepare_track 60s before the change so the plugin can pre-cache assets
+  const PRELOAD_ADVANCE_MS = 60_000;
+  if (delayMs > PRELOAD_ADVANCE_MS + 5000 && nextTrackInfo.env !== '?') {
+    _preTimers.push(setTimeout(() => {
+      console.log(`[overseer] Sending prepare_track for ${nextTrackInfo.env}/${nextTrackInfo.track}`);
+      sendCommand({ cmd: 'prepare_track', env: nextTrackInfo.env, track: nextTrackInfo.track,
+                    race: nextTrackInfo.race, workshop_id: nextTrackInfo.workshop_id });
+    }, delayMs - PRELOAD_ADVANCE_MS));
+  }
+
   // Pre-change messages: track_change templates with negative delay_ms
   let preTemplates = [];
   try {
@@ -536,14 +571,6 @@ async function _schedulePreTimers(delayMs) {
   } catch { return; }
 
   if (preTemplates.length === 0) return;
-
-  // Determine what the next track will be for template variable substitution
-  let nextTrackInfo = { env: '?', track: '?', race: '' };
-  if (state.mode === 'playlist' && state.tracks.length > 0) {
-    const nextIdx = (state.currentIndex + 1) % state.tracks.length;
-    const t = state.tracks[nextIdx];
-    if (t) nextTrackInfo = { env: t.env, track: t.track, race: t.race };
-  }
 
   for (const tmpl of preTemplates) {
     const fireAt = delayMs + tmpl.delay_ms; // delayMs + negative value

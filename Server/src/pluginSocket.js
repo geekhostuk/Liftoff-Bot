@@ -123,10 +123,14 @@ function setCurrentTrack(info) {
  */
 function sendCommand(command) {
   let sent = false;
+  const isTrackChange = command.cmd === 'set_track';
   for (const [botId, ws] of pluginSockets) {
     if (ws.readyState !== 1 /* OPEN */) continue;
     if (command.cmd === 'send_chat' && command.message) {
       _trackRecentlySent(botId, command.message);
+    }
+    if (isTrackChange) {
+      console.log(`[timing] set_track SENT to bot="${botId}" at ${Date.now()}`);
     }
     ws.send(JSON.stringify(command));
     sent = true;
@@ -152,7 +156,7 @@ function sendCommandToBot(botId, command) {
  * Send a command to a specific bot and wait for acknowledgment.
  * Resolves with { status, message } on ack, rejects on timeout or error.
  */
-function sendCommandAwaitToBot(botId, command) {
+function sendCommandAwaitToBot(botId, command, timeoutMs = COMMAND_ACK_TIMEOUT_MS) {
   const ws = pluginSockets.get(botId);
   if (!ws || ws.readyState !== 1 /* OPEN */) {
     return Promise.reject(new Error(`Bot "${botId}" not connected`));
@@ -165,8 +169,8 @@ function sendCommandAwaitToBot(botId, command) {
     const pending = _getPendingCommands(botId);
     const timer = setTimeout(() => {
       pending.delete(commandId);
-      resolve({ status: 'timeout', message: 'Plugin did not acknowledge within 10 seconds' });
-    }, COMMAND_ACK_TIMEOUT_MS);
+      resolve({ status: 'timeout', message: `Plugin did not acknowledge within ${Math.round(timeoutMs / 1000)} seconds` });
+    }, timeoutMs);
 
     pending.set(commandId, { resolve, timer });
 
@@ -470,7 +474,7 @@ async function handlePluginEvent(jsonLine, botId) {
     const recentlySent = _getRecentlySent(botId);
     if (recentlySent.has(msg)) return;
     // Ignore all commands during the post-track-change cooldown window.
-    if (!state.areChatCommandsAllowed()) return;
+    if (!state.areChatCommandsAllowed(botId)) return;
     if (msg === '/info') {
       const overseer = require('./trackOverseer');
       const os = overseer.getState();
