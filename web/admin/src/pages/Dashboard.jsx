@@ -180,7 +180,7 @@ export default function Dashboard() {
   });
 
   const displayPlayers = useMemo(
-    () => players.filter((p) => !/_bot$/i.test(String(p.nick || ''))).slice(0, 16),
+    () => players.filter((p) => !/^jmt_bot$/i.test(String(p.nick || '')) && !/^jmtfpv\d+$/i.test(String(p.nick || ''))).slice(0, 16),
     [players],
   );
 
@@ -195,7 +195,7 @@ export default function Dashboard() {
         <div style={styles.card}>
           <div style={styles.cardValue}>
             <Users size={24} style={styles.cardIcon} />
-            {players.filter((p) => !/_bot$/i.test(String(p.nick || ''))).length}
+            {players.filter((p) => !/^jmt_bot$/i.test(String(p.nick || '')) && !/^jmtfpv\d+$/i.test(String(p.nick || ''))).length}
           </div>
           <div style={styles.cardLabel}>Players Online</div>
         </div>

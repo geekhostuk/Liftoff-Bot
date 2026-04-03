@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import useWebSocket from './useWebSocket';
 
-const PLAYERS_PER_LOBBY = 7; // 8 slots minus the bot host
+const PLAYERS_PER_LOBBY = 8;
 
 /**
  * Tracks the live lobby player count via WebSocket.

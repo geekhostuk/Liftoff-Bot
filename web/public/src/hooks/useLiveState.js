@@ -27,6 +27,7 @@ const initial = {
   raceResult: null,
 
   connectedBots: 1,
+  botNicks: [],
   feedEvents: [],       // [{ id, type, message, ts }]
 
   competition: null,
@@ -109,7 +110,8 @@ function reducer(state, action) {
       const raceStatus = pilots.length > 0 ? 'racing' : 'waiting';
       const playlist = e.overseer || e.playlist || state.playlist;
       const connectedBots = e.connected_bots || state.connectedBots;
-      return { ...state, currentTrack, trackSince, players, pilots, raceId, raceStatus, raceResult: null, playlist, connectedBots };
+      const botNicks = e.bot_nicks || state.botNicks;
+      return { ...state, currentTrack, trackSince, players, pilots, raceId, raceStatus, raceResult: null, playlist, connectedBots, botNicks };
     }
 
     case 'player_entered': {

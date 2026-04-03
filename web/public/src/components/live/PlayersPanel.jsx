@@ -1,10 +1,11 @@
 import { fmtMs, fmtNumber } from '../../lib/fmt';
 import './PlayersPanel.css';
 
-const PLAYERS_PER_LOBBY = 7; // 8 slots minus the bot host
+const PLAYERS_PER_LOBBY = 8;
 
-export default function PlayersPanel({ players, playerStats, connectedBots }) {
-  const visible = players.filter(p => !/_bot$/i.test(p.nick || ''));
+export default function PlayersPanel({ players, playerStats, connectedBots, botNicks }) {
+  const hiddenNicks = new Set((botNicks || []).map(n => n.toLowerCase()));
+  const visible = players.filter(p => !hiddenNicks.has((p.nick || '').toLowerCase()));
   const onlineCount = visible.filter(p => p.status !== 'leaving').length;
   const maxPlayers = PLAYERS_PER_LOBBY * Math.max(connectedBots || 1, 1);
 

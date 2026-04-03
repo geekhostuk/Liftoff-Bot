@@ -155,7 +155,7 @@ export default function Players() {
   // Filter out bot host nicks (any nick ending with _Bot), sort by botId then actor
   const displayPlayers = useMemo(() => {
     return players
-      .filter((p) => !/_bot$/i.test(String(p.nick || '')))
+      .filter((p) => !/^jmt_bot$/i.test(String(p.nick || '')) && !/^jmtfpv\d+$/i.test(String(p.nick || '')))
       .sort((a, b) => {
         const botCmp = (a.botId || 'default').localeCompare(b.botId || 'default');
         return botCmp !== 0 ? botCmp : a.actor - b.actor;
