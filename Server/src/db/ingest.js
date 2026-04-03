@@ -61,6 +61,7 @@ async function handleRaceReset(event, currentTrack = {}) {
     ]);
 
     closedRaces.push({
+      race_id: race.id,
       winner_nick: winner?.nick ?? null,
       winner_total_ms: winner?.best_ms ?? null,
     });

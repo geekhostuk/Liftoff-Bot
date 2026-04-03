@@ -541,6 +541,22 @@ async function getRacesInRange(startsAt, endsAt) {
   return rows;
 }
 
+async function getCombinedRacePodium(raceIds) {
+  if (!raceIds.length) return [];
+  const { rows } = await getPool().query(`
+    SELECT
+      nick,
+      MIN(lap_ms) AS best_lap_ms,
+      COUNT(*)    AS total_laps
+    FROM laps
+    WHERE race_id = ANY($1)
+    GROUP BY COALESCE(steam_id, pilot_guid, nick), nick
+    HAVING COUNT(*) >= 2
+    ORDER BY best_lap_ms ASC
+  `, [raceIds]);
+  return rows;
+}
+
 module.exports = {
   // Competitions
   createCompetition,
@@ -597,4 +613,6 @@ module.exports = {
   // Recalculation helpers
   clearWeekData,
   getRacesInRange,
+  // Podium
+  getCombinedRacePodium,
 };
