@@ -150,16 +150,16 @@ export default function Dashboard() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // WebSocket events
+  // WebSocket events — use bot_id + actor to avoid collisions across bots
   useWsEvent('player_entered', (data) => {
     setPlayers((prev) => {
-      if (prev.some((p) => p.actor === data.actor)) return prev;
-      return [...prev, { actor: data.actor, nick: data.nick }];
+      if (prev.some((p) => p.actor === data.actor && (p.botId || p.bot_id) === (data.botId || data.bot_id))) return prev;
+      return [...prev, { actor: data.actor, nick: data.nick, botId: data.botId || data.bot_id || 'default' }];
     });
   });
 
   useWsEvent('player_left', (data) => {
-    setPlayers((prev) => prev.filter((p) => p.actor !== data.actor));
+    setPlayers((prev) => prev.filter((p) => !(p.actor === data.actor && (p.botId || p.bot_id) === (data.botId || data.bot_id))));
   });
 
   useWsEvent('player_list', (data) => {
@@ -180,7 +180,7 @@ export default function Dashboard() {
   });
 
   const displayPlayers = useMemo(
-    () => players.filter((p) => String(p.nick || '').toLowerCase() !== 'jmt_bot').slice(0, 8),
+    () => players.filter((p) => !/^jmt_bot$/i.test(String(p.nick || '')) && !/^jmtfpv\d+$/i.test(String(p.nick || ''))).slice(0, 16),
     [players],
   );
 
@@ -195,7 +195,7 @@ export default function Dashboard() {
         <div style={styles.card}>
           <div style={styles.cardValue}>
             <Users size={24} style={styles.cardIcon} />
-            {players.filter((p) => String(p.nick || '').toLowerCase() !== 'jmt_bot').length}
+            {players.filter((p) => !/^jmt_bot$/i.test(String(p.nick || '')) && !/^jmtfpv\d+$/i.test(String(p.nick || ''))).length}
           </div>
           <div style={styles.cardLabel}>Players Online</div>
         </div>
@@ -236,16 +236,19 @@ export default function Dashboard() {
           {displayPlayers.length === 0 ? (
             <div style={styles.empty}>No players online</div>
           ) : (
-            displayPlayers.map((p) => (
-              <div key={p.actor} style={styles.miniRow}>
-                <span style={styles.nick}>{p.nick}</span>
-                <span style={styles.idle}>
-                  {idleTimes[p.actor] != null
-                    ? fmtIdleTime(idleTimes[p.actor])
-                    : '--'}
-                </span>
-              </div>
-            ))
+            displayPlayers.map((p) => {
+              const idleKey = `${p.botId || 'default'}:${p.actor}`;
+              return (
+                <div key={idleKey} style={styles.miniRow}>
+                  <span style={styles.nick}>{p.nick}</span>
+                  <span style={styles.idle}>
+                    {idleTimes[idleKey] != null
+                      ? fmtIdleTime(idleTimes[idleKey])
+                      : '--'}
+                  </span>
+                </div>
+              );
+            })
           )}
         </div>
 

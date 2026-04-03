@@ -16,4 +16,5 @@ module.exports = {
   ...require('./adminPermissions'),
   ...require('./profileStats'),
   ...require('./customRoles'),
+  ...require('./bots'),
 };

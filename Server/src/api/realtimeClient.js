@@ -207,10 +207,28 @@ async function getState() {
   return get('/internal/state');
 }
 
+// ── Bot management ─────────────────────────────────────────────────────────
+
+async function getBots() {
+  return get('/internal/bots');
+}
+
+async function addBot(id, apiKey, label, botNick) {
+  return post('/internal/bots', { id, api_key: apiKey, label, bot_nick: botNick });
+}
+
+async function removeBot(id) {
+  return del(`/internal/bots/${id}`);
+}
+
 module.exports = {
   sendCommand,
   sendCommandAwait,
   getPluginStatus,
+  // Bots
+  getBots,
+  addBot,
+  removeBot,
   setTrack,
   // Overseer
   getOverseerState,

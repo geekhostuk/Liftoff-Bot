@@ -9,10 +9,10 @@ function getProcessRaceClose() {
 
 async function handleSessionStarted(event) {
   await getPool().query(`
-    INSERT INTO sessions (id, started_at, plugin_ver)
-    VALUES ($1, $2, $3)
+    INSERT INTO sessions (id, started_at, plugin_ver, bot_id)
+    VALUES ($1, $2, $3, $4)
     ON CONFLICT (id) DO NOTHING
-  `, [event.session_id, event.timestamp_utc, event.version || null]);
+  `, [event.session_id, event.timestamp_utc, event.version || null, event.bot_id || 'default']);
 }
 
 async function handleRaceReset(event, currentTrack = {}) {
@@ -173,10 +173,10 @@ async function handleTrackCatalog(event) {
 async function ensureRaceExists(event) {
   const pool = getPool();
   await pool.query(`
-    INSERT INTO sessions (id, started_at, plugin_ver)
-    VALUES ($1, $2, $3)
+    INSERT INTO sessions (id, started_at, plugin_ver, bot_id)
+    VALUES ($1, $2, $3, $4)
     ON CONFLICT (id) DO NOTHING
-  `, [event.session_id, event.timestamp_utc, event.version || null]);
+  `, [event.session_id, event.timestamp_utc, event.version || null, event.bot_id || 'default']);
 
   await pool.query(`
     INSERT INTO races (id, session_id, ordinal, started_at)

@@ -14,7 +14,12 @@ require('dotenv').config();
 const http = require('http');
 const express = require('express');
 const { initDatabase } = require('../database');
-const { createPluginSocketServer, sendCommand, sendCommandAwait, getPluginSocket, setCurrentTrack, fireTemplates, buildTemplateVars } = require('../pluginSocket');
+const {
+  createPluginSocketServer, sendCommand, sendCommandToBot,
+  sendCommandAwait, sendCommandAwaitToBot,
+  getConnectedBotIds, getConnectedBotCount, refreshBotRegistry,
+  setCurrentTrack, fireTemplates, buildTemplateVars,
+} = require('../pluginSocket');
 const { createLiveSocketServer } = require('../liveSocket');
 const broadcast = require('../broadcast');
 const state = require('../state');
@@ -105,13 +110,34 @@ async function main() {
 
   // ── Plugin commands ───────────────────────────────────────────────────────
   internal.post('/internal/command', (req, res) => {
-    const sent = sendCommand(req.body);
+    const { bot_id, ...command } = req.body;
+    const sent = bot_id
+      ? sendCommandToBot(bot_id, command)
+      : sendCommand(req.body);
     res.json({ ok: sent });
   });
 
   internal.post('/internal/command-await', async (req, res) => {
     try {
-      const ack = await sendCommandAwait(req.body);
+      const { bot_id, ...command } = req.body;
+      let ack;
+      if (bot_id) {
+        ack = await sendCommandAwaitToBot(bot_id, command);
+      } else {
+        // Auto-resolve: if the command targets an actor, find which bot they're on
+        const actor = command.actor;
+        if (actor != null) {
+          const players = state.getOnlinePlayers();
+          const match = players.find(p => p.actor === actor);
+          if (match && match.botId) {
+            ack = await sendCommandAwaitToBot(match.botId, command);
+          } else {
+            ack = await sendCommandAwait(command);
+          }
+        } else {
+          ack = await sendCommandAwait(command);
+        }
+      }
       res.json(ack);
     } catch (err) {
       res.status(503).json({ error: err.message });
@@ -119,8 +145,35 @@ async function main() {
   });
 
   internal.get('/internal/plugin-status', (req, res) => {
-    const socket = getPluginSocket();
-    res.json({ plugin_connected: socket !== null && socket.readyState === 1 });
+    const botIds = getConnectedBotIds();
+    const bots = {};
+    for (const id of botIds) bots[id] = { connected: true };
+    res.json({ plugin_connected: botIds.length > 0, bots });
+  });
+
+  // ── Bot management ───────────────────────────────────────────────────────
+  internal.get('/internal/bots', async (req, res) => {
+    const bots = await db.getAllBots();
+    const connected = new Set(getConnectedBotIds());
+    res.json(bots.map(b => ({ ...b, connected: connected.has(b.id) })));
+  });
+
+  internal.post('/internal/bots', async (req, res) => {
+    const { id, api_key, label, bot_nick } = req.body;
+    if (!id || !api_key) return res.status(400).json({ error: 'id and api_key are required' });
+    try {
+      await db.addBot(id, api_key, label, bot_nick);
+      await refreshBotRegistry();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.delete('/internal/bots/:id', async (req, res) => {
+    const removed = await db.removeBot(req.params.id);
+    if (removed) await refreshBotRegistry();
+    res.json({ ok: removed });
   });
 
   // ── Track ─────────────────────────────────────────────────────────────────

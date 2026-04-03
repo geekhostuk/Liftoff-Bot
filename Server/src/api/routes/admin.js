@@ -1017,4 +1017,26 @@ router.delete('/track-manager/:id/user-tags/:label', requirePermission('track_ma
   res.json({ ok: true });
 });
 
+// ── Bot management ─────────────────────────────────────────────────────────
+
+router.get('/bots', requirePermission('tracks'), async (req, res) => {
+  res.json(await rt.getBots());
+});
+
+router.post('/bots', requirePermission('tracks'), strictLimiter, async (req, res) => {
+  const { id, api_key, label, bot_nick } = req.body;
+  if (!id || !api_key) return res.status(400).json({ error: 'id and api_key are required' });
+  try {
+    const result = await rt.addBot(id, api_key, label, bot_nick);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/bots/:id', requirePermission('tracks'), strictLimiter, async (req, res) => {
+  const result = await rt.removeBot(req.params.id);
+  res.json(result);
+});
+
 module.exports = router;

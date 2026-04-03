@@ -1,20 +1,20 @@
 import { fmtMs, fmtNumber } from '../../lib/fmt';
 import './PlayersPanel.css';
 
-const MAX_PLAYERS = 8;
+const PLAYERS_PER_LOBBY = 8;
 
-const HIDDEN_NICKS = ['jmt_bot'];
-
-export default function PlayersPanel({ players, playerStats }) {
-  const visible = players.filter(p => !HIDDEN_NICKS.includes(p.nick.toLowerCase()));
+export default function PlayersPanel({ players, playerStats, connectedBots, botNicks }) {
+  const hiddenNicks = new Set((botNicks || []).map(n => n.toLowerCase()));
+  const visible = players.filter(p => !hiddenNicks.has((p.nick || '').toLowerCase()));
   const onlineCount = visible.filter(p => p.status !== 'leaving').length;
+  const maxPlayers = PLAYERS_PER_LOBBY * Math.max(connectedBots || 1, 1);
 
   return (
     <div className="players-panel card">
       <div className="players-panel-header">
         <h3 className="players-panel-title">Players Online</h3>
-        <span className={`players-panel-count ${onlineCount >= MAX_PLAYERS ? 'full' : ''}`}>
-          {onlineCount}/{MAX_PLAYERS}
+        <span className={`players-panel-count ${onlineCount >= maxPlayers ? 'full' : ''}`}>
+          {onlineCount}/{maxPlayers}
         </span>
       </div>
 
@@ -26,7 +26,7 @@ export default function PlayersPanel({ players, playerStats }) {
             const stats = playerStats?.[p.nick];
             return (
               <div
-                key={p.actor}
+                key={`${p.botId || 'default'}:${p.actor}`}
                 className={`player-row ${p.status === 'joining' ? 'player-joining' : ''} ${p.status === 'leaving' ? 'player-leaving' : ''}`}
               >
                 <div className="player-row-main">

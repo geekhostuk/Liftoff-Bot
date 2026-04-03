@@ -2,10 +2,14 @@
  * Idle-kick module.
  *
  * Automatically warns and kicks pilots who have been inactive for too long.
- * Activity is tracked per Photon actor number; any gameplay event (lap, checkpoint,
- * chat message, etc.) resets the timer.
+ * Activity is tracked per "botId:actor" composite key; any gameplay event
+ * (lap, checkpoint, chat message, etc.) resets the timer.
  *
- * JMT-Bot (the host) and whitelisted nicks are always immune.
+ * Each bot's host nick (loaded from the bots table) and whitelisted nicks
+ * are always immune.
+ *
+ * Idle kick only activates when ALL connected bots have full lobbies —
+ * if any server has a free slot, there's no need to kick.
  *
  * Dependencies are injected via init() so this module stays decoupled
  * from the WebSocket transport layer.
@@ -21,11 +25,19 @@ const UNREG_WARN_BEFORE_KICK_MS = 10 * 1000; // 10 second grace after warning (u
 const CHECK_INTERVAL_MS = 30 * 1000;          // sweep every 30 seconds
 const NICK_REFRESH_MS = 60 * 1000;            // refresh registered nicks every 60 seconds
 const MAX_LOBBY_SIZE = 8;                     // 7 players + bot — lobby is full at this count
-const BOT_NICK = 'JMT_Bot';
 
-// actor → epoch ms of last activity
+function _key(botId, actor) {
+  return `${botId}:${actor}`;
+}
+
+function _parseKey(compositeKey) {
+  const idx = compositeKey.indexOf(':');
+  return { botId: compositeKey.slice(0, idx), actor: Number(compositeKey.slice(idx + 1)) };
+}
+
+// "botId:actor" → epoch ms of last activity
 const _lastActivity = new Map();
-// actors that have already been warned (prevents repeat warnings each sweep)
+// composite keys that have already been warned (prevents repeat warnings each sweep)
 const _warned = new Set();
 // lowercased nicks immune to idle kick
 const _whitelist = new Set();
@@ -34,18 +46,21 @@ const _verifiedNicks = new Set();
 
 let _checkInterval = null;
 let _nickRefreshInterval = null;
-let _sendCommand = null;
-let _sendCommandAwait = null;
-let _unregKickEnabled = true; // toggle for aggressive unregistered kick
+let _sendCommand = null;       // broadcast to all bots
+let _sendCommandAwait = null;  // await ack from a bot
+let _sendCommandToBot = null;  // send to a specific bot
+let _unregKickEnabled = true;  // toggle for aggressive unregistered kick
 
 /**
  * Initialise the module.
- * @param {Function} sendCommandFn      fire-and-forget command sender
- * @param {Function} sendCommandAwaitFn command sender that returns a Promise
+ * @param {Function} sendCommandFn        broadcast command sender
+ * @param {Function} sendCommandAwaitFn   command sender that returns a Promise
+ * @param {Function} sendCommandToBotFn   targeted command sender (botId, cmd)
  */
-async function init(sendCommandFn, sendCommandAwaitFn) {
+async function init(sendCommandFn, sendCommandAwaitFn, sendCommandToBotFn) {
   _sendCommand = sendCommandFn;
   _sendCommandAwait = sendCommandAwaitFn;
+  _sendCommandToBot = sendCommandToBotFn || null;
 
   // Load whitelist from database
   try {
@@ -93,37 +108,41 @@ async function refreshRegisteredNicks() {
 
 // ── Activity tracking ────────────────────────────────────────────────────────
 
-function recordActivity(actor) {
-  _lastActivity.set(actor, Date.now());
-  _warned.delete(actor);
+function recordActivity(actor, botId = 'default') {
+  const k = _key(botId, actor);
+  _lastActivity.set(k, Date.now());
+  _warned.delete(k);
 }
 
-function handlePlayerEntered(actor) {
-  recordActivity(actor);
+function handlePlayerEntered(actor, botId = 'default') {
+  recordActivity(actor, botId);
 }
 
-function handlePlayerLeft(actor) {
-  _lastActivity.delete(actor);
-  _warned.delete(actor);
+function handlePlayerLeft(actor, botId = 'default') {
+  const k = _key(botId, actor);
+  _lastActivity.delete(k);
+  _warned.delete(k);
 }
 
 /**
- * Sync with a full player_list event.
- * Removes stale entries and adds fresh timestamps for new actors.
+ * Sync with a full player_list event for a specific bot.
+ * Removes stale entries for that bot and adds fresh timestamps for new actors.
  */
-function handlePlayerListSync(actors) {
+function handlePlayerListSync(actors, botId = 'default') {
   const actorSet = new Set(actors);
-  // Remove actors no longer present
-  for (const actor of _lastActivity.keys()) {
-    if (!actorSet.has(actor)) {
-      _lastActivity.delete(actor);
-      _warned.delete(actor);
+  // Remove actors for this bot that are no longer present
+  for (const compositeKey of _lastActivity.keys()) {
+    const parsed = _parseKey(compositeKey);
+    if (parsed.botId === botId && !actorSet.has(parsed.actor)) {
+      _lastActivity.delete(compositeKey);
+      _warned.delete(compositeKey);
     }
   }
   // Add new actors with a fresh timestamp
   for (const actor of actors) {
-    if (!_lastActivity.has(actor)) {
-      _lastActivity.set(actor, Date.now());
+    const k = _key(botId, actor);
+    if (!_lastActivity.has(k)) {
+      _lastActivity.set(k, Date.now());
     }
   }
 }
@@ -134,8 +153,8 @@ function handlePlayerListSync(actors) {
  */
 function resetAllTimers() {
   const now = Date.now();
-  for (const actor of _lastActivity.keys()) {
-    _lastActivity.set(actor, now);
+  for (const k of _lastActivity.keys()) {
+    _lastActivity.set(k, now);
   }
   _warned.clear();
 }
@@ -163,21 +182,24 @@ async function removeFromWhitelist(nick) {
 /**
  * Returns idle info for all tracked players.
  * Used by the admin API to display idle times in the dashboard.
- * Returns: { idleTimes: { actor: ms, ... }, warned: [actor, ...], whitelist: [nick, ...] }
  */
 function getIdleInfo() {
   const now = Date.now();
   const onlinePlayers = state.getOnlinePlayers();
-  const playerByActor = new Map();
-  for (const p of onlinePlayers) playerByActor.set(p.actor, p);
+
+  // Build a lookup by composite key "botId:actor"
+  const playerByKey = new Map();
+  for (const p of onlinePlayers) {
+    playerByKey.set(_key(p.botId || 'default', p.actor), p);
+  }
 
   const idleTimes = {};
   const registrationStatus = {};
-  for (const [actor, lastTs] of _lastActivity) {
-    idleTimes[actor] = now - lastTs;
-    const player = playerByActor.get(actor);
+  for (const [compositeKey, lastTs] of _lastActivity) {
+    idleTimes[compositeKey] = now - lastTs;
+    const player = playerByKey.get(compositeKey);
     if (player) {
-      registrationStatus[actor] = _verifiedNicks.has((player.nick || '').toLowerCase());
+      registrationStatus[compositeKey] = _verifiedNicks.has((player.nick || '').toLowerCase());
     }
   }
   return {
@@ -197,33 +219,43 @@ function _runIdleCheck() {
   if (!getOverseerState().running) return;
   if (!_sendCommand) return;
 
+  // Lazy-load to avoid circular dependency at module level
+  const { getConnectedBotIds, getBotNick } = require('./pluginSocket');
+  const connectedBotIds = getConnectedBotIds();
+  if (connectedBotIds.length === 0) return;
+
+  // Only kick when ALL connected bots have full lobbies.
+  // If any server has a free slot, players can join there instead.
+  for (const botId of connectedBotIds) {
+    if (state.getOnlinePlayerCountForBot(botId) < MAX_LOBBY_SIZE) return;
+  }
+
+  // Build composite key → player lookup
   const onlinePlayers = state.getOnlinePlayers();
-
-  // Only kick when the lobby is full
-  if (onlinePlayers.length < MAX_LOBBY_SIZE) return;
-
-  // Build actor → player lookup
-  const playerByActor = new Map();
+  const playerByKey = new Map();
   for (const p of onlinePlayers) {
-    playerByActor.set(p.actor, p);
+    playerByKey.set(_key(p.botId || 'default', p.actor), p);
   }
 
   const now = Date.now();
+  const sendToBot = _sendCommandToBot || _sendCommand;
 
-  for (const [actor, lastTs] of _lastActivity) {
-    const player = playerByActor.get(actor);
+  for (const [compositeKey, lastTs] of _lastActivity) {
+    const player = playerByKey.get(compositeKey);
 
     // Player no longer online — clean up
     if (!player) {
-      _lastActivity.delete(actor);
-      _warned.delete(actor);
+      _lastActivity.delete(compositeKey);
+      _warned.delete(compositeKey);
       continue;
     }
 
+    const { botId, actor } = _parseKey(compositeKey);
     const nick = player.nick || '';
 
-    // Bot is always immune
-    if (nick.toLowerCase() === BOT_NICK.toLowerCase()) continue;
+    // Bot host nick is always immune (per-bot)
+    const botNick = getBotNick(botId);
+    if (nick.toLowerCase() === botNick.toLowerCase()) continue;
 
     // Whitelisted players are immune
     if (_whitelist.has(nick.toLowerCase())) continue;
@@ -235,33 +267,39 @@ function _runIdleCheck() {
     const idleMs = now - lastTs;
 
     // Phase 2: kick (warned and grace period expired)
-    if (idleMs >= idleTimeout + graceTimeout && _warned.has(actor)) {
+    if (idleMs >= idleTimeout + graceTimeout && _warned.has(compositeKey)) {
+      // Broadcast kick announcement to all lobbies
       _sendCommand({
         cmd: 'send_chat',
-        message: `<color=#FF0000>KICKED</color> <color=#FFFF00>${nick} was removed for being idle (lobby full).</color>`,
+        message: `<color=#FF0000>KICKED</color> <color=#FFFF00>${nick} was removed for being idle (all lobbies full).</color>`,
       });
-      _sendCommandAwait({ cmd: 'kick_player', actor }).catch(() => {});
-      _lastActivity.delete(actor);
-      _warned.delete(actor);
+      // Send kick command to the specific bot this player is on
+      if (_sendCommandToBot) {
+        _sendCommandToBot(botId, { cmd: 'kick_player', actor });
+      } else {
+        _sendCommandAwait({ cmd: 'kick_player', actor }).catch(() => {});
+      }
+      _lastActivity.delete(compositeKey);
+      _warned.delete(compositeKey);
       continue;
     }
 
     // Phase 1: warn (idle threshold reached, not yet warned)
-    if (idleMs >= idleTimeout && !_warned.has(actor)) {
+    if (idleMs >= idleTimeout && !_warned.has(compositeKey)) {
       if (!useUnregTimers) {
-        _sendCommand({
+        sendToBot(botId, {
           cmd: 'send_chat',
-          message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, lobby is full! You will be kicked for being idle in 1 minute.</color>`,
+          message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, all lobbies are full! You will be kicked for being idle in 1 minute.</color>`,
         });
       } else {
         const siteUrl = process.env.SITE_URL || '';
         const regHint = siteUrl ? ` Register at ${siteUrl} for longer idle time.` : '';
-        _sendCommand({
+        sendToBot(botId, {
           cmd: 'send_chat',
           message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, you will be kicked in 10 seconds!${regHint}</color>`,
         });
       }
-      _warned.add(actor);
+      _warned.add(compositeKey);
     }
   }
 }
@@ -293,6 +331,7 @@ function destroy() {
   _verifiedNicks.clear();
   _sendCommand = null;
   _sendCommandAwait = null;
+  _sendCommandToBot = null;
 }
 
 function isNickVerified(nick) {

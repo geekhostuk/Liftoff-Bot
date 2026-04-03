@@ -1,19 +1,21 @@
 import { useState, useCallback } from 'react';
 import useWebSocket from './useWebSocket';
 
-const LOBBY_MAX = 8;
+const PLAYERS_PER_LOBBY = 8;
 
 /**
  * Tracks the live lobby player count via WebSocket.
- * Returns { count, max, connected } where count includes the bot.
+ * Returns { count, max, connected } where max scales with connected bots.
  */
 export default function useLobbyCount() {
   const [count, setCount] = useState(0);
+  const [botCount, setBotCount] = useState(1);
 
   const { connected } = useWebSocket(useCallback((event) => {
     switch (event.event_type) {
       case 'state_snapshot':
         setCount(event.online_players ? event.online_players.length : 0);
+        if (event.connected_bots) setBotCount(event.connected_bots);
         break;
       case 'player_list':
         setCount(event.players ? event.players.length : 0);
@@ -27,5 +29,5 @@ export default function useLobbyCount() {
     }
   }, []));
 
-  return { count, max: LOBBY_MAX, connected };
+  return { count, max: PLAYERS_PER_LOBBY * Math.max(botCount, 1), connected };
 }

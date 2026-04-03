@@ -20,21 +20,84 @@ const IDLE_KICK_IGNORE = new Set([
 
 /**
  * Creates the /ws/plugin WebSocket server.
- * The plugin connects here to send events and receive commands.
- *
- * Only one plugin connection is expected at a time.
- * A reference to it is kept so admin routes can push commands.
+ * Multiple plugin connections are supported — one per bot.
+ * Each bot is identified by its API key (mapped to a botId via the bots table).
  */
 
-let pluginSocket = null;
-let _lobbyWasFull = false;
+// botId → WebSocket
+const pluginSockets = new Map();
 
-// Messages recently sent by the server — used to suppress echo-back from the plugin.
-// The plugin hooks GenerateUserMessage which fires for every message rendered in chat,
-// including ones the server submitted, so they arrive back as chat_message events.
-const _recentlySent = new Map(); // message (lowercase) → clearTimeout handle
+// botId → Map(message → clearTimeout handle)  — echo suppression per bot
+const _recentlySentPerBot = new Map();
 
-function getPluginSocket() { return pluginSocket; }
+// botId → Map(commandId → { resolve, timer })  — pending acks per bot
+const _pendingCommandsPerBot = new Map();
+
+// botId → bool — lobby-full tracking per bot
+const _lobbyWasFullPerBot = new Map();
+
+// botId → nick string — in-game bot nickname (for idle-kick immunity)
+const _botNicks = new Map();
+
+// apiKey → { botId, botNick } — loaded from DB at startup
+let _apiKeyMap = new Map();
+
+let _commandCounter = 0;
+const COMMAND_ACK_TIMEOUT_MS = 10_000;
+
+function getConnectedBotIds() { return [...pluginSockets.keys()]; }
+function getConnectedBotCount() { return pluginSockets.size; }
+function getBotNick(botId) { return _botNicks.get(botId) || 'JMT_Bot'; }
+
+/**
+ * Load bot registry from database into memory.
+ * Called at startup and when bots are added/removed.
+ */
+async function refreshBotRegistry() {
+  try {
+    const bots = await db.getAllBots();
+    _apiKeyMap = new Map();
+    _botNicks.clear();
+    for (const bot of bots) {
+      _apiKeyMap.set(bot.api_key || '', { botId: bot.id, botNick: bot.bot_nick || 'JMT_Bot' });
+      _botNicks.set(bot.id, bot.bot_nick || 'JMT_Bot');
+    }
+  } catch (err) {
+    console.error('[plugin-ws] Failed to load bot registry:', err.message);
+  }
+}
+
+/**
+ * Resolve an API key to a botId.
+ * Checks the DB-loaded registry first, then falls back to the PLUGIN_API_KEY env var.
+ */
+function _resolveBotId(token) {
+  const entry = _apiKeyMap.get(token);
+  if (entry) return entry.botId;
+  // Fallback: legacy single-key env var
+  if (PLUGIN_API_KEY && token === PLUGIN_API_KEY) return 'default';
+  return null;
+}
+
+function _getRecentlySent(botId) {
+  let map = _recentlySentPerBot.get(botId);
+  if (!map) { map = new Map(); _recentlySentPerBot.set(botId, map); }
+  return map;
+}
+
+function _getPendingCommands(botId) {
+  let map = _pendingCommandsPerBot.get(botId);
+  if (!map) { map = new Map(); _pendingCommandsPerBot.set(botId, map); }
+  return map;
+}
+
+function _trackRecentlySent(botId, message) {
+  const recentlySent = _getRecentlySent(botId);
+  const key = message.toLowerCase().trim();
+  const existing = recentlySent.get(key);
+  if (existing) clearTimeout(existing);
+  recentlySent.set(key, setTimeout(() => recentlySent.delete(key), 10_000));
+}
 
 function setCurrentTrack(info) {
   state.setCurrentTrack(info);
@@ -52,75 +115,104 @@ function setCurrentTrack(info) {
   }
 }
 
-// Pending command acknowledgments: command_id → { resolve, reject, timer }
-const _pendingCommands = new Map();
-let _commandCounter = 0;
-const COMMAND_ACK_TIMEOUT_MS = 10_000;
+// ── Command sending ─────────────────────────────────────────────────────────
 
 /**
- * Send a command object to the connected plugin.
- * Returns true if sent, false if no plugin is connected.
+ * Broadcast a command to ALL connected bots.
+ * Returns true if sent to at least one bot.
  */
 function sendCommand(command) {
-  if (!pluginSocket || pluginSocket.readyState !== 1 /* OPEN */) {
-    return false;
+  let sent = false;
+  const isTrackChange = command.cmd === 'set_track';
+  for (const [botId, ws] of pluginSockets) {
+    if (ws.readyState !== 1 /* OPEN */) continue;
+    if (command.cmd === 'send_chat' && command.message) {
+      _trackRecentlySent(botId, command.message);
+    }
+    if (isTrackChange) {
+      console.log(`[timing] set_track SENT to bot="${botId}" at ${Date.now()}`);
+    }
+    ws.send(JSON.stringify(command));
+    sent = true;
   }
+  return sent;
+}
+
+/**
+ * Send a command to a specific bot.
+ * Returns true if sent, false if that bot is not connected.
+ */
+function sendCommandToBot(botId, command) {
+  const ws = pluginSockets.get(botId);
+  if (!ws || ws.readyState !== 1 /* OPEN */) return false;
   if (command.cmd === 'send_chat' && command.message) {
-    const key = command.message.toLowerCase().trim();
-    const existing = _recentlySent.get(key);
-    if (existing) clearTimeout(existing);
-    _recentlySent.set(key, setTimeout(() => _recentlySent.delete(key), 10_000));
+    _trackRecentlySent(botId, command.message);
   }
-  pluginSocket.send(JSON.stringify(command));
+  ws.send(JSON.stringify(command));
   return true;
 }
 
 /**
- * Send a command and return a Promise that resolves when the plugin acks.
+ * Send a command to a specific bot and wait for acknowledgment.
  * Resolves with { status, message } on ack, rejects on timeout or error.
  */
-function sendCommandAwait(command) {
-  if (!pluginSocket || pluginSocket.readyState !== 1 /* OPEN */) {
-    return Promise.reject(new Error('Plugin not connected'));
+function sendCommandAwaitToBot(botId, command, timeoutMs = COMMAND_ACK_TIMEOUT_MS) {
+  const ws = pluginSockets.get(botId);
+  if (!ws || ws.readyState !== 1 /* OPEN */) {
+    return Promise.reject(new Error(`Bot "${botId}" not connected`));
   }
 
   const commandId = `cmd-${++_commandCounter}-${Date.now()}`;
   command.command_id = commandId;
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
+    const pending = _getPendingCommands(botId);
     const timer = setTimeout(() => {
-      _pendingCommands.delete(commandId);
-      resolve({ status: 'timeout', message: 'Plugin did not acknowledge within 10 seconds' });
-    }, COMMAND_ACK_TIMEOUT_MS);
+      pending.delete(commandId);
+      resolve({ status: 'timeout', message: `Plugin did not acknowledge within ${Math.round(timeoutMs / 1000)} seconds` });
+    }, timeoutMs);
 
-    _pendingCommands.set(commandId, { resolve, timer });
+    pending.set(commandId, { resolve, timer });
 
     if (command.cmd === 'send_chat' && command.message) {
-      const key = command.message.toLowerCase().trim();
-      const existing = _recentlySent.get(key);
-      if (existing) clearTimeout(existing);
-      _recentlySent.set(key, setTimeout(() => _recentlySent.delete(key), 10_000));
+      _trackRecentlySent(botId, command.message);
     }
-    pluginSocket.send(JSON.stringify(command));
+    ws.send(JSON.stringify(command));
   });
 }
 
-function handleCommandAck(event) {
-  const commandId = event.command_id;
-  if (!commandId) return;
-  const pending = _pendingCommands.get(commandId);
-  if (!pending) return;
-  clearTimeout(pending.timer);
-  _pendingCommands.delete(commandId);
-  pending.resolve({ status: event.status || 'ok', message: event.message || '' });
+/**
+ * Backward-compat wrapper: await ack from any single connected bot.
+ * If bot_id is in the command, targets that bot; otherwise picks the first connected.
+ */
+function sendCommandAwait(command) {
+  const botId = command.bot_id || getConnectedBotIds()[0];
+  if (!botId) return Promise.reject(new Error('No bots connected'));
+  return sendCommandAwaitToBot(botId, command);
 }
 
+function handleCommandAck(event, botId) {
+  const commandId = event.command_id;
+  if (!commandId) return;
+  const pending = _getPendingCommands(botId);
+  const entry = pending.get(commandId);
+  if (!entry) return;
+  clearTimeout(entry.timer);
+  pending.delete(commandId);
+  entry.resolve({ status: event.status || 'ok', message: event.message || '' });
+}
+
+// ── Server setup ────────────────────────────────────────────────────────────
+
 async function createPluginSocketServer(httpServer) {
-  // Initialise the vote modules with access to sendCommand
+  // Load bot registry from DB
+  await refreshBotRegistry();
+
+  // Initialise the vote modules with access to sendCommand (broadcasts)
   skipVote.init(sendCommand);
   extendVote.init(sendCommand);
   tagVote.init(sendCommand);
-  await idleKick.init(sendCommand, sendCommandAwait);
+  await idleKick.init(sendCommand, sendCommandAwait, sendCommandToBot);
 
   // Cancel any active votes when the overseer stops so orphaned votes
   // don't cause "No runner is running" on the next attempt.
@@ -140,13 +232,15 @@ async function createPluginSocketServer(httpServer) {
       const authHeader = req.headers['authorization'] || '';
       const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
 
-      if (!PLUGIN_API_KEY || token !== PLUGIN_API_KEY) {
+      const botId = _resolveBotId(token);
+      if (!botId) {
         console.warn('[plugin-ws] Rejected connection: invalid API key');
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
 
+      req._botId = botId;
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit('connection', ws, req);
       });
@@ -154,13 +248,18 @@ async function createPluginSocketServer(httpServer) {
   });
 
   wss.on('connection', (ws, req) => {
-    if (pluginSocket) {
-      console.warn('[plugin-ws] Replacing existing plugin connection');
-      pluginSocket.close(1000, 'Replaced by new connection');
+    const botId = req._botId;
+
+    // Replace existing socket for the same bot (reconnect)
+    const existing = pluginSockets.get(botId);
+    if (existing) {
+      console.warn(`[plugin-ws] Replacing existing connection for bot "${botId}"`);
+      existing.close(1000, 'Replaced by new connection');
     }
 
-    pluginSocket = ws;
-    console.log('[plugin-ws] Plugin connected from', req.socket.remoteAddress);
+    pluginSockets.set(botId, ws);
+    ws._botId = botId;
+    console.log(`[plugin-ws] Bot "${botId}" connected from ${req.socket.remoteAddress}`);
 
     ws.on('message', (raw) => {
       const text = raw.toString('utf8').trim();
@@ -170,24 +269,25 @@ async function createPluginSocketServer(httpServer) {
       for (const line of text.split('\n')) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        handlePluginEvent(trimmed);
+        handlePluginEvent(trimmed, botId);
       }
     });
 
     ws.on('close', () => {
-      console.log('[plugin-ws] Plugin disconnected');
-      if (pluginSocket === ws) {
-        pluginSocket = null;
-        state.clearOnlinePlayers();
+      console.log(`[plugin-ws] Bot "${botId}" disconnected`);
+      if (pluginSockets.get(botId) === ws) {
+        pluginSockets.delete(botId);
+        state.clearOnlinePlayersForBot(botId);
+        _lobbyWasFullPerBot.delete(botId);
       }
     });
 
     ws.on('error', (err) => {
-      console.error('[plugin-ws] Plugin socket error:', err.message);
+      console.error(`[plugin-ws] Bot "${botId}" socket error:`, err.message);
     });
   });
 
-  return { wss, sendCommand, getPluginSocket };
+  return { wss, sendCommand, sendCommandToBot, sendCommandAwait, sendCommandAwaitToBot, getConnectedBotIds, getConnectedBotCount, refreshBotRegistry };
 }
 
 // ── Chat template auto-trigger ─────────────────────────────────────────────
@@ -226,7 +326,13 @@ async function buildTemplateVars(baseVars = {}) {
   return enriched;
 }
 
-async function fireTemplates(trigger, vars = {}) {
+/**
+ * Fire chat templates for a trigger event.
+ * @param {string} trigger - template trigger name
+ * @param {object} vars - template variables
+ * @param {string|null} botId - if provided, send only to that bot; otherwise broadcast
+ */
+async function fireTemplates(trigger, vars = {}, botId = null) {
   let templates;
   try {
     templates = await db.getChatTemplatesByTrigger(trigger);
@@ -248,8 +354,11 @@ async function fireTemplates(trigger, vars = {}) {
       console.warn(`[templates] Template id=${tmpl.id} for "${trigger}" resolved to empty — skipped`);
       continue;
     }
+    const sendFn = botId
+      ? () => sendCommandToBot(botId, { cmd: 'send_chat', message })
+      : () => sendCommand({ cmd: 'send_chat', message });
     const send = () => {
-      if (!sendCommand({ cmd: 'send_chat', message })) {
+      if (!sendFn()) {
         console.warn(`[templates] Plugin not connected — could not send "${trigger}" template id=${tmpl.id}`);
       }
     };
@@ -291,7 +400,7 @@ function stripSensitiveFields(jsonLine, event) {
   return JSON.stringify(cleaned);
 }
 
-async function handlePluginEvent(jsonLine) {
+async function handlePluginEvent(jsonLine, botId) {
   let event;
   try {
     event = JSON.parse(jsonLine);
@@ -299,6 +408,9 @@ async function handlePluginEvent(jsonLine) {
     console.warn('[plugin-ws] Received non-JSON line:', jsonLine.slice(0, 120));
     return;
   }
+
+  // Inject bot_id so downstream handlers and broadcast consumers know the source
+  event.bot_id = botId;
 
   const eventType = event.event_type;
   validateEvent(event);
@@ -316,18 +428,18 @@ async function handlePluginEvent(jsonLine) {
         require('./trackOverseer').setCatalogCache(event);
         break;
       case E.PLAYER_ENTERED:
-        state.setOnlinePlayer(event.actor, { actor: event.actor, nick: event.nick, user_id: event.user_id || null });
+        state.setOnlinePlayer(event.actor, { actor: event.actor, nick: event.nick, user_id: event.user_id || null, botId });
         break;
       case E.PLAYER_LEFT:
-        state.removeOnlinePlayer(event.actor);
-        if (_lobbyWasFull && state.getOnlinePlayerCount() < idleKick.MAX_LOBBY_SIZE) {
-          _lobbyWasFull = false;
+        state.removeOnlinePlayer(event.actor, botId);
+        if (_lobbyWasFullPerBot.get(botId) && state.getOnlinePlayerCountForBot(botId) < idleKick.MAX_LOBBY_SIZE) {
+          _lobbyWasFullPerBot.set(botId, false);
         }
         break;
       case E.PLAYER_LIST:
-        state.clearOnlinePlayers();
+        state.clearOnlinePlayersForBot(botId);
         for (const p of (event.players || [])) {
-          state.setOnlinePlayer(p.actor, { actor: p.actor, nick: p.nick, user_id: p.user_id || null });
+          state.setOnlinePlayer(p.actor, { actor: p.actor, nick: p.nick, user_id: p.user_id || null, botId });
         }
         break;
       default:
@@ -342,26 +454,27 @@ async function handlePluginEvent(jsonLine) {
   // Any event carrying an actor indicates that pilot is active,
   // except lifecycle/system events handled separately below.
   if (event.actor != null && !IDLE_KICK_IGNORE.has(eventType)) {
-    idleKick.recordActivity(event.actor);
+    idleKick.recordActivity(event.actor, botId);
   }
-  if (eventType === E.PLAYER_ENTERED) idleKick.handlePlayerEntered(event.actor);
-  if (eventType === E.PLAYER_LEFT) idleKick.handlePlayerLeft(event.actor);
+  if (eventType === E.PLAYER_ENTERED) idleKick.handlePlayerEntered(event.actor, botId);
+  if (eventType === E.PLAYER_LEFT) idleKick.handlePlayerLeft(event.actor, botId);
   if (eventType === E.PLAYER_LIST) {
-    idleKick.handlePlayerListSync((event.players || []).map(p => p.actor));
+    idleKick.handlePlayerListSync((event.players || []).map(p => p.actor), botId);
   }
 
   // Handle command acknowledgments from the plugin
   if (eventType === E.COMMAND_ACK) {
-    handleCommandAck(event);
+    handleCommandAck(event, botId);
   }
 
-  // Handle chat commands
+  // Handle chat commands — replies go to the bot the player is on
   if (eventType === E.CHAT_MESSAGE) {
     const msg = (event.message || '').trim().toLowerCase();
-    // Ignore echoes of messages the server itself sent
-    if (_recentlySent.has(msg)) return;
+    // Ignore echoes of messages the server itself sent to this bot
+    const recentlySent = _getRecentlySent(botId);
+    if (recentlySent.has(msg)) return;
     // Ignore all commands during the post-track-change cooldown window.
-    if (!state.areChatCommandsAllowed()) return;
+    if (!state.areChatCommandsAllowed(botId)) return;
     if (msg === '/info') {
       const overseer = require('./trackOverseer');
       const os = overseer.getState();
@@ -379,11 +492,8 @@ async function handlePluginEvent(jsonLine) {
       const upcoming = overseer.getUpcoming(1);
       const nextTrack = upcoming.length > 0 ? upcoming[0].track : '';
       const nextStr = nextTrack ? ` | <color=#00BFFF>Next:</color> ${nextTrack}` : '';
-      sendCommand({ cmd: 'send_chat', message: `<color=#00BFFF>Cmds:</color> <color=#00FF00>/next</color> skip <color=#00FF00>/extend</color> +5m | <color=#00BFFF>Time:</color> <color=#FFFF00>${timeLeft}</color>${nextStr}` });
+      sendCommandToBot(botId, { cmd: 'send_chat', message: `<color=#00BFFF>Cmds:</color> <color=#00FF00>/next</color> skip <color=#00FF00>/extend</color> +5m | <color=#00BFFF>Time:</color> <color=#FFFF00>${timeLeft}</color>${nextStr}` });
     } else if (msg === '/next') {
-      // Use user_id (Steam ID) as the voter key — event.actor can be null if the
-      // plugin couldn't resolve the Photon actor number, which causes all unresolved
-      // players to collide on the same null key in the voters Set.
       skipVote.handleSkipVoteCommand(event.user_id || event.nick);
     } else if (msg === '/extend') {
       extendVote.handleExtendVoteCommand(event.user_id || event.nick);
@@ -392,19 +502,19 @@ async function handlePluginEvent(jsonLine) {
       if (code.length === 6) {
         const nick = event.nick || '';
         if (!nick) {
-          sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>Could not detect your in-game name.</color>' });
+          sendCommandToBot(botId, { cmd: 'send_chat', message: '<color=#FF0000>Could not detect your in-game name.</color>' });
         } else {
           db.verifyNicknameByCode(code, nick).then(result => {
             if (!result) {
-              sendCommand({ cmd: 'send_chat', message: `<color=#FF0000>Invalid or expired code.</color> <color=#FFFF00>Check your profile page for a valid code.</color>` });
+              sendCommandToBot(botId, { cmd: 'send_chat', message: `<color=#FF0000>Invalid or expired code.</color> <color=#FFFF00>Check your profile page for a valid code.</color>` });
             } else if (result.error === 'nickname_taken') {
-              sendCommand({ cmd: 'send_chat', message: `<color=#FF0000>That name is already linked to another account.</color> <color=#FFFF00>Contact an admin for help.</color>` });
+              sendCommandToBot(botId, { cmd: 'send_chat', message: `<color=#FF0000>That name is already linked to another account.</color> <color=#FFFF00>Contact an admin for help.</color>` });
             } else {
-              sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>VERIFIED</color> <color=#FFFF00>${nick}, your account has been linked!</color>` });
+              sendCommandToBot(botId, { cmd: 'send_chat', message: `<color=#00FF00>VERIFIED</color> <color=#FFFF00>${nick}, your account has been linked!</color>` });
               idleKick.refreshRegisteredNicks();
             }
           }).catch(() => {
-            sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>Verification error. Try again later.</color>' });
+            sendCommandToBot(botId, { cmd: 'send_chat', message: '<color=#FF0000>Verification error. Try again later.</color>' });
           });
         }
       }
@@ -418,45 +528,59 @@ async function handlePluginEvent(jsonLine) {
     }
   }
 
-  // Auto-trigger chat templates for game events
+  // Auto-trigger chat templates for game events — player-specific go to their bot
   if (eventType === E.PLAYER_ENTERED) {
     const nick = event.nick || '';
-    fireTemplates('player_joined', { nick });
+    fireTemplates('player_joined', { nick }, botId);
     db.isKnownPilot(nick).then(known => {
-      fireTemplates(known ? 'player_returned' : 'player_new', { nick });
+      fireTemplates(known ? 'player_returned' : 'player_new', { nick }, botId);
     }).catch(() => {});
     if (!idleKick.isNickVerified(nick)) {
-      fireTemplates('player_unregistered', { nick });
+      fireTemplates('player_unregistered', { nick }, botId);
     }
-    const count = state.getOnlinePlayerCount();
-    if (count >= idleKick.MAX_LOBBY_SIZE && !_lobbyWasFull) {
-      _lobbyWasFull = true;
-      fireTemplates('lobby_full', { nick, count: String(count) });
+    const count = state.getOnlinePlayerCountForBot(botId);
+    if (count >= idleKick.MAX_LOBBY_SIZE && !_lobbyWasFullPerBot.get(botId)) {
+      _lobbyWasFullPerBot.set(botId, true);
+      fireTemplates('lobby_full', { nick, count: String(count) }, botId);
     }
   } else if (eventType === E.RACE_RESET) {
     // Only fire templates when a real race closed (had a winner with laps).
-    // Normal player resets produce a RACE_RESET with no closedRaces or an
-    // empty winner, so those are silently ignored.
     if (closedRaces?.length && closedRaces[0].winner_nick) {
       const prev = closedRaces[0];
       fireTemplates('race_end', {
         winner: prev.winner_nick,
         time: fmtMs(prev.winner_total_ms),
-      });
-      fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) });
+      }); // broadcast to all
+      fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) }); // broadcast to all
     }
   } else if (eventType === E.RACE_END) {
     fireTemplates('race_end', {
       winner: event.winner_nick || '',
       time: fmtMs(event.winner_total_ms),
-    });
+    }); // broadcast to all
   }
 
   // Broadcast to browser clients — admin gets everything, public gets whitelist only
-  broadcast.broadcastAdmin(jsonLine);
+  // Re-serialize since we injected bot_id
+  const enrichedJson = JSON.stringify(event);
+  broadcast.broadcastAdmin(enrichedJson);
   if (PUBLIC_EVENT_TYPES.has(eventType)) {
-    broadcast.broadcastPublic(stripSensitiveFields(jsonLine, event));
+    broadcast.broadcastPublic(stripSensitiveFields(enrichedJson, event));
   }
 }
 
-module.exports = { createPluginSocketServer, sendCommand, sendCommandAwait, getPluginSocket, setCurrentTrack, fireTemplates, buildTemplateVars, stripSensitiveFields };
+module.exports = {
+  createPluginSocketServer,
+  sendCommand,
+  sendCommandToBot,
+  sendCommandAwait,
+  sendCommandAwaitToBot,
+  getConnectedBotIds,
+  getConnectedBotCount,
+  getBotNick,
+  refreshBotRegistry,
+  setCurrentTrack,
+  fireTemplates,
+  buildTemplateVars,
+  stripSensitiveFields,
+};
