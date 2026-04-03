@@ -39,7 +39,9 @@ function cancelSkipVote() {
 
 function getSkipVoteInfo() {
   const total = state.getOnlinePlayerCount();
-  const realPlayers = Math.max(total - 1, 0); // exclude the bot
+  const { getConnectedBotCount } = require('./pluginSocket');
+  const botCount = getConnectedBotCount() || 1;
+  const realPlayers = Math.max(total - botCount, 0); // exclude all bot host players
   const needed = realPlayers <= 1 ? 1 : Math.max(Math.floor(realPlayers / 2), 2);
   return { realPlayers, needed };
 }

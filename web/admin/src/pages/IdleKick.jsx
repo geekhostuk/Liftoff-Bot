@@ -132,12 +132,14 @@ export default function IdleKick() {
   }, [apiCall]);
 
   const warnedSet = new Set(warned);
-  const playerByActor = new Map();
-  for (const p of players) playerByActor.set(p.actor, p);
+  // Build composite key lookup: "botId:actor" → player
+  const playerByKey = new Map();
+  for (const p of players) playerByKey.set(`${p.botId || 'default'}:${p.actor}`, p);
 
-  const sortedActors = Object.entries(idleTimes)
+  // idleTimes keys are now composite "botId:actor"
+  const sortedKeys = Object.entries(idleTimes)
     .sort(([, a], [, b]) => b - a)
-    .map(([actor]) => Number(actor));
+    .map(([key]) => key);
 
   return (
     <div style={styles.page}>
@@ -225,29 +227,32 @@ export default function IdleKick() {
           <Clock size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
           Active Idle Timers
         </div>
-        {sortedActors.length === 0 ? (
+        {sortedKeys.length === 0 ? (
           <div style={styles.empty}>No players being tracked</div>
         ) : (
           <table style={styles.table}>
             <thead>
               <tr>
                 <th style={styles.th}>Player</th>
+                <th style={styles.th}>Server</th>
                 <th style={styles.th}>Idle Time</th>
                 <th style={styles.th}>Status</th>
                 <th style={styles.th}>Registered</th>
               </tr>
             </thead>
             <tbody>
-              {sortedActors.map((actor) => {
-                const player = playerByActor.get(actor);
-                const nick = player?.nick || `Actor ${actor}`;
-                const isWarned = warnedSet.has(actor);
-                const isRegistered = registrationStatus[actor];
+              {sortedKeys.map((compositeKey) => {
+                const player = playerByKey.get(compositeKey);
+                const nick = player?.nick || compositeKey;
+                const botId = player?.botId || compositeKey.split(':')[0] || 'default';
+                const isWarned = warnedSet.has(compositeKey);
+                const isRegistered = registrationStatus[compositeKey];
                 const isWhitelisted = whitelist.some((w) => w.toLowerCase() === nick.toLowerCase());
                 return (
-                  <tr key={actor}>
+                  <tr key={compositeKey}>
                     <td style={styles.td}>{nick}</td>
-                    <td style={styles.td}>{fmtIdleTime(idleTimes[actor])}</td>
+                    <td style={styles.td}><span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{botId}</span></td>
+                    <td style={styles.td}>{fmtIdleTime(idleTimes[compositeKey])}</td>
                     <td style={styles.td}>
                       {isWhitelisted
                         ? <span style={styles.badge('#4CAF50')}>Immune</span>

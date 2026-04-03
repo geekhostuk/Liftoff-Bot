@@ -100,16 +100,16 @@ export default function Players() {
     return () => clearInterval(interval);
   }, [fetchIdleStatus]);
 
-  // WS events
+  // WS events — use bot_id + actor to avoid collisions across bots
   useWsEvent('player_entered', (data) => {
     setPlayers((prev) => {
-      if (prev.some((p) => p.actor === data.actor)) return prev;
-      return [...prev, { actor: data.actor, nick: data.nick }];
+      if (prev.some((p) => p.actor === data.actor && (p.botId || p.bot_id) === (data.botId || data.bot_id))) return prev;
+      return [...prev, { actor: data.actor, nick: data.nick, botId: data.botId || data.bot_id || 'default' }];
     });
   });
 
   useWsEvent('player_left', (data) => {
-    setPlayers((prev) => prev.filter((p) => p.actor !== data.actor));
+    setPlayers((prev) => prev.filter((p) => !(p.actor === data.actor && (p.botId || p.bot_id) === (data.botId || data.bot_id))));
   });
 
   useWsEvent('player_list', (data) => {
@@ -123,7 +123,7 @@ export default function Players() {
   useWsEvent('kick_result', (data) => {
     if (data.success) {
       toast(`Kicked ${data.nick || data.actor}`, 'success');
-      setPlayers((prev) => prev.filter((p) => p.actor !== data.actor));
+      setPlayers((prev) => prev.filter((p) => !(p.actor === data.actor && (p.botId || 'default') === (data.bot_id || 'default'))));
     } else {
       toast(`Kick failed: ${data.error || 'Unknown error'}`, 'danger');
     }
@@ -152,11 +152,14 @@ export default function Players() {
     }
   }, [apiCall]);
 
-  // Filter out jmt_bot, sort by actor
+  // Filter out bot host nicks (any nick ending with _Bot), sort by botId then actor
   const displayPlayers = useMemo(() => {
     return players
-      .filter((p) => String(p.nick || '').toLowerCase() !== 'jmt_bot')
-      .sort((a, b) => a.actor - b.actor);
+      .filter((p) => !/_bot$/i.test(String(p.nick || '')))
+      .sort((a, b) => {
+        const botCmp = (a.botId || 'default').localeCompare(b.botId || 'default');
+        return botCmp !== 0 ? botCmp : a.actor - b.actor;
+      });
   }, [players]);
 
   const whitelistLower = useMemo(
@@ -166,10 +169,20 @@ export default function Players() {
 
   const warnedSet = useMemo(() => new Set(warned || []), [warned]);
 
+  // Helper to build composite key for idle-time / registration lookups
+  const compKey = (p) => `${p.botId || 'default'}:${p.actor}`;
+
   const columns = useMemo(() => [
     columnHelper.accessor('nick', {
       header: 'Pilot',
       cell: (info) => <span style={styles.nickCell}>{info.getValue()}</span>,
+    }),
+    columnHelper.display({
+      id: 'server',
+      header: 'Server',
+      cell: ({ row }) => (
+        <span style={styles.actorCell}>{row.original.botId || 'default'}</span>
+      ),
     }),
     columnHelper.accessor('actor', {
       header: 'Actor',
@@ -179,7 +192,8 @@ export default function Players() {
       id: 'registered',
       header: 'Registered',
       cell: ({ row }) => {
-        const isReg = registrationStatus[row.original.actor];
+        const key = compKey(row.original);
+        const isReg = registrationStatus[key];
         if (isReg === undefined) return <span style={{ color: 'var(--text-muted)' }}>--</span>;
         return isReg
           ? <UserCheck size={16} style={{ color: 'var(--color-success, #22c55e)' }} />
@@ -190,9 +204,9 @@ export default function Players() {
       id: 'idle',
       header: 'Idle Time',
       cell: ({ row }) => {
-        const actor = row.original.actor;
-        const ms = idleTimes[actor];
-        const isWarned = warnedSet.has(actor);
+        const key = compKey(row.original);
+        const ms = idleTimes[key];
+        const isWarned = warnedSet.has(key);
         if (ms == null) return <span style={{ color: 'var(--text-muted)' }}>--</span>;
         return (
           <span style={{ color: idleColor(ms, isWarned), fontWeight: isWarned ? 700 : 400 }}>
