@@ -15,6 +15,8 @@ async function saveOverseerState(state) {
     `${KV_PREFIX}tag_names`,
     `${KV_PREFIX}default_interval_ms`,
     `${KV_PREFIX}current_track`,
+    `${KV_PREFIX}skip_vote_enabled`,
+    `${KV_PREFIX}extend_vote_enabled`,
   ];
   const values = [
     state.mode || 'idle',
@@ -25,6 +27,8 @@ async function saveOverseerState(state) {
     JSON.stringify(state.tagNames || []),
     String(state.defaultIntervalMs || 600000),
     JSON.stringify(state.currentTrack || null),
+    state.skipVoteEnabled !== false ? 'true' : 'false',
+    state.extendVoteEnabled !== false ? 'true' : 'false',
   ];
   await pool.query(`
     INSERT INTO kv_store (key, value)
@@ -52,6 +56,8 @@ async function loadOverseerState() {
     tagNames,
     defaultIntervalMs: Number((await get('default_interval_ms')) || 600000),
     currentTrack: JSON.parse((await get('current_track')) || 'null'),
+    skipVoteEnabled: (await get('skip_vote_enabled')) !== 'false',
+    extendVoteEnabled: (await get('extend_vote_enabled')) !== 'false',
   };
 }
 

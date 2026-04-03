@@ -620,6 +620,16 @@ router.post('/overseer/skip-to-index', requirePermission('overseer'), async (req
   res.json(await rt.skipToIndex(Number(index)));
 });
 
+router.post('/overseer/skip-vote-enabled', requirePermission('overseer'), async (req, res) => {
+  const { enabled } = req.body;
+  res.json(await rt.setSkipVoteEnabled(!!enabled));
+});
+
+router.post('/overseer/extend-vote-enabled', requirePermission('overseer'), async (req, res) => {
+  const { enabled } = req.body;
+  res.json(await rt.setExtendVoteEnabled(!!enabled));
+});
+
 // ── Playlist Queue ──────────────────────────────────────────────────────────
 
 router.get('/overseer/playlist-queue', requirePermission('overseer'), async (req, res) => {

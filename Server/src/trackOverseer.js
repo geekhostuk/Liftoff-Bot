@@ -68,6 +68,9 @@ const state = {
   currentHistoryId: null,
   skipCount: 0,
   extendCount: 0,
+  // Vote command toggles (persist across stop/start)
+  skipVoteEnabled: true,
+  extendVoteEnabled: true,
 };
 
 let _timer = null;
@@ -99,6 +102,8 @@ function getState() {
     interval_ms: state.intervalMs,
     current_track: state.currentTrack,
     next_change_at: state.nextChangeAt ? state.nextChangeAt.toISOString() : null,
+    skip_vote_enabled: state.skipVoteEnabled,
+    extend_vote_enabled: state.extendVoteEnabled,
   };
 }
 
@@ -315,6 +320,9 @@ async function tryResume() {
   if (state.running) return;
   try {
     const saved = await db.loadOverseerState();
+    // Restore vote toggles regardless of mode
+    state.skipVoteEnabled = saved.skipVoteEnabled !== false;
+    state.extendVoteEnabled = saved.extendVoteEnabled !== false;
     if (saved.mode === 'idle' || !saved.mode) return;
 
     await _refreshPlaylistQueue();
@@ -643,6 +651,8 @@ async function _persistState() {
       tagNames: state.tagNames,
       defaultIntervalMs: state.defaultIntervalMs,
       currentTrack: state.currentTrack,
+      skipVoteEnabled: state.skipVoteEnabled,
+      extendVoteEnabled: state.extendVoteEnabled,
     });
   } catch (err) {
     console.error('[overseer] Failed to persist state:', err.message);
@@ -659,6 +669,18 @@ async function _clearPersistedState() {
 
 function _broadcastState() {
   broadcast.broadcastAll({ event_type: 'overseer_state', ...getState() });
+}
+
+function setSkipVoteEnabled(enabled) {
+  state.skipVoteEnabled = !!enabled;
+  _persistState();
+  _broadcastState();
+}
+
+function setExtendVoteEnabled(enabled) {
+  state.extendVoteEnabled = !!enabled;
+  _persistState();
+  _broadcastState();
 }
 
 module.exports = {
@@ -678,6 +700,8 @@ module.exports = {
   clearPlaylistQueue,
   getUpcoming,
   tryResume,
+  setSkipVoteEnabled,
+  setExtendVoteEnabled,
   setCatalogCache,
   clearCatalogCache,
 };

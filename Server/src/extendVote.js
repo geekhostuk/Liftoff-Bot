@@ -54,6 +54,11 @@ function _getActiveRunner() {
 }
 
 function handleExtendVoteCommand(voterId) {
+  const overseer = require('./trackOverseer');
+  if (!overseer.getState().extend_vote_enabled) {
+    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>EXTEND</color> <color=#FFFF00>Extend voting is disabled.</color>' });
+    return;
+  }
   const runner = _getActiveRunner();
   if (!runner) {
     _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>EXTEND</color> <color=#FFFF00>No track rotation is running — nothing to extend.</color>' });

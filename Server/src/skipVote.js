@@ -59,6 +59,11 @@ function _getActiveRunner() {
 }
 
 function handleSkipVoteCommand(voterId) {
+  const overseer = require('./trackOverseer');
+  if (!overseer.getState().skip_vote_enabled) {
+    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>Skip voting is disabled.</color>' });
+    return;
+  }
   const runner = _getActiveRunner();
   if (!runner) {
     _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>SKIP</color> <color=#FFFF00>No track rotation is running — nothing to skip.</color>' });
