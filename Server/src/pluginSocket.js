@@ -308,7 +308,7 @@ async function handlePluginEvent(jsonLine) {
   try {
     switch (eventType) {
       case E.SESSION_STARTED:  await db.handleSessionStarted(event);  break;
-      case E.RACE_RESET:       closedRaces = await db.handleRaceReset(event, state.getCurrentTrack());  break;
+      case E.RACE_RESET:       closedRaces = await db.handleRaceReset(event, state.getCurrentTrack()); idleKick.resetAllTimers(); break;
       case E.LAP_RECORDED:     await db.handleLapRecorded(event, state.getCurrentTrack()); break;
       case E.RACE_END:         await db.handleRaceEnd(event);         break;
       case E.TRACK_CATALOG:
