@@ -19,6 +19,7 @@ const navItems = [
   { to: '/admin/auto-messages', icon: BotMessageSquare, label: 'Auto Messages', module: 'auto_messages' },
   { to: '/admin/idle-kick', icon: UserX, label: 'Idle Kick', module: 'idle_kick' },
   { to: '/admin/bot-remote', icon: Bot, label: 'Bot1 Remote', module: 'bot_remote' },
+  { to: '/admin/bot2-remote', icon: Bot, label: 'Bot2 Remote', module: 'bot2_remote' },
   { to: '/admin/users', icon: UserCog, label: 'Users', module: 'users' },
 ];
 
