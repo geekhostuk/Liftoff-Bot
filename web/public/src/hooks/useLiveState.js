@@ -26,6 +26,7 @@ const initial = {
   pilots: [],           // sorted [{ key, nick, laps, bestMs, lastMs, lastDelta, finished, flash }]
   raceResult: null,
 
+  connectedBots: 1,
   feedEvents: [],       // [{ id, type, message, ts }]
 
   competition: null,
@@ -49,7 +50,8 @@ function appendFeed(events, entry) {
 // ── Pilot helpers ────────────────────────────────────────────────────────────
 
 function upsertPilot(pilots, actor, nick, lapMs) {
-  const key = `actor-${actor}`;
+  // Key by nick so the same pilot is tracked across bots
+  const key = `nick-${(nick || '').toLowerCase() || actor}`;
   const existing = pilots.find(p => p.key === key);
   if (existing) {
     const laps = [...existing.laps, lapMs];
@@ -67,12 +69,15 @@ function sortPilots(pilots) {
   return [...pilots].sort((a, b) => (a.bestMs ?? Infinity) - (b.bestMs ?? Infinity));
 }
 
-function buildPilotsFromSnapshot(race, trackSince) {
-  if (!race || !race.laps) return [];
+function buildPilotsFromSnapshot(race, trackSince, allLaps) {
+  // Prefer allLaps (merged from all bot races) over single-race laps
+  const laps = allLaps && allLaps.length > 0 ? allLaps : (race && race.laps ? race.laps : []);
+  if (laps.length === 0) return [];
   const map = new Map();
-  for (const lap of race.laps) {
+  for (const lap of laps) {
     if (trackSince && lap.recorded_at < trackSince) continue;
-    const key = `actor-${lap.actor}`;
+    // Key by nick (lowercased) — same pilot can appear across bots with different actor numbers
+    const key = `nick-${(lap.nick || '').toLowerCase() || lap.actor}`;
     if (!map.has(key)) map.set(key, { key, nick: lap.nick || `Actor ${lap.actor}`, laps: [], bestMs: null, lastMs: null, lastDelta: null, finished: false, flash: false });
     const p = map.get(key);
     if (lap.nick) p.nick = lap.nick;
@@ -98,49 +103,49 @@ function reducer(state, action) {
       const e = action.payload;
       const currentTrack = (e.current_track && e.current_track.track) ? e.current_track : state.currentTrack;
       const trackSince = e.track_since || state.trackSince;
-      const players = (e.online_players || []).map(p => ({ actor: p.actor, nick: p.nick, status: 'online' }));
-      const pilots = buildPilotsFromSnapshot(e.race, trackSince);
+      const players = (e.online_players || []).map(p => ({ actor: p.actor, nick: p.nick, botId: p.botId || p.bot_id || 'default', status: 'online' }));
+      const pilots = buildPilotsFromSnapshot(e.race, trackSince, e.all_laps);
       const raceId = e.race?.id || state.raceId;
       const raceStatus = pilots.length > 0 ? 'racing' : 'waiting';
       const playlist = e.overseer || e.playlist || state.playlist;
-      return { ...state, currentTrack, trackSince, players, pilots, raceId, raceStatus, raceResult: null, playlist };
+      const connectedBots = e.connected_bots || state.connectedBots;
+      return { ...state, currentTrack, trackSince, players, pilots, raceId, raceStatus, raceResult: null, playlist, connectedBots };
     }
 
     case 'player_entered': {
       const e = action.payload;
-      const exists = state.players.find(p => p.actor === e.actor);
+      const eBotId = e.botId || e.bot_id || 'default';
+      const exists = state.players.find(p => p.actor === e.actor && (p.botId || 'default') === eBotId);
       const players = exists
-        ? state.players.map(p => p.actor === e.actor ? { ...p, nick: e.nick, status: 'joining' } : p)
-        : [...state.players, { actor: e.actor, nick: e.nick, status: 'joining' }];
+        ? state.players.map(p => (p.actor === e.actor && (p.botId || 'default') === eBotId) ? { ...p, nick: e.nick, status: 'joining' } : p)
+        : [...state.players, { actor: e.actor, nick: e.nick, botId: eBotId, status: 'joining' }];
       return { ...state, players, feedEvents: appendFeed(state.feedEvents, feed('join', `${e.nick} joined the lobby`, e.timestamp_utc)) };
     }
 
     case 'player_left': {
       const e = action.payload;
-      const nick = state.players.find(p => p.actor === e.actor)?.nick || `Actor ${e.actor}`;
-      const players = state.players.map(p => p.actor === e.actor ? { ...p, status: 'leaving' } : p);
+      const eBotId = e.botId || e.bot_id || 'default';
+      const nick = state.players.find(p => p.actor === e.actor && (p.botId || 'default') === eBotId)?.nick || `Actor ${e.actor}`;
+      const players = state.players.map(p => (p.actor === e.actor && (p.botId || 'default') === eBotId) ? { ...p, status: 'leaving' } : p);
       return { ...state, players, feedEvents: appendFeed(state.feedEvents, feed('leave', `${nick} left the lobby`, e.timestamp_utc)) };
     }
 
     case 'player_list': {
       const e = action.payload;
-      const players = (e.players || []).map(p => ({ actor: p.actor, nick: p.nick, status: 'online' }));
-      return { ...state, players };
+      const eBotId = e.bot_id || 'default';
+      const incomingPlayers = (e.players || []).map(p => ({ actor: p.actor, nick: p.nick, botId: eBotId, status: 'online' }));
+      // Replace only players from this bot, keep others
+      const otherBotPlayers = state.players.filter(p => (p.botId || 'default') !== eBotId);
+      return { ...state, players: [...otherBotPlayers, ...incomingPlayers] };
     }
 
     case 'lap_recorded': {
       const e = action.payload;
-      let { raceId, raceStatus } = state;
-      let pilots = state.pilots;
-      // If race_id changed, clear pilots
-      if (e.race_id && e.race_id !== raceId) {
-        pilots = [];
-        raceId = e.race_id;
-      }
-      pilots = upsertPilot(pilots, e.actor, e.nick, e.lap_ms);
-      raceStatus = 'racing';
+      // Don't clear pilots on race_id change — multiple bots have different race IDs.
+      // Pilots are cleared on race_reset (track change) instead.
+      const pilots = upsertPilot(state.pilots, e.actor, e.nick, e.lap_ms);
       const msg = `${e.nick} lap ${e.lap_number} — ${fmtMsInline(e.lap_ms)}`;
-      return { ...state, pilots, raceId, raceStatus, raceResult: null, feedEvents: appendFeed(state.feedEvents, feed('lap', msg, e.timestamp_utc)) };
+      return { ...state, pilots, raceStatus: 'racing', raceResult: null, feedEvents: appendFeed(state.feedEvents, feed('lap', msg, e.timestamp_utc)) };
     }
 
     case 'race_reset': {
@@ -160,7 +165,7 @@ function reducer(state, action) {
 
     case 'pilot_complete': {
       const e = action.payload;
-      const key = `actor-${e.actor}`;
+      const key = `nick-${(e.nick || '').toLowerCase() || e.actor}`;
       const pilots = state.pilots.map(p => p.key === key ? { ...p, finished: true } : p);
       const msg = `${e.nick} finished (${e.laps_logged} laps, ${fmtMsInline(e.total_ms)})`;
       return { ...state, pilots, feedEvents: appendFeed(state.feedEvents, feed('finish', msg, e.timestamp_utc)) };

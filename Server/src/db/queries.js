@@ -230,11 +230,29 @@ async function isKnownPilot(nick) {
   return exists;
 }
 
+/**
+ * Get laps from ALL active races since a given timestamp.
+ * Used by the live page to merge laps from multiple bot lobbies.
+ */
+async function getActiveRacesLaps(since) {
+  if (!since) return [];
+  const pool = getPool();
+  const { rows } = await pool.query(`
+    SELECT l.actor, l.nick, l.lap_number, l.lap_ms, l.recorded_at, r.id AS race_id
+    FROM laps l
+    JOIN races r ON r.id = l.race_id
+    WHERE r.started_at >= $1
+    ORDER BY l.recorded_at ASC
+  `, [since]);
+  return rows;
+}
+
 module.exports = {
   getRaces,
   getRaceById,
   getBestLaps,
   getLatestRaceWithLaps,
+  getActiveRacesLaps,
   getBestLapsByTrack,
   getPlayerStats,
   getLatestCatalog,

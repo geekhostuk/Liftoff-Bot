@@ -1,6 +1,7 @@
 const { WebSocketServer } = require('ws');
 const db = require('./database');
 const { getCurrentTrack, getOnlinePlayers, getCurrentTrackSince } = require('./state');
+const { getConnectedBotCount } = require('./pluginSocket');
 const { getSession } = require('./auth');
 const trackOverseer = require('./trackOverseer');
 
@@ -82,14 +83,18 @@ function createLiveSocketServer(httpServer) {
     try {
       const trackSince = getCurrentTrackSince();
       const race = await db.getLatestRaceWithLaps(trackSince);
-      const players = getOnlinePlayers().map(({ actor, nick }) => ({ actor, nick }));
+      const allLaps = await db.getActiveRacesLaps(trackSince);
+      const players = getOnlinePlayers().map(({ actor, nick, botId }) => ({ actor, nick, botId }));
+      const botCount = getConnectedBotCount() || 1;
       ws.send(JSON.stringify({
         event_type: 'state_snapshot',
         race: stripSensitiveFromRace(race),
+        all_laps: allLaps,
         current_track: getCurrentTrack(),
         track_since: trackSince,
         online_players: players,
         overseer: trackOverseer.getState(),
+        connected_bots: botCount,
       }));
     } catch (err) {
       console.error('[live] Failed to send state snapshot:', err.message);

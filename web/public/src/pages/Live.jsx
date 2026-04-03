@@ -41,7 +41,7 @@ export default function Live() {
         </div>
 
         <div className="live-area-players">
-          <PlayersPanel players={state.players} playerStats={state.playerStats} />
+          <PlayersPanel players={state.players} playerStats={state.playerStats} connectedBots={state.connectedBots} />
         </div>
 
         <div className="live-area-feed">
