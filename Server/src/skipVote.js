@@ -19,6 +19,8 @@ const skipVote = {
   timer: null,
 };
 
+let _skipDelayTimer = null; // the 10-second delay after a successful vote
+
 let _sendCommand = null;
 
 /**
@@ -34,6 +36,10 @@ function cancelSkipVote() {
   if (skipVote.timer) {
     clearTimeout(skipVote.timer);
     skipVote.timer = null;
+  }
+  if (_skipDelayTimer) {
+    clearTimeout(_skipDelayTimer);
+    _skipDelayTimer = null;
   }
 }
 
@@ -103,7 +109,8 @@ function checkSkipVoteThreshold() {
     }
     _sendCommand({ cmd: 'send_chat', message: '<color=#00FF00>VOTE PASSED</color> <color=#FFFF00>Track will change in 10 seconds...</color>' });
     const trackToSkip = state.getCurrentTrack();
-    setTimeout(() => {
+    _skipDelayTimer = setTimeout(() => {
+      _skipDelayTimer = null;
       const current = _getActiveRunner();
       if (!current) return;
       current.skipToNext();

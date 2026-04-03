@@ -42,6 +42,34 @@ const _botNicks = new Map();
 // apiKey → { botId, botNick } — loaded from DB at startup
 let _apiKeyMap = new Map();
 
+// Handles for delayed template timers (fireTemplates with delay_ms > 0)
+let _pendingTemplateTimers = [];
+
+// Race-end announcement deduplication (multi-bot fires same event per bot)
+let _lastRaceEndAnnounced = null; // { winner, time, at }
+let _lastRaceStartAt = 0;
+
+const RACE_DEDUP_WINDOW_MS = 30_000;
+const RACE_START_DEDUP_WINDOW_MS = 5_000;
+
+function _isDuplicateRaceEnd(winner, time) {
+  if (!_lastRaceEndAnnounced) return false;
+  const elapsed = Date.now() - _lastRaceEndAnnounced.at;
+  return elapsed < RACE_DEDUP_WINDOW_MS
+    && _lastRaceEndAnnounced.winner === winner
+    && _lastRaceEndAnnounced.time === time;
+}
+
+function _isDuplicateRaceStart() {
+  if (!_lastRaceStartAt) return false;
+  return (Date.now() - _lastRaceStartAt) < RACE_START_DEDUP_WINDOW_MS;
+}
+
+function clearPendingTemplates() {
+  for (const t of _pendingTemplateTimers) clearTimeout(t);
+  _pendingTemplateTimers = [];
+}
+
 let _commandCounter = 0;
 const COMMAND_ACK_TIMEOUT_MS = 10_000;
 
@@ -100,6 +128,9 @@ function _trackRecentlySent(botId, message) {
 }
 
 function setCurrentTrack(info) {
+  clearPendingTemplates();
+  _lastRaceEndAnnounced = null;
+  _lastRaceStartAt = 0;
   state.setCurrentTrack(info);
   // Block chat commands for a window after each track change.
   // Liftoff replays the entire chat history when the scene reloads, which causes
@@ -218,6 +249,7 @@ async function createPluginSocketServer(httpServer) {
   // don't cause "No runner is running" on the next attempt.
   const overseer = require('./trackOverseer');
   overseer.onStop(() => {
+    clearPendingTemplates();
     skipVote.cancelSkipVote();
     extendVote.cancelExtendVote();
     tagVote.cancelVote();
@@ -363,7 +395,7 @@ async function fireTemplates(trigger, vars = {}, botId = null) {
       }
     };
     if (tmpl.delay_ms > 0) {
-      setTimeout(send, tmpl.delay_ms);
+      _pendingTemplateTimers.push(setTimeout(send, tmpl.delay_ms));
     } else {
       send();
     }
@@ -545,19 +577,28 @@ async function handlePluginEvent(jsonLine, botId) {
     }
   } else if (eventType === E.RACE_RESET) {
     // Only fire templates when a real race closed (had a winner with laps).
+    // Dedup: with multiple bots each sends its own RACE_RESET — announce once only.
     if (closedRaces?.length && closedRaces[0].winner_nick) {
       const prev = closedRaces[0];
-      fireTemplates('race_end', {
-        winner: prev.winner_nick,
-        time: fmtMs(prev.winner_total_ms),
-      }); // broadcast to all
-      fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) }); // broadcast to all
+      const winner = prev.winner_nick;
+      const time = fmtMs(prev.winner_total_ms);
+      if (!_isDuplicateRaceEnd(winner, time)) {
+        _lastRaceEndAnnounced = { winner, time, at: Date.now() };
+        fireTemplates('race_end', { winner, time });
+      }
+      if (!_isDuplicateRaceStart()) {
+        _lastRaceStartAt = Date.now();
+        fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) });
+      }
     }
   } else if (eventType === E.RACE_END) {
-    fireTemplates('race_end', {
-      winner: event.winner_nick || '',
-      time: fmtMs(event.winner_total_ms),
-    }); // broadcast to all
+    // Dedup: suppress if same winner already announced (from RACE_RESET or another bot).
+    const winner = event.winner_nick || '';
+    const time = fmtMs(event.winner_total_ms);
+    if (!_isDuplicateRaceEnd(winner, time)) {
+      _lastRaceEndAnnounced = { winner, time, at: Date.now() };
+      fireTemplates('race_end', { winner, time });
+    }
   }
 
   // Broadcast to browser clients — admin gets everything, public gets whitelist only
@@ -583,4 +624,5 @@ module.exports = {
   fireTemplates,
   buildTemplateVars,
   stripSensitiveFields,
+  clearPendingTemplates,
 };
