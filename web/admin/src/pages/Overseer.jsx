@@ -28,6 +28,10 @@ const styles = {
   trackEnv: { color: 'var(--text-muted)', fontSize: '0.8rem' },
   iconBtn: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex' },
   historyTable: { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' },
+  toggle: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-sm) 0' },
+  toggleLabel: { display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 500 },
+  switchTrack: (on) => ({ width: 44, height: 24, borderRadius: 12, cursor: 'pointer', border: 'none', background: on ? '#22c55e' : 'var(--border-color)', position: 'relative', transition: 'background 0.2s' }),
+  switchThumb: (on) => ({ width: 18, height: 18, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: on ? 23 : 3, transition: 'left 0.2s' }),
 };
 
 function fmtRemaining(nextChangeAt) {
@@ -131,6 +135,13 @@ export default function Overseer() {
   const skip = () => apiCall('POST', '/api/admin/overseer/skip', {}, 'Skipped').then(fetchAll);
   const extend = () => apiCall('POST', '/api/admin/overseer/extend', { ms: 300000 }, 'Extended +5m').then(fetchAll);
 
+  const toggleSkipVote = () => apiCall('POST', '/api/admin/overseer/skip-vote-enabled',
+    { enabled: !(os?.skip_vote_enabled ?? true) },
+    os?.skip_vote_enabled !== false ? 'Skip vote disabled' : 'Skip vote enabled');
+  const toggleExtendVote = () => apiCall('POST', '/api/admin/overseer/extend-vote-enabled',
+    { enabled: !(os?.extend_vote_enabled ?? true) },
+    os?.extend_vote_enabled !== false ? 'Extend vote disabled' : 'Extend vote enabled');
+
   const removeQueue = (id) => apiCall('DELETE', `/api/admin/queue/${id}`, {}, 'Removed').then(fetchAll);
   const moveQueue = (id, dir) => apiCall('POST', `/api/admin/queue/${id}/move`, { direction: dir }).then(fetchAll);
   const clearQueueAll = () => apiCall('DELETE', '/api/admin/queue', {}, 'Queue cleared').then(fetchAll);
@@ -190,6 +201,22 @@ export default function Overseer() {
           <button style={{ ...styles.btn, ...styles.btnDanger }} onClick={stop} disabled={!os?.running}>
             <Square size={14} /> Stop
           </button>
+        </div>
+
+        {/* Vote command toggles */}
+        <div style={{ borderTop: '1px solid var(--border-color)', marginTop: 'var(--space-md)', paddingTop: 'var(--space-md)' }}>
+          <div style={styles.toggle}>
+            <span style={styles.toggleLabel}>/next (skip vote)</span>
+            <button style={styles.switchTrack(os?.skip_vote_enabled !== false)} onClick={toggleSkipVote}>
+              <div style={styles.switchThumb(os?.skip_vote_enabled !== false)} />
+            </button>
+          </div>
+          <div style={styles.toggle}>
+            <span style={styles.toggleLabel}>/extend (extend vote)</span>
+            <button style={styles.switchTrack(os?.extend_vote_enabled !== false)} onClick={toggleExtendVote}>
+              <div style={styles.switchThumb(os?.extend_vote_enabled !== false)} />
+            </button>
+          </div>
         </div>
       </div>
 

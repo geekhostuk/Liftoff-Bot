@@ -235,6 +235,16 @@ async function main() {
     res.json(trackOverseer.getState());
   });
 
+  internal.post('/internal/overseer/skip-vote-enabled', (req, res) => {
+    trackOverseer.setSkipVoteEnabled(req.body.enabled);
+    res.json({ ok: true, skip_vote_enabled: trackOverseer.getState().skip_vote_enabled });
+  });
+
+  internal.post('/internal/overseer/extend-vote-enabled', (req, res) => {
+    trackOverseer.setExtendVoteEnabled(req.body.enabled);
+    res.json({ ok: true, extend_vote_enabled: trackOverseer.getState().extend_vote_enabled });
+  });
+
   // ── Playlist Queue ────────────────────────────────────────────────────────
   internal.get('/internal/overseer/playlist-queue', async (req, res) => {
     res.json(await db.getPlaylistQueue());

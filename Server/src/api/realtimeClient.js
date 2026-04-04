@@ -83,6 +83,14 @@ async function skipToIndex(index) {
   return post('/internal/overseer/skip-to-index', { index });
 }
 
+async function setSkipVoteEnabled(enabled) {
+  return post('/internal/overseer/skip-vote-enabled', { enabled });
+}
+
+async function setExtendVoteEnabled(enabled) {
+  return post('/internal/overseer/extend-vote-enabled', { enabled });
+}
+
 async function getPlaylistQueue() {
   return get('/internal/overseer/playlist-queue');
 }
@@ -238,6 +246,8 @@ module.exports = {
   skipOverseer,
   extendOverseer,
   skipToIndex,
+  setSkipVoteEnabled,
+  setExtendVoteEnabled,
   getPlaylistQueue,
   addToPlaylistQueue,
   removeFromPlaylistQueue,

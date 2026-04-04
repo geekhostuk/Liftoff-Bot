@@ -161,7 +161,7 @@ router.get('/me', async (req, res) => {
   let permissions = [];
   if (req.adminUser.role === 'superadmin' || req.adminUser.userId === 0) {
     permissions = ['dashboard','players','tracks','chat','playlists','tags',
-      'track_manager','overseer','scoring','competitions','auto_messages','users','idle_kick','bot_remote'];
+      'track_manager','overseer','scoring','competitions','auto_messages','users','idle_kick','bot_remote','bot2_remote'];
   } else if (req.adminUser.source === 'site') {
     permissions = req.adminUser.permissions || [];
   } else {
@@ -462,12 +462,28 @@ const TEMPLATE_VARIABLES = [
   { key: 'race', description: 'Race mode', triggers: ['track_change'] },
   { key: 'mins', description: 'Minutes until next track (pre-change only)', triggers: ['track_change'] },
   { key: 'race_id', description: 'Race ID (first 8 chars)', triggers: ['race_start'] },
-  { key: 'winner', description: 'Race winner display name', triggers: ['race_end'] },
-  { key: 'time', description: "Winner's finish time", triggers: ['race_end'] },
+  { key: 'winner', description: 'Race winner display name', triggers: ['race_end', 'race_podium'] },
+  { key: 'time', description: "Winner's finish time", triggers: ['race_end', 'race_podium'] },
+  { key: 'second', description: '2nd place pilot (race)', triggers: ['race_podium'] },
+  { key: 'second_time', description: "2nd place finish time", triggers: ['race_podium'] },
+  { key: 'third', description: '3rd place pilot (race)', triggers: ['race_podium'] },
+  { key: 'third_time', description: "3rd place finish time", triggers: ['race_podium'] },
+  { key: 'pilots', description: 'Total pilots in race', triggers: ['race_podium'] },
+  { key: '4th', description: '4th place pilot (race)', triggers: ['race_podium'] },
+  { key: '4th_time', description: '4th place finish time', triggers: ['race_podium'] },
+  { key: '5th', description: '5th place pilot (race)', triggers: ['race_podium'] },
+  { key: '5th_time', description: '5th place finish time', triggers: ['race_podium'] },
+  { key: '6th', description: '6th place pilot (race)', triggers: ['race_podium'] },
+  { key: '6th_time', description: '6th place finish time', triggers: ['race_podium'] },
+  { key: '7th', description: '7th place pilot (race)', triggers: ['race_podium'] },
+  { key: '7th_time', description: '7th place finish time', triggers: ['race_podium'] },
+  { key: '8th', description: '8th place pilot (race)', triggers: ['race_podium'] },
+  { key: '8th_time', description: '8th place finish time', triggers: ['race_podium'] },
   { key: '1st', description: '1st place pilot (weekly standings)', triggers: ['*'] },
   { key: '2nd', description: '2nd place pilot (weekly standings)', triggers: ['*'] },
   { key: '3rd', description: '3rd place pilot (weekly standings)', triggers: ['*'] },
   { key: 'playlist', description: 'Current playlist name', triggers: ['*'] },
+  { key: 'players', description: 'Number of players online', triggers: ['*'] },
   { key: 'player_points', description: "Player's weekly competition points", triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered'] },
   { key: 'player_position', description: "Player's weekly competition rank (or 'unranked')", triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered'] },
   { key: 'count', description: 'Current player count', triggers: ['lobby_full'] },
@@ -613,6 +629,16 @@ router.post('/overseer/skip-to-index', requirePermission('overseer'), async (req
   const { index } = req.body;
   if (index === undefined) return res.status(400).json({ error: 'index is required' });
   res.json(await rt.skipToIndex(Number(index)));
+});
+
+router.post('/overseer/skip-vote-enabled', requirePermission('overseer'), async (req, res) => {
+  const { enabled } = req.body;
+  res.json(await rt.setSkipVoteEnabled(!!enabled));
+});
+
+router.post('/overseer/extend-vote-enabled', requirePermission('overseer'), async (req, res) => {
+  const { enabled } = req.body;
+  res.json(await rt.setExtendVoteEnabled(!!enabled));
 });
 
 // ── Playlist Queue ──────────────────────────────────────────────────────────

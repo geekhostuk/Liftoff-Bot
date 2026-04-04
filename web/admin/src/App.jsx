@@ -18,6 +18,7 @@ import Competitions from './pages/Competitions.jsx';
 import UserManagement from './pages/UserManagement.jsx';
 import IdleKick from './pages/IdleKick.jsx';
 import BotRemote from './pages/BotRemote.jsx';
+import Bot2Remote from './pages/Bot2Remote.jsx';
 
 function AuthGate({ children }) {
   const { user, checking } = useAuth();
@@ -49,6 +50,7 @@ export default function App() {
                   <Route path="/admin/users" element={<UserManagement />} />
                   <Route path="/admin/idle-kick" element={<IdleKick />} />
                   <Route path="/admin/bot-remote" element={<BotRemote />} />
+                  <Route path="/admin/bot2-remote" element={<Bot2Remote />} />
                 </Route>
               </Routes>
             </WebSocketProvider>

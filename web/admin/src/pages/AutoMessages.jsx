@@ -8,7 +8,7 @@ import Badge from '../components/feedback/Badge.jsx';
 import EmptyState from '../components/data/EmptyState.jsx';
 import ConfirmButton from '../components/form/ConfirmButton.jsx';
 
-const TRIGGER_OPTIONS = ['track_change', 'race_start', 'race_end', 'player_joined', 'player_new', 'player_returned', 'player_unregistered', 'lobby_full'];
+const TRIGGER_OPTIONS = ['track_change', 'race_start', 'race_end', 'race_podium', 'player_joined', 'player_new', 'player_returned', 'player_unregistered', 'lobby_full'];
 const CHAR_LIMIT = 255;
 
 const columnHelper = createColumnHelper();

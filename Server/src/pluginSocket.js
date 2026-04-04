@@ -42,6 +42,70 @@ const _botNicks = new Map();
 // apiKey → { botId, botNick } — loaded from DB at startup
 let _apiKeyMap = new Map();
 
+// Handles for delayed template timers (fireTemplates with delay_ms > 0)
+let _pendingTemplateTimers = [];
+
+// Race-start deduplication (multi-bot fires same event per bot)
+let _lastRaceStartAt = 0;
+const RACE_START_DEDUP_WINDOW_MS = 5_000;
+
+function _isDuplicateRaceStart() {
+  if (!_lastRaceStartAt) return false;
+  return (Date.now() - _lastRaceStartAt) < RACE_START_DEDUP_WINDOW_MS;
+}
+
+// Combined podium: collect race IDs from all rooms, then announce top 3
+let _podiumRaceIds = [];
+let _podiumTimer = null;
+const PODIUM_COLLECT_MS = 10_000;
+
+function _collectForPodium(raceIds) {
+  for (const id of raceIds) {
+    if (!_podiumRaceIds.includes(id)) _podiumRaceIds.push(id);
+  }
+  if (!_podiumTimer) {
+    _podiumTimer = setTimeout(() => _firePodium(), PODIUM_COLLECT_MS);
+    _pendingTemplateTimers.push(_podiumTimer);
+  }
+}
+
+async function _firePodium() {
+  _podiumTimer = null;
+  const raceIds = [..._podiumRaceIds];
+  _podiumRaceIds = [];
+  if (raceIds.length === 0) return;
+
+  const results = await db.getCombinedRacePodium(raceIds);
+  if (results.length === 0) return;
+
+  fireTemplates('race_podium', {
+    winner:      results[0]?.nick ?? '',
+    time:        fmtMs(results[0]?.best_lap_ms),
+    second:      results[1]?.nick ?? '',
+    second_time: fmtMs(results[1]?.best_lap_ms),
+    third:       results[2]?.nick ?? '',
+    third_time:  fmtMs(results[2]?.best_lap_ms),
+    '4th':       results[3]?.nick ?? '',
+    '4th_time':  fmtMs(results[3]?.best_lap_ms),
+    '5th':       results[4]?.nick ?? '',
+    '5th_time':  fmtMs(results[4]?.best_lap_ms),
+    '6th':       results[5]?.nick ?? '',
+    '6th_time':  fmtMs(results[5]?.best_lap_ms),
+    '7th':       results[6]?.nick ?? '',
+    '7th_time':  fmtMs(results[6]?.best_lap_ms),
+    '8th':       results[7]?.nick ?? '',
+    '8th_time':  fmtMs(results[7]?.best_lap_ms),
+    pilots:      String(results.length),
+  });
+}
+
+function clearPendingTemplates() {
+  for (const t of _pendingTemplateTimers) clearTimeout(t);
+  _pendingTemplateTimers = [];
+  if (_podiumTimer) { clearTimeout(_podiumTimer); _podiumTimer = null; }
+  _podiumRaceIds = [];
+}
+
 let _commandCounter = 0;
 const COMMAND_ACK_TIMEOUT_MS = 10_000;
 
@@ -100,6 +164,9 @@ function _trackRecentlySent(botId, message) {
 }
 
 function setCurrentTrack(info) {
+  clearPendingTemplates();
+  _lastRaceEndAnnounced = null;
+  _lastRaceStartAt = 0;
   state.setCurrentTrack(info);
   // Block chat commands for a window after each track change.
   // Liftoff replays the entire chat history when the scene reloads, which causes
@@ -218,6 +285,7 @@ async function createPluginSocketServer(httpServer) {
   // don't cause "No runner is running" on the next attempt.
   const overseer = require('./trackOverseer');
   overseer.onStop(() => {
+    clearPendingTemplates();
     skipVote.cancelSkipVote();
     extendVote.cancelExtendVote();
     tagVote.cancelVote();
@@ -306,6 +374,7 @@ async function buildTemplateVars(baseVars = {}) {
     const os = require('./trackOverseer').getState();
     enriched.playlist ??= os.playlist_name || '';
   } catch {}
+  enriched.players ??= String(state.getOnlinePlayerCount());
   try {
     const week = await db.getActiveWeek() || await db.getOrCreateCurrentWeek();
     if (week) {
@@ -363,7 +432,7 @@ async function fireTemplates(trigger, vars = {}, botId = null) {
       }
     };
     if (tmpl.delay_ms > 0) {
-      setTimeout(send, tmpl.delay_ms);
+      _pendingTemplateTimers.push(setTimeout(send, tmpl.delay_ms));
     } else {
       send();
     }
@@ -544,20 +613,18 @@ async function handlePluginEvent(jsonLine, botId) {
       fireTemplates('lobby_full', { nick, count: String(count) }, botId);
     }
   } else if (eventType === E.RACE_RESET) {
-    // Only fire templates when a real race closed (had a winner with laps).
-    if (closedRaces?.length && closedRaces[0].winner_nick) {
-      const prev = closedRaces[0];
-      fireTemplates('race_end', {
-        winner: prev.winner_nick,
-        time: fmtMs(prev.winner_total_ms),
-      }); // broadcast to all
-      fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) }); // broadcast to all
+    // Collect closed race IDs for combined podium announcement across all rooms
+    if (closedRaces?.length) {
+      const raceIds = closedRaces.filter(r => r.winner_nick).map(r => r.race_id);
+      if (raceIds.length) _collectForPodium(raceIds);
+    }
+    if (!_isDuplicateRaceStart()) {
+      _lastRaceStartAt = Date.now();
+      fireTemplates('race_start', { race_id: (event.race_id || '').slice(0, 8) });
     }
   } else if (eventType === E.RACE_END) {
-    fireTemplates('race_end', {
-      winner: event.winner_nick || '',
-      time: fmtMs(event.winner_total_ms),
-    }); // broadcast to all
+    // Collect for combined podium (race_end fires before race_reset)
+    if (event.race_id) _collectForPodium([event.race_id]);
   }
 
   // Broadcast to browser clients — admin gets everything, public gets whitelist only
@@ -583,4 +650,5 @@ module.exports = {
   fireTemplates,
   buildTemplateVars,
   stripSensitiveFields,
+  clearPendingTemplates,
 };

@@ -68,6 +68,9 @@ const state = {
   currentHistoryId: null,
   skipCount: 0,
   extendCount: 0,
+  // Vote command toggles (persist across stop/start)
+  skipVoteEnabled: true,
+  extendVoteEnabled: true,
 };
 
 let _timer = null;
@@ -99,6 +102,8 @@ function getState() {
     interval_ms: state.intervalMs,
     current_track: state.currentTrack,
     next_change_at: state.nextChangeAt ? state.nextChangeAt.toISOString() : null,
+    skip_vote_enabled: state.skipVoteEnabled,
+    extend_vote_enabled: state.extendVoteEnabled,
   };
 }
 
@@ -134,8 +139,8 @@ async function startPlaylist(playlistId, intervalMs, startIndex = 0, shuffle = f
   await _refreshPlaylistQueue();
 
   await _applyTrack(_getPlaylistTrack(idx), 'playlist');
-  await _persistState();
   _armTimer(state.intervalMs);
+  await _persistState();
 
   console.log(`[overseer] Playlist "${playlist.name}" started at track ${idx + 1}/${tracks.length} (interval=${state.intervalMs}ms${shuffle ? ', shuffled' : ''})`);
   _broadcastState();
@@ -167,8 +172,8 @@ async function startTagMode(tagNames, intervalMs = DEFAULT_TAG_INTERVAL_MS) {
 
   await _applyTrack(picked, 'tag');
   state.intervalMs = picked.duration_ms || state.defaultIntervalMs;
-  await _persistState();
   _armTimer(state.intervalMs);
+  await _persistState();
 
   console.log(`[overseer] Tag mode started [${tagNames.join(', ')}] (interval=${state.intervalMs}ms)`);
   _broadcastState();
@@ -271,8 +276,8 @@ function skipToIndex(index) {
   state.currentIndex = index;
   const t = _getPlaylistTrack(index);
   _applyTrack(t, 'playlist').then(async () => {
-    _persistState();
     _armTimer(state.intervalMs);
+    _persistState();
     _broadcastState();
   });
 }
@@ -315,6 +320,9 @@ async function tryResume() {
   if (state.running) return;
   try {
     const saved = await db.loadOverseerState();
+    // Restore vote toggles regardless of mode
+    state.skipVoteEnabled = saved.skipVoteEnabled !== false;
+    state.extendVoteEnabled = saved.extendVoteEnabled !== false;
     if (saved.mode === 'idle' || !saved.mode) return;
 
     await _refreshPlaylistQueue();
@@ -354,10 +362,10 @@ async function tryResume() {
       }
 
       const delay = remainingMs || saved.intervalMs;
-      _persistState();
       state.nextChangeAt = new Date(Date.now() + delay);
       await _schedulePreTimers(delay);
       _timer = setTimeout(() => _advance().then(() => _broadcastState()), delay);
+      _persistState();
 
       console.log(`[overseer] Resumed playlist "${playlist.name}" at track ${idx + 1}/${tracks.length} (next change in ${Math.round(delay / 1000)}s)`);
       _broadcastState();
@@ -464,8 +472,8 @@ async function _advance() {
     }
     const t = _getPlaylistTrack(state.currentIndex);
     await _applyTrack(t, 'playlist');
-    _persistState();
     _armTimer(state.intervalMs);
+    _persistState();
 
   } else if (state.mode === 'tag') {
     const picked = await _pickTagTrack();
@@ -477,8 +485,8 @@ async function _advance() {
     }
     await _applyTrack(picked, 'tag');
     state.intervalMs = picked.duration_ms || state.defaultIntervalMs;
-    _persistState();
     _armTimer(state.intervalMs);
+    _persistState();
   }
 }
 
@@ -643,6 +651,8 @@ async function _persistState() {
       tagNames: state.tagNames,
       defaultIntervalMs: state.defaultIntervalMs,
       currentTrack: state.currentTrack,
+      skipVoteEnabled: state.skipVoteEnabled,
+      extendVoteEnabled: state.extendVoteEnabled,
     });
   } catch (err) {
     console.error('[overseer] Failed to persist state:', err.message);
@@ -659,6 +669,18 @@ async function _clearPersistedState() {
 
 function _broadcastState() {
   broadcast.broadcastAll({ event_type: 'overseer_state', ...getState() });
+}
+
+function setSkipVoteEnabled(enabled) {
+  state.skipVoteEnabled = !!enabled;
+  _persistState();
+  _broadcastState();
+}
+
+function setExtendVoteEnabled(enabled) {
+  state.extendVoteEnabled = !!enabled;
+  _persistState();
+  _broadcastState();
 }
 
 module.exports = {
@@ -678,6 +700,8 @@ module.exports = {
   clearPlaylistQueue,
   getUpcoming,
   tryResume,
+  setSkipVoteEnabled,
+  setExtendVoteEnabled,
   setCatalogCache,
   clearCatalogCache,
 };
