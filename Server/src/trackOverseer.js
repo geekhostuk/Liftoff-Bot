@@ -505,7 +505,7 @@ async function _applyTrack(trackInfo, source) {
     sendCommandAwaitToBot(botId, { ...trackCmd }, 60_000)
       .then(result => {
         const elapsed = Date.now() - dispatchTime;
-        console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status})`);
+        console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status}) plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]`);
       })
       .catch(err => {
         const elapsed = Date.now() - dispatchTime;
@@ -577,7 +577,7 @@ async function _schedulePreTimers(delayMs) {
         }, 30_000)
           .then(result => {
             const elapsed = Date.now() - prepareTime;
-            console.log(`[timing] prepare_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status})`);
+            console.log(`[timing] prepare_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status}) plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]`);
           })
           .catch(err => {
             const elapsed = Date.now() - prepareTime;

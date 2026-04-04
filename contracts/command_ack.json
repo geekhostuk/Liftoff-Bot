@@ -8,7 +8,10 @@
     "event_type": { "const": "command_ack" },
     "command_id": { "type": "string", "description": "ID of the acknowledged command" },
     "status":     { "type": "string", "description": "Outcome (e.g. ok, error)" },
-    "message":    { "type": "string", "description": "Human-readable detail (empty on success)" }
+    "message":    { "type": "string", "description": "Human-readable detail (empty on success)" },
+    "timing_total_ms": { "type": "integer", "description": "Total plugin-side processing time in ms (optional)" },
+    "timing_queue_ms": { "type": "integer", "description": "Time waiting in Unity main-thread queue in ms (optional)" },
+    "timing_phases":   { "type": "string",  "description": "Semicolon-delimited phase breakdown e.g. discovery_refresh=2;popup_acquire=45 (optional)" }
   },
   "required": ["event_type", "command_id", "status"]
 }
