@@ -268,6 +268,14 @@ function _runIdleCheck() {
 
     // Phase 2: kick (warned and grace period expired)
     if (idleMs >= idleTimeout + graceTimeout && _warned.has(compositeKey)) {
+      // Re-check that ALL lobbies are still full before kicking.
+      // A previous kick in this sweep (or a player leaving mid-sweep)
+      // may have freed a slot, making further kicks unnecessary.
+      const stillFull = connectedBotIds.every(
+        bid => state.getOnlinePlayerCountForBot(bid) >= MAX_LOBBY_SIZE
+      );
+      if (!stillFull) return;
+
       // Broadcast kick announcement to all lobbies
       _sendCommand({
         cmd: 'send_chat',
