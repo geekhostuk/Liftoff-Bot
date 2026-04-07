@@ -1,6 +1,6 @@
 const { WebSocketServer } = require('ws');
 const db = require('./database');
-const { getCurrentTrack, getOnlinePlayers, getCurrentTrackSince } = require('./state');
+const { getCurrentTrack, getOnlinePlayers, getCurrentTrackSince, getAllBotTrackStates } = require('./state');
 const { getConnectedBotCount, getConnectedBotIds, getBotNick } = require('./pluginSocket');
 const { getSession } = require('./auth');
 const trackOverseer = require('./trackOverseer');
@@ -119,6 +119,7 @@ function createLiveSocketServer(httpServer) {
         current_track: getCurrentTrack(),
         track_since: getCurrentTrackSince(),
         online_players: getOnlinePlayers(),
+        bot_track_states: getAllBotTrackStates(),
       }));
     } catch (err) {
       console.error('[admin-ws] Failed to send state snapshot:', err.message);

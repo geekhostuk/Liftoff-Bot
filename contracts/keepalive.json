@@ -5,6 +5,9 @@
   "description": "Periodic heartbeat sent by the server to keep WebSocket connections alive",
   "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
   "properties": {
-    "event_type": { "const": "keepalive" }
+    "event_type": { "const": "keepalive" },
+    "current_env":   { "type": "string", "description": "Bot's actual current environment from Photon room properties (optional)" },
+    "current_track": { "type": "string", "description": "Bot's actual current track from Photon room properties (optional)" },
+    "current_race":  { "type": "string", "description": "Bot's actual current race from Photon room properties (optional)" }
   }
 }

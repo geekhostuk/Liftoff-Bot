@@ -271,7 +271,8 @@ function handleCommandAck(event, botId) {
     message: event.message || '',
     timing_total_ms: event.timing_total_ms,
     timing_queue_ms: event.timing_queue_ms,
-    timing_phases: event.timing_phases
+    timing_phases: event.timing_phases,
+    diagnostics: event.diagnostics || ''
   });
 }
 
@@ -352,6 +353,7 @@ async function createPluginSocketServer(httpServer) {
       if (pluginSockets.get(botId) === ws) {
         pluginSockets.delete(botId);
         state.clearOnlinePlayersForBot(botId);
+        state.clearBotTrackState(botId);
         _lobbyWasFullPerBot.delete(botId);
       }
     });
@@ -495,8 +497,20 @@ async function handlePluginEvent(jsonLine, botId) {
   try {
     switch (eventType) {
       case E.SESSION_STARTED:  await db.handleSessionStarted(event);  break;
-      case E.RACE_RESET:       closedRaces = await db.handleRaceReset(event, state.getCurrentTrack()); idleKick.resetAllTimers(); break;
-      case E.LAP_RECORDED:     await db.handleLapRecorded(event, state.getCurrentTrack()); break;
+      case E.RACE_RESET:
+        if (state.isBotTransitioning(botId)) {
+          state.setBotConfirmed(botId, state.getCurrentTrack());
+          console.log(`[plugin-ws] Bot "${botId}" confirmed on new track via RACE_RESET`);
+        }
+        closedRaces = await db.handleRaceReset(event, state.getCurrentTrack()); idleKick.resetAllTimers();
+        break;
+      case E.LAP_RECORDED:
+        if (state.isBotTransitioning(botId)) {
+          console.warn(`[plugin-ws] Rejecting lap from bot "${botId}" — still transitioning to new track`);
+          break;
+        }
+        await db.handleLapRecorded(event, state.getCurrentTrack());
+        break;
       case E.RACE_END:         await db.handleRaceEnd(event);         break;
       case E.TRACK_CATALOG:
         await db.handleTrackCatalog(event);

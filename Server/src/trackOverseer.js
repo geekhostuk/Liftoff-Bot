@@ -17,6 +17,7 @@
 const db = require('./database');
 const { sendCommand, sendCommandAwaitToBot, getConnectedBotIds, setCurrentTrack, fireTemplates } = require('./pluginSocket');
 const broadcast = require('./broadcast');
+const globalState = require('./state');
 
 const DEFAULT_PLAYLIST_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const DEFAULT_TAG_INTERVAL_MS = 10 * 60 * 1000;      // 10 minutes
@@ -500,12 +501,16 @@ async function _applyTrack(trackInfo, source) {
   const botIds = getConnectedBotIds();
 
   // Send to each bot individually with non-blocking ack tracking
+  const targetTrack = { env, track, race };
   for (const botId of botIds) {
+    globalState.setBotTransitioning(botId, targetTrack);
     console.log(`[timing] set_track -> bot="${botId}" at ${dispatchTime}`);
     sendCommandAwaitToBot(botId, { ...trackCmd }, 60_000)
       .then(result => {
         const elapsed = Date.now() - dispatchTime;
-        console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status}) plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]`);
+        globalState.setBotConfirmed(botId, targetTrack);
+        const diagSuffix = result.diagnostics ? ` diag=[${result.diagnostics}]` : '';
+        console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status}) plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]${diagSuffix}`);
       })
       .catch(err => {
         const elapsed = Date.now() - dispatchTime;
@@ -562,30 +567,8 @@ async function _schedulePreTimers(delayMs) {
     if (t) nextTrackInfo = { env: t.env, track: t.track, race: t.race, workshop_id: t.workshop_id || '' };
   }
 
-  // Send prepare_track 60s before the change so the plugin can pre-cache assets
-  const PRELOAD_ADVANCE_MS = 60_000;
-  if (delayMs > PRELOAD_ADVANCE_MS + 5000 && nextTrackInfo.env !== '?') {
-    _preTimers.push(setTimeout(() => {
-      console.log(`[overseer] Sending prepare_track for ${nextTrackInfo.env}/${nextTrackInfo.track}`);
-      const prepareTime = Date.now();
-      const botIds = getConnectedBotIds();
-      for (const botId of botIds) {
-        console.log(`[timing] prepare_track -> bot="${botId}" at ${prepareTime}`);
-        sendCommandAwaitToBot(botId, {
-          cmd: 'prepare_track', env: nextTrackInfo.env, track: nextTrackInfo.track,
-          race: nextTrackInfo.race, workshop_id: nextTrackInfo.workshop_id
-        }, 30_000)
-          .then(result => {
-            const elapsed = Date.now() - prepareTime;
-            console.log(`[timing] prepare_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status}) plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]`);
-          })
-          .catch(err => {
-            const elapsed = Date.now() - prepareTime;
-            console.warn(`[timing] prepare_track FAILED for bot="${botId}" after ${elapsed}ms: ${err.message}`);
-          });
-      }
-    }, delayMs - PRELOAD_ADVANCE_MS));
-  }
+  // NOTE: prepare_track was removed — the plugin warmup was discarded when
+  // set_track re-did all the work, adding ~17-20s of unnecessary load per bot.
 
   // Pre-change messages: track_change templates with negative delay_ms
   let preTemplates = [];
