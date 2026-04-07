@@ -20,12 +20,14 @@ export default function Hero() {
           <Link to="/register" className="btn btn-primary btn-lg">
             Sign Up
           </Link>
-          <Link to="/competition" className="btn btn-outline">
-            View Current Season
-          </Link>
-          <Link to="/how-it-works" className="btn btn-outline">
-            How It Works
-          </Link>
+          <a
+            href="https://www.patreon.com/cw/JesusMcTwos/membership"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-support"
+          >
+            Support Us
+          </a>
         </div>
       </div>
     </section>

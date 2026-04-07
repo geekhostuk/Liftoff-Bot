@@ -50,6 +50,25 @@
   padding: 0.7em 1.8em;
 }
 
+.btn-support {
+  background: transparent;
+  color: var(--color-primary);
+  border: 2px solid var(--color-primary);
+  font-weight: 700;
+  font-size: 1.05rem;
+  padding: 0.65em 1.8em;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  box-shadow: 0 0 12px rgba(255, 122, 0, 0.2);
+  transition: all var(--transition-fast);
+}
+
+.btn-support:hover {
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 0 20px rgba(255, 122, 0, 0.4);
+}
+
 @media (max-width: 768px) {
   .hero {
     padding: var(--space-2xl) var(--space-md);
