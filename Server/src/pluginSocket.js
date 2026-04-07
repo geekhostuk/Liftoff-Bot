@@ -498,8 +498,11 @@ async function handlePluginEvent(jsonLine, botId) {
     switch (eventType) {
       case E.SESSION_STARTED:  await db.handleSessionStarted(event);  break;
       case E.RACE_RESET:
-        // NOTE: RACE_RESET does NOT confirm a transitioning bot — it may be the old
-        // race ending, not the new track loading. Only the ACK confirms the transition.
+        // Confirm bot only if it has ACKed the track change (status 'acked').
+        // If still 'transitioning' (no ACK yet), this is the old race ending — do not confirm.
+        if (state.setBotConfirmedViaReset(botId)) {
+          console.log(`[timing] Bot "${botId}" confirmed via RACE_RESET — new track loaded`);
+        }
         closedRaces = await db.handleRaceReset(event, state.getCurrentTrack()); idleKick.resetAllTimers();
         break;
       case E.LAP_RECORDED:

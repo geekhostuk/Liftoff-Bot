@@ -108,7 +108,7 @@ function applyChatCooldownForBot(botId) {
 
 // ── Per-bot track state ─────────────────────────────────────────────────────
 // Tracks whether each bot has confirmed the current track change.
-// botId → { target: {env,track,race}, status: 'transitioning'|'confirmed', since: ISO }
+// botId → { target: {env,track,race}, status: 'transitioning'|'acked'|'confirmed', since: ISO }
 const TRANSITION_STALE_MS = 90_000;
 const _botTrackState = new Map();
 
@@ -121,18 +121,27 @@ function setBotTransitioning(botId, target) {
   });
 }
 
-function setBotConfirmed(botId, track) {
+function setBotAcked(botId, track) {
   _botTrackState.set(botId, {
     target: track,
-    status: 'confirmed',
+    status: 'acked',
     since: new Date().toISOString(),
     _epoch: Date.now()
   });
 }
 
+function setBotConfirmedViaReset(botId) {
+  const entry = _botTrackState.get(botId);
+  if (!entry || entry.status !== 'acked') return false;
+  entry.status = 'confirmed';
+  entry.since = new Date().toISOString();
+  return true;
+}
+
 function isBotTransitioning(botId) {
   const entry = _botTrackState.get(botId);
-  if (!entry || entry.status !== 'transitioning') return false;
+  if (!entry || entry.status === 'confirmed') return false;
+  // Both 'transitioning' and 'acked' block laps
   // Auto-expire stale transitions
   if (Date.now() - entry._epoch > TRANSITION_STALE_MS) {
     entry.status = 'confirmed';
@@ -151,7 +160,7 @@ function getAllBotTrackStates() {
   const result = {};
   for (const [botId, entry] of _botTrackState) {
     // Check staleness on read
-    if (entry.status === 'transitioning' && Date.now() - entry._epoch > TRANSITION_STALE_MS) {
+    if ((entry.status === 'transitioning' || entry.status === 'acked') && Date.now() - entry._epoch > TRANSITION_STALE_MS) {
       entry.status = 'confirmed';
       entry.since = new Date().toISOString();
     }
@@ -179,7 +188,8 @@ module.exports = {
   applyChatCooldown,
   applyChatCooldownForBot,
   setBotTransitioning,
-  setBotConfirmed,
+  setBotAcked,
+  setBotConfirmedViaReset,
   isBotTransitioning,
   getBotTrackState,
   getAllBotTrackStates,
