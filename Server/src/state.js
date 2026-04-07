@@ -122,20 +122,34 @@ function setBotTransitioning(botId, target) {
 }
 
 function setBotAcked(botId, track) {
+  const entry = _botTrackState.get(botId);
+  // If a RACE_RESET already arrived while we were transitioning, the new track
+  // is loaded — go straight to confirmed. Otherwise wait for RACE_RESET.
+  const sawReset = entry && entry._sawReset;
   _botTrackState.set(botId, {
     target: track,
-    status: 'acked',
+    status: sawReset ? 'confirmed' : 'acked',
     since: new Date().toISOString(),
     _epoch: Date.now()
   });
+  return sawReset;
 }
 
 function setBotConfirmedViaReset(botId) {
   const entry = _botTrackState.get(botId);
-  if (!entry || entry.status !== 'acked') return false;
-  entry.status = 'confirmed';
-  entry.since = new Date().toISOString();
-  return true;
+  if (!entry) return false;
+  if (entry.status === 'acked') {
+    // ACK already received — confirm now
+    entry.status = 'confirmed';
+    entry.since = new Date().toISOString();
+    return true;
+  }
+  if (entry.status === 'transitioning') {
+    // ACK hasn't arrived yet — remember that RACE_RESET was seen so ACK can confirm immediately
+    entry._sawReset = true;
+    return false;
+  }
+  return false;
 }
 
 function isBotTransitioning(botId) {

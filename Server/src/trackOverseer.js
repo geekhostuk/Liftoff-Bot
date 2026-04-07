@@ -508,9 +508,9 @@ async function _applyTrack(trackInfo, source) {
     sendCommandAwaitToBot(botId, { ...trackCmd }, 60_000)
       .then(result => {
         const elapsed = Date.now() - dispatchTime;
-        globalState.setBotAcked(botId, targetTrack);
+        const autoConfirmed = globalState.setBotAcked(botId, targetTrack);
         const diagSuffix = result.diagnostics ? ` diag=[${result.diagnostics}]` : '';
-        console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status}) plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]${diagSuffix}`);
+        console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status})${autoConfirmed ? ' [confirmed — RACE_RESET already seen]' : ''} plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]${diagSuffix}`);
       })
       .catch(err => {
         const elapsed = Date.now() - dispatchTime;
