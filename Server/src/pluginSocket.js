@@ -498,6 +498,10 @@ async function handlePluginEvent(jsonLine, botId) {
     switch (eventType) {
       case E.SESSION_STARTED:  await db.handleSessionStarted(event);  break;
       case E.RACE_RESET:
+        if (state.isBotTransitioning(botId)) {
+          console.warn(`[plugin-ws] Rejecting race_reset from bot "${botId}" — still transitioning to new track`);
+          break;
+        }
         closedRaces = await db.handleRaceReset(event, state.getCurrentTrack()); idleKick.resetAllTimers();
         break;
       case E.LAP_RECORDED:

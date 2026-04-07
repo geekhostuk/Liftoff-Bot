@@ -179,8 +179,22 @@ async function main() {
   // ── Track ─────────────────────────────────────────────────────────────────
   internal.post('/internal/track/set', (req, res) => {
     const { env = '', track = '', race = '' } = req.body;
+    const targetTrack = { env, track, race };
+    const botIds = getConnectedBotIds();
+
+    // Mark all bots as transitioning BEFORE updating global track
+    for (const botId of botIds) {
+      state.setBotTransitioning(botId, targetTrack);
+      sendCommandAwaitToBot(botId, { cmd: 'set_track', env, track, race, workshop_id: req.body.workshop_id || '' }, 60_000)
+        .then(result => {
+          if (result.status === 'timeout') return;
+          state.setBotConfirmed(botId, targetTrack);
+        })
+        .catch(() => {});
+    }
+
     setCurrentTrack({ env, track, race });
-    const sent = sendCommand({ cmd: 'set_track', env, track, race, workshop_id: req.body.workshop_id || '' });
+    const sent = botIds.length > 0;
     if (sent) {
       broadcast.broadcastAll({ event_type: 'track_changed', env, track, race });
       fireTemplates('track_change', { env, track, race });
