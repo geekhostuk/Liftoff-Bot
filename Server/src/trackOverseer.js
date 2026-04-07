@@ -505,7 +505,7 @@ async function _applyTrack(trackInfo, source) {
     sendCommandAwaitToBot(botId, { ...trackCmd }, 60_000)
       .then(result => {
         const elapsed = Date.now() - dispatchTime;
-        console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status})`);
+        console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status}) plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]`);
       })
       .catch(err => {
         const elapsed = Date.now() - dispatchTime;
@@ -567,8 +567,23 @@ async function _schedulePreTimers(delayMs) {
   if (delayMs > PRELOAD_ADVANCE_MS + 5000 && nextTrackInfo.env !== '?') {
     _preTimers.push(setTimeout(() => {
       console.log(`[overseer] Sending prepare_track for ${nextTrackInfo.env}/${nextTrackInfo.track}`);
-      sendCommand({ cmd: 'prepare_track', env: nextTrackInfo.env, track: nextTrackInfo.track,
-                    race: nextTrackInfo.race, workshop_id: nextTrackInfo.workshop_id });
+      const prepareTime = Date.now();
+      const botIds = getConnectedBotIds();
+      for (const botId of botIds) {
+        console.log(`[timing] prepare_track -> bot="${botId}" at ${prepareTime}`);
+        sendCommandAwaitToBot(botId, {
+          cmd: 'prepare_track', env: nextTrackInfo.env, track: nextTrackInfo.track,
+          race: nextTrackInfo.race, workshop_id: nextTrackInfo.workshop_id
+        }, 30_000)
+          .then(result => {
+            const elapsed = Date.now() - prepareTime;
+            console.log(`[timing] prepare_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status}) plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]`);
+          })
+          .catch(err => {
+            const elapsed = Date.now() - prepareTime;
+            console.warn(`[timing] prepare_track FAILED for bot="${botId}" after ${elapsed}ms: ${err.message}`);
+          });
+      }
     }, delayMs - PRELOAD_ADVANCE_MS));
   }
 

@@ -266,7 +266,13 @@ function handleCommandAck(event, botId) {
   if (!entry) return;
   clearTimeout(entry.timer);
   pending.delete(commandId);
-  entry.resolve({ status: event.status || 'ok', message: event.message || '' });
+  entry.resolve({
+    status: event.status || 'ok',
+    message: event.message || '',
+    timing_total_ms: event.timing_total_ms,
+    timing_queue_ms: event.timing_queue_ms,
+    timing_phases: event.timing_phases
+  });
 }
 
 // ── Server setup ────────────────────────────────────────────────────────────
