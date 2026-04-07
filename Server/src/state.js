@@ -106,6 +106,64 @@ function applyChatCooldownForBot(botId) {
   _chatCooldownPerBot.set(botId, Date.now() + TRACK_CHANGE_CHAT_COOLDOWN_MS);
 }
 
+// ── Per-bot track state ─────────────────────────────────────────────────────
+// Tracks whether each bot has confirmed the current track change.
+// botId → { target: {env,track,race}, status: 'transitioning'|'confirmed', since: ISO }
+const TRANSITION_STALE_MS = 90_000;
+const _botTrackState = new Map();
+
+function setBotTransitioning(botId, target) {
+  _botTrackState.set(botId, {
+    target,
+    status: 'transitioning',
+    since: new Date().toISOString(),
+    _epoch: Date.now()
+  });
+}
+
+function setBotConfirmed(botId, track) {
+  _botTrackState.set(botId, {
+    target: track,
+    status: 'confirmed',
+    since: new Date().toISOString(),
+    _epoch: Date.now()
+  });
+}
+
+function isBotTransitioning(botId) {
+  const entry = _botTrackState.get(botId);
+  if (!entry || entry.status !== 'transitioning') return false;
+  // Auto-expire stale transitions
+  if (Date.now() - entry._epoch > TRANSITION_STALE_MS) {
+    entry.status = 'confirmed';
+    entry.since = new Date().toISOString();
+    console.warn(`[state] Bot "${botId}" transition auto-expired after ${TRANSITION_STALE_MS}ms`);
+    return false;
+  }
+  return true;
+}
+
+function getBotTrackState(botId) {
+  return _botTrackState.get(botId) || null;
+}
+
+function getAllBotTrackStates() {
+  const result = {};
+  for (const [botId, entry] of _botTrackState) {
+    // Check staleness on read
+    if (entry.status === 'transitioning' && Date.now() - entry._epoch > TRANSITION_STALE_MS) {
+      entry.status = 'confirmed';
+      entry.since = new Date().toISOString();
+    }
+    result[botId] = { target: entry.target, status: entry.status, since: entry.since };
+  }
+  return result;
+}
+
+function clearBotTrackState(botId) {
+  _botTrackState.delete(botId);
+}
+
 module.exports = {
   getCurrentTrack,
   setCurrentTrack,
@@ -120,4 +178,10 @@ module.exports = {
   areChatCommandsAllowed,
   applyChatCooldown,
   applyChatCooldownForBot,
+  setBotTransitioning,
+  setBotConfirmed,
+  isBotTransitioning,
+  getBotTrackState,
+  getAllBotTrackStates,
+  clearBotTrackState,
 };

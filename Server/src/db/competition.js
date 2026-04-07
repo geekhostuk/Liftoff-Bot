@@ -261,47 +261,57 @@ async function refreshWeeklyStandings(weekId) {
     ORDER BY total_points DESC
   `, [weekId]);
 
-  // Clear and rebuild standings in a single batch
-  await pool.query('DELETE FROM weekly_standings WHERE week_id = $1', [weekId]);
+  // Wrap in a transaction to prevent race conditions when two races
+  // finish close together — both calling refreshWeeklyStandings concurrently.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM weekly_standings WHERE week_id = $1', [weekId]);
 
-  if (pilots.length > 0) {
-    // Build batch VALUES for all pilots at once
-    const values = [];
-    const params = [];
-    let n = 1;
-    for (let i = 0; i < pilots.length; i++) {
-      const p = pilots[i];
-      // Get display name from most recent race_results via subquery
-      values.push(`($${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, NOW())`);
-      params.push(
-        weekId, week.competition_id, p.pilot_key, p.pilot_key,
-        p.total_points, p.position_points, p.laps_points,
-        p.improved_points, p.consistency_points,
-        p.participation_points, p.streak_points,
-        i + 1,
-      );
+    if (pilots.length > 0) {
+      const values = [];
+      const params = [];
+      let n = 1;
+      for (let i = 0; i < pilots.length; i++) {
+        const p = pilots[i];
+        values.push(`($${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, $${n++}, NOW())`);
+        params.push(
+          weekId, week.competition_id, p.pilot_key, p.pilot_key,
+          p.total_points, p.position_points, p.laps_points,
+          p.improved_points, p.consistency_points,
+          p.participation_points, p.streak_points,
+          i + 1,
+        );
+      }
+
+      await client.query(`
+        INSERT INTO weekly_standings
+          (week_id, competition_id, pilot_key, display_name, total_points,
+           position_points, laps_points, improved_points, consistency_points,
+           participation_points, streak_points, rank, updated_at)
+        VALUES ${values.join(', ')}
+      `, params);
+
+      // Update display names from most recent race_results
+      await client.query(`
+        UPDATE weekly_standings ws
+        SET display_name = sub.display_name
+        FROM (
+          SELECT DISTINCT ON (pilot_key) pilot_key, display_name
+          FROM race_results
+          WHERE week_id = $1 AND display_name IS NOT NULL
+          ORDER BY pilot_key, id DESC
+        ) sub
+        WHERE ws.week_id = $1 AND ws.pilot_key = sub.pilot_key
+      `, [weekId]);
     }
 
-    await pool.query(`
-      INSERT INTO weekly_standings
-        (week_id, competition_id, pilot_key, display_name, total_points,
-         position_points, laps_points, improved_points, consistency_points,
-         participation_points, streak_points, rank, updated_at)
-      VALUES ${values.join(', ')}
-    `, params);
-
-    // Update display names from most recent race_results in one statement
-    await pool.query(`
-      UPDATE weekly_standings ws
-      SET display_name = sub.display_name
-      FROM (
-        SELECT DISTINCT ON (pilot_key) pilot_key, display_name
-        FROM race_results
-        WHERE week_id = $1 AND display_name IS NOT NULL
-        ORDER BY pilot_key, id DESC
-      ) sub
-      WHERE ws.week_id = $1 AND ws.pilot_key = sub.pilot_key
-    `, [weekId]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
 }
 

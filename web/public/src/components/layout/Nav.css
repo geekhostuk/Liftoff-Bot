@@ -71,6 +71,93 @@
   color: var(--color-primary);
 }
 
+/* Nav dropdowns */
+.nav-dropdown {
+  position: relative;
+}
+
+.nav-dropdown-trigger {
+  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  user-select: none;
+}
+
+.nav-chevron {
+  width: 10px;
+  height: 10px;
+  transition: transform var(--transition-fast);
+}
+
+.nav-dropdown:hover .nav-chevron {
+  transform: rotate(180deg);
+}
+
+.nav-dropdown.active > .nav-dropdown-trigger {
+  color: var(--color-primary);
+}
+
+.nav-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 160px;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-xs) 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  margin-top: var(--space-xs);
+}
+
+.nav-dropdown:hover .nav-dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+}
+
+.nav-dropdown-item {
+  display: block;
+  padding: var(--space-sm) var(--space-md);
+  font-family: var(--font-heading);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.nav-dropdown-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.nav-dropdown-item.active {
+  color: var(--color-primary);
+}
+
+/* Support link */
+.nav-support {
+  color: var(--color-primary) !important;
+  font-weight: 700 !important;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: 0.35em 0.9em !important;
+  text-shadow: 0 0 8px rgba(255, 122, 0, 0.3);
+  transition: all var(--transition-fast);
+}
+
+.nav-support:hover {
+  background: var(--color-primary) !important;
+  color: #fff !important;
+  box-shadow: var(--glow-primary);
+}
+
 /* Lobby indicator */
 .lobby-indicator {
   display: flex;

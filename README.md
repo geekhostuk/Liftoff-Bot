@@ -1,6 +1,6 @@
 # Liftoff Competition
 
-Competition management platform for Liftoff FPV Simulator. Remotely control your lobby — change tracks, kick players, run playlists with scheduled rotations, tag tracks by category and run random tag-based rotations, queue tracks for upcoming play, and let pilots vote to skip, extend, or choose a track category. Always-on weekly scoring with automatic league tables. Includes a Node.js backend, live spectator view, competition page, and admin dashboard. Turn casual lobbies into league nights.
+Competition management platform for Liftoff FPV Simulator. Remotely control one or more lobbies — change tracks, kick players, run playlists with scheduled rotations, tag tracks by category and run random tag-based rotations, queue tracks for upcoming play, and let pilots vote to skip, extend, or choose a track category. Always-on weekly scoring with automatic league tables. Includes a Node.js backend, live spectator view, competition page with season standings, public track browser with leaderboards, pilot profiles, site user registration, and a full admin dashboard. Turn casual lobbies into league nights.
 
 > **BepInEx game plugin** — the plugin that runs inside Liftoff lives in its own repo: [liftoff-plugin](https://github.com/geekhostuk/liftoff-plugin) (private).
 
@@ -35,11 +35,12 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 | Service | What it does | Exposed at |
 |---------|-------------|------------|
-| **public-web** | Serves the public HTML/JS/CSS (live view, competition, stats, about) | `/*` |
-| **admin-web** | Serves the admin dashboard HTML/JS/CSS | `/admin/*` (Basic Auth) |
+| **public-web** | Serves the public site (live view, competition, track browser, pilot profiles, registration/login, about) | `/*` |
+| **admin-web** | Serves the admin dashboard | `/admin/*` (Basic Auth) |
 | **api** | Express REST API — public + admin routes, auth, DB reads/writes | `/api/*` |
 | **realtime** | WebSocket servers, plugin ingestion, domain services (track overseer, idle kick, skip/extend vote, tag vote, scoring), internal API | `/ws/*` |
-| **postgres** | PostgreSQL 16 database — stores all race data, competitions, playlists, and admin users | Port 5432 (internal) |
+| **postgres** | PostgreSQL 16 database — stores all race data, competitions, playlists, users, and admin config | Port 5432 (internal) |
+| **umami** | Web analytics — page views, sessions, referrers | `/umami/*` (internal) |
 | **nginx** | TLS termination, path-based routing, Basic Auth for admin | Ports 80/443 |
 
 1. The **BepInEx plugin** captures Photon multiplayer events (races, laps, players, chat) inside Liftoff and sends them to the realtime server over WebSocket.
@@ -57,9 +58,11 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 ### Lobby Control
 - Change tracks remotely from the admin dashboard
+- Pre-load tracks with `prepare_track` for smoother transitions
 - Kick players when moderation is needed
 - Browse and search the available track catalog
-- Full command/response protocol between server and game
+- Admin toggles to enable or disable `/next` and `/extend` chat commands
+- Full command/response protocol between server and game with acknowledgement tracking
 
 ### Playlists
 - Create named playlists with ordered track lists
@@ -113,6 +116,14 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Additional players can be whitelisted via admin API, admin dashboard, or `IDLE_KICK_WHITELIST` env var
 - Only active when the track overseer is running — free lobbies are unaffected
 
+### Multi-Bot Support
+
+- Connect multiple game instances simultaneously, each identified by a unique bot ID
+- Per-bot track state, chat cooldowns, and independent idle kick tracking
+- Merged lap activity across all connected lobbies on the live page
+- Combined `race_podium` event aggregating results across lobbies
+- Dynamic lobby capacity shown per bot on the live view
+
 ### Player Commands
 
 - `/info` — shows available player commands, current mode, and time remaining
@@ -153,10 +164,22 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 ### Live Spectator View
 - Real-time race visualization in the browser
 - Current track and environment display
-- Active player roster
-- Live lap activity feed
+- Active player roster with per-bot lobby counts
+- Live lap activity feed (merged across lobbies)
 - Connection status indicator
 - Designed for embedding in streams, club pages, or community sites
+
+### Track Browser & Pilot Profiles
+- Public track browser with search, filtering, and tag cloud
+- Track detail pages with per-track leaderboards and pilot comments
+- Pilot profile pages with stats and race history
+- Steam Workshop metadata integration and caching
+
+### User Accounts
+- Public registration with email verification (nodemailer)
+- Login and logout with session management
+- Forgot password and password reset flow via email
+- Privacy policy page
 
 ### Admin Dashboard
 
@@ -172,6 +195,10 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - **Chat Beta** — redesigned chat with filterable log, character counter, variable chips, and live preview
 - **Auto Messages Beta** — dedicated template manager with edit/test, trigger-filtered variables, and live preview
 - **Track Overseer** — overseer dashboard with mode switching (playlist/tag), track queue management, upcoming track preview, and track history
+- **User Management** — manage site users, admin permissions, and custom roles (RBAC)
+- **Bot Remote** — BotRemote and Bot2Remote pages for controlling desktop game instances via embedded iframe
+- **Scoring & Competitions** — scoring configuration, competition management, and week recalculation
+- **Idle Kick** — configure thresholds, view idle status, manage whitelist
 - Live chat log and manual messaging into the game
 - Persistent WebSocket connection for real-time status updates across all sections
 
@@ -189,9 +216,10 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
   - `player_joined` — any player enters the lobby
   - `player_new` — first-time player (never raced before)
   - `player_returned` — returning player with race history
+  - `race_podium` — combined race results across all connected lobbies
 - Template variables:
-  - **Trigger-specific:** `{env}`, `{track}`, `{race}`, `{mins}`, `{winner}`, `{time}`, `{race_id}`, `{nick}`
-  - **Universal:** `{1st}`, `{2nd}`, `{3rd}` (weekly competition standings), `{playlist}` (source playlist name), `{player_points}`, `{player_position}` (player's weekly rank/points)
+  - **Trigger-specific:** `{env}`, `{track}`, `{race}`, `{mins}`, `{winner}`, `{time}`, `{race_id}`, `{nick}`, `{players}`
+  - **Universal:** `{1st}` through `{8th}` (weekly competition standings), `{playlist}` (source playlist name), `{player_points}`, `{player_position}` (player's weekly rank/points)
 - Schedule warning messages before track rotation
 - Live preview resolves variables against current server data
 
@@ -214,8 +242,10 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 | Realtime Server | Node.js / WebSocket (ws) |
 | Database | PostgreSQL 16 |
 | Validation | AJV (JSON Schema) |
+| Email | nodemailer (verification, password reset) |
 | Frontend Build | Vite |
-| Frontend | React 19, React Router 7 |
+| Frontend | React 19, React Router 7, Recharts, @tanstack/react-table, fuse.js, lucide-react |
+| Analytics | Umami |
 | Infrastructure | Docker, Docker Compose, Nginx, Let's Encrypt |
 | Tests | Vitest |
 
@@ -225,22 +255,40 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 
 ```
 Liftoff/
-├── contracts/                          # Shared event schemas (JSON Schema)
-│   ├── common.json
-│   ├── lap_recorded.json
-│   ├── player_entered.json
+├── contracts/                          # Shared event schemas — 27 JSON Schema files
+│   ├── common.json                     # Shared definitions (timestamps, player object)
+│   ├── player_entered.json             # Player join/leave/list events
 │   ├── player_left.json
 │   ├── player_list.json
-│   ├── race_end.json
+│   ├── race_end.json                   # Race lifecycle events
 │   ├── race_reset.json
-│   └── set_track.json
+│   ├── lap_recorded.json
+│   ├── pilot_active.json               # Per-pilot race state
+│   ├── pilot_complete.json
+│   ├── pilot_reset.json
+│   ├── chat_message.json
+│   ├── set_track.json                  # Command/control
+│   ├── prepare_track.json              # Pre-load track command
+│   ├── track_changed.json
+│   ├── track_catalog.json
+│   ├── command_ack.json                # Command acknowledgement with timing fields
+│   ├── kick_result.json
+│   ├── playlist_state.json
+│   ├── checkpoint.json
+│   ├── competition_*.json              # Competition events (5 files: points, standings, weeks, runner state)
+│   ├── session_started.json
+│   ├── state_snapshot.json
+│   └── keepalive.json
 │
 ├── web/
-│   ├── public/                         # Public frontend (React + Vite)
+│   ├── public/                         # Public frontend (React 19 + Vite)
 │   │   ├── src/
-│   │   │   ├── pages/                  # Page components (Home, Live, Tracks, Competition, etc.)
-│   │   │   ├── components/             # Shared UI + layout components
-│   │   │   ├── hooks/                  # Custom React hooks
+│   │   │   ├── pages/                  # 16 pages: Home, Live, Competition, Tracks, TrackBrowse,
+│   │   │   │                           #   TrackDetail, Pilots, Profile, Register, Login, Verify,
+│   │   │   │                           #   ForgotPassword, ResetPassword, HowItWorks, About, Privacy
+│   │   │   ├── components/             # Shared UI + layout (home, live, browse, competition, pilots, profile, ui)
+│   │   │   ├── context/                # UserAuthContext
+│   │   │   ├── hooks/                  # useLobbyCount, custom hooks
 │   │   │   ├── lib/                    # API client, formatters, utilities
 │   │   │   ├── App.jsx                 # Router + layout
 │   │   │   └── main.jsx                # Entry point
@@ -248,12 +296,16 @@ Liftoff/
 │   │   ├── Dockerfile
 │   │   └── nginx.conf                  # Container-level nginx config
 │   │
-│   └── admin/                          # Admin frontend (React + Vite)
+│   └── admin/                          # Admin frontend (React 19 + Vite)
 │       ├── src/
-│       │   ├── pages/                  # Page components
-│       │   ├── components/             # Shared UI + layout components
-│       │   ├── hooks/                  # Custom React hooks
-│       │   ├── lib/                    # API client, utilities
+│       │   ├── pages/                  # 16 pages: Dashboard, Players, Tracks, TrackManager,
+│       │   │                           #   TrackManagerBeta, Chat, AutoMessages, Tags, Playlists,
+│       │   │                           #   Overseer, Scoring, Competitions, UserManagement,
+│       │   │                           #   IdleKick, BotRemote, Bot2Remote
+│       │   ├── components/             # layout, data (DataTable), feedback (Toast, Badge), form
+│       │   ├── context/                # AuthContext, WebSocketContext
+│       │   ├── hooks/                  # useApi, useSearch (fuse.js)
+│       │   ├── lib/                    # fmt.js (formatting utilities)
 │       │   ├── App.jsx                 # Router + layout
 │       │   └── main.jsx                # Entry point
 │       ├── vite.config.js
@@ -266,56 +318,81 @@ Liftoff/
 │   │   │   ├── index.js                # Entry point — Express REST API
 │   │   │   ├── realtimeClient.js       # HTTP client for internal API calls
 │   │   │   └── routes/
-│   │   │       ├── admin.js            # Admin API endpoints
-│   │   │       └── public.js           # Public API endpoints
+│   │   │       ├── admin.js            # Admin API endpoints (~35 routes)
+│   │   │       └── public.js           # Public API endpoints (~20 routes)
 │   │   │
 │   │   ├── realtime/                   # Realtime server
 │   │   │   └── index.js               # Entry point — WebSockets + domain services + internal API
 │   │   │
-│   │   ├── pluginSocket.js             # Plugin WebSocket server
+│   │   ├── pluginSocket.js             # Plugin WebSocket server (multi-bot aware)
 │   │   ├── liveSocket.js               # Live & admin WebSocket servers
 │   │   ├── broadcast.js                # Event broadcast dispatcher
 │   │   ├── trackOverseer.js            # Track rotation (playlist & tag modes) + queue
 │   │   ├── competitionScoring.js       # Points engine (real-time + batch)
-│   │   ├── state.js                    # In-memory state
+│   │   ├── state.js                    # In-memory state (per-bot player maps, track state)
 │   │   ├── auth.js                     # Password hashing & session store
+│   │   ├── email.js                    # Email sending (nodemailer — verification, password reset)
 │   │   ├── tagVote.js                  # Chat-based tag category voting
-│   │   ├── idleKick.js                 # Auto-kick idle pilots
+│   │   ├── idleKick.js                 # Auto-kick idle pilots (per-bot tracking)
 │   │   ├── skipVote.js                 # Vote-to-skip logic
 │   │   ├── extendVote.js               # Vote-to-extend logic
+│   │   ├── steamWorkshop.js            # Steam Workshop API queries & caching
 │   │   ├── eventTypes.js               # Event type constants
-│   │   ├── contracts.js                # Event validation
+│   │   ├── contracts.js                # Event validation (AJV, dev-only)
+│   │   ├── database.js                 # Database utilities
 │   │   ├── routes/                     # Shared route definitions (used by realtime)
 │   │   │   ├── admin.js
 │   │   │   └── public.js
 │   │   ├── cli/
-│   │   │   └── createUser.js           # CLI admin user creation
+│   │   │   ├── createUser.js           # CLI admin user creation
+│   │   │   └── importTrackSteamIds.js  # Import Steam Workshop track IDs
 │   │   └── db/                         # Database layer (PostgreSQL via pg pool)
 │   │       ├── connection.js           # PostgreSQL connection pool + migration runner
-│   │       ├── migrations/             # Numbered SQL migration files
-│   │       │   ├── 001_initial.sql
-│   │       │   ├── 002_competition.sql
-│   │       │   ├── 003_whitelist.sql
-│   │       │   ├── 004_tags.sql
-│   │       │   ├── 005_track_ids.sql
+│   │       ├── index.js                # DB module barrel export
+│   │       ├── migrations/             # 17 numbered SQL migration files (001–017)
+│   │       │   ├── 001_initial.sql     # Base schema: players, races, laps, chat, tracks
+│   │       │   ├── 002_competition.sql # Scoring tables: weeks, points, categories
+│   │       │   ├── 003_whitelist.sql   # Idle-kick whitelist
+│   │       │   ├── 004_tags.sql        # Track tagging system
+│   │       │   ├── 005_track_ids.sql   # Track local + Steam Workshop IDs
 │   │       │   ├── 006_week_schedules.sql
-│   │       │   ├── 007_overseer.sql
-│   │       │   ├── 008_scoring_periods.sql
-│   │       │   └── 009_overseer_queue.sql
-│   │       ├── competition.js          # Competition queries
+│   │       │   ├── 007_steam_workshop_cache.sql
+│   │       │   ├── 008_track_browser.sql
+│   │       │   ├── 009_track_overseer.sql
+│   │       │   ├── 010_playlist_queue.sql
+│   │       │   ├── 011_site_users.sql  # Public site user accounts
+│   │       │   ├── 012_admin_permissions.sql
+│   │       │   ├── 013_password_reset.sql
+│   │       │   ├── 014_custom_roles.sql
+│   │       │   ├── 015_performance_indexes.sql
+│   │       │   ├── 016_missing_indexes.sql
+│   │       │   └── 017_multi_bot.sql   # Multi-bot lobby support
+│   │       ├── competition.js          # Competition queries & scoring logic
 │   │       ├── ingest.js               # Event ingestion
 │   │       ├── queries.js              # Public data queries
+│   │       ├── profileStats.js         # Pilot profile statistics
+│   │       ├── trackBrowser.js         # Track search & filtering
+│   │       ├── trackOverseer.js        # Track overseer state & queue persistence
 │   │       ├── adminUsers.js           # Admin user management
+│   │       ├── adminPermissions.js     # Role-based access control
+│   │       ├── customRoles.js          # Custom role definitions
+│   │       ├── siteUsers.js            # Public site user accounts
 │   │       ├── chatTemplates.js        # Chat template CRUD
 │   │       ├── playlists.js            # Playlist CRUD
 │   │       ├── tags.js                 # Tag, track, and track-tag CRUD
-│   │       └── trackOverseer.js        # Track overseer state & queue persistence
+│   │       ├── bots.js                 # Multi-bot lobby records
+│   │       └── whitelist.js            # Idle-kick whitelist
 │   │
+│   ├── tests/                          # Vitest test files
 │   ├── nginx/
-│   │   └── nginx.conf                  # Reverse proxy config (4 upstreams)
-│   ├── docker-compose.yml              # 5 services: api, realtime, postgres, public-web, admin-web + nginx
+│   │   └── nginx.conf                  # Reverse proxy config (5 upstreams)
+│   ├── docker-compose.yml              # 7 services: postgres, realtime, api, public-web, admin-web, umami, nginx
 │   ├── Dockerfile
 │   └── .env.example
+│
+├── Docs/                               # Additional documentation
+│   ├── MARKETING_OVERVIEW.md
+│   └── TECHNICAL_REVIEW.md
 │
 └── Logs/                               # Plugin log output
 ```
@@ -345,6 +422,10 @@ Liftoff/
    IDLE_KICK_WHITELIST=              # comma-separated nicks immune to idle kick
    ADMIN_USER=                       # initial admin username (first run only)
    ADMIN_PASS=                       # initial admin password (first run only)
+   EMAIL_HOST=                       # SMTP host for verification & password reset emails
+   EMAIL_PORT=                       # SMTP port
+   EMAIL_USER=                       # SMTP username
+   EMAIL_PASS=                       # SMTP password
    ```
 
 3. **Run with Docker (recommended):**
@@ -353,7 +434,7 @@ Liftoff/
    docker compose up -d --build
    ```
 
-   This starts 5 containers plus nginx: API server, realtime server, PostgreSQL, public web, and admin web.
+   This starts 7 containers: API server, realtime server, PostgreSQL, public web, admin web, Umami analytics, and nginx.
 
    Or **run locally** (PostgreSQL and both servers needed):
    ```bash
@@ -429,6 +510,14 @@ The server is split into two processes that communicate via an internal HTTP API
 **Realtime Server** — Owns all WebSocket connections (plugin, live view, admin), in-memory state, event ingestion, and domain services (track overseer, idle kick, skip/extend vote, tag vote, scoring). Exposes an internal API for the API server to call.
 
 Both servers share the same PostgreSQL database. The database layer uses the `pg` connection pool with parameterized queries throughout — no ORM.
+
+### Multi-Bot Architecture
+
+The realtime server supports multiple simultaneous plugin connections, each identified by a unique bot ID. Players are keyed as `botId:actor` to avoid collisions between lobbies. Track state, idle kick tracking, chat cooldowns, and voting are managed independently per bot. The live view merges lap activity across all connected lobbies, and competition scoring aggregates results regardless of which bot hosted the race.
+
+### Email
+
+The server includes an email subsystem (nodemailer) for user registration verification and password resets. SMTP configuration is set via `EMAIL_*` environment variables.
 
 ### Database Migrations
 

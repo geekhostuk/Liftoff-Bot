@@ -20,8 +20,8 @@ const db = require('./db');
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;       // 5 minutes before warning (registered)
 const WARN_BEFORE_KICK_MS = 1 * 60 * 1000;   // 1 minute grace after warning (registered)
-const UNREG_IDLE_TIMEOUT_MS = 30 * 1000;     // 30 seconds before warning (unregistered)
-const UNREG_WARN_BEFORE_KICK_MS = 10 * 1000; // 10 second grace after warning (unregistered)
+const UNREG_IDLE_TIMEOUT_MS = 60 * 1000;     // 60 seconds before warning (unregistered)
+const UNREG_WARN_BEFORE_KICK_MS = 30 * 1000; // 30 second grace after warning (unregistered)
 const CHECK_INTERVAL_MS = 30 * 1000;          // sweep every 30 seconds
 const NICK_REFRESH_MS = 60 * 1000;            // refresh registered nicks every 60 seconds
 const MAX_LOBBY_SIZE = 8;                     // 7 players + bot — lobby is full at this count
@@ -240,6 +240,12 @@ function _runIdleCheck() {
   const now = Date.now();
   const sendToBot = _sendCommandToBot || _sendCommand;
 
+  // Track how many kicks we've issued per bot in this sweep.
+  // The actual player count won't drop until the plugin sends player_left,
+  // so we need to account for pending kicks to avoid mass-kicking.
+  const kicksThisSweep = new Map();
+  for (const bid of connectedBotIds) kicksThisSweep.set(bid, 0);
+
   for (const [compositeKey, lastTs] of _lastActivity) {
     const player = playerByKey.get(compositeKey);
 
@@ -268,6 +274,14 @@ function _runIdleCheck() {
 
     // Phase 2: kick (warned and grace period expired)
     if (idleMs >= idleTimeout + graceTimeout && _warned.has(compositeKey)) {
+      // Re-check that ALL lobbies are still full, accounting for
+      // kicks already issued in this sweep (player count won't drop
+      // until the plugin sends player_left back to us).
+      const stillFull = connectedBotIds.every(
+        bid => (state.getOnlinePlayerCountForBot(bid) - (kicksThisSweep.get(bid) || 0)) >= MAX_LOBBY_SIZE
+      );
+      if (!stillFull) return;
+
       // Broadcast kick announcement to all lobbies
       _sendCommand({
         cmd: 'send_chat',
@@ -279,6 +293,7 @@ function _runIdleCheck() {
       } else {
         _sendCommandAwait({ cmd: 'kick_player', actor }).catch(() => {});
       }
+      kicksThisSweep.set(botId, (kicksThisSweep.get(botId) || 0) + 1);
       _lastActivity.delete(compositeKey);
       _warned.delete(compositeKey);
       continue;
@@ -296,7 +311,7 @@ function _runIdleCheck() {
         const regHint = siteUrl ? ` Register at ${siteUrl} for longer idle time.` : '';
         sendToBot(botId, {
           cmd: 'send_chat',
-          message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, you will be kicked in 10 seconds!${regHint}</color>`,
+          message: `<color=#FF0000>WARNING</color> <color=#FFFF00>${nick}, you will be kicked in 30 seconds!${regHint}</color>`,
         });
       }
       _warned.add(compositeKey);
