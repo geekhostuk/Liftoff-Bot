@@ -22,15 +22,19 @@ async function handleSessionStarted(event) {
   `, [event.session_id, event.timestamp_utc, event.version || null, event.bot_id || 'default']);
 }
 
-async function handleRaceReset(event, currentTrack = {}) {
+/**
+ * Close any open races for this session (except the given race_id).
+ * Populates results from laps and triggers competition scoring.
+ * Returns an array of { race_id, winner_nick, winner_total_ms }.
+ */
+async function closeOpenRaces(sessionId, excludeRaceId, timestamp) {
   const pool = getPool();
   const closedRaces = [];
 
-  // Close any open races for this session and populate results from laps
   const { rows: openRaces } = await pool.query(`
     SELECT id FROM races
     WHERE session_id = $1 AND ended_at IS NULL AND id != $2
-  `, [event.session_id, event.race_id]);
+  `, [sessionId, excludeRaceId]);
 
   for (const race of openRaces) {
     const { rows: [{ cnt }] } = await pool.query(`
@@ -58,7 +62,7 @@ async function handleRaceReset(event, currentTrack = {}) {
           completed       = CASE WHEN completed > 0 THEN completed ELSE $6 END
       WHERE id = $7
     `, [
-      event.timestamp_utc,
+      timestamp,
       winner?.actor ?? null,
       winner?.nick ?? null,
       winner?.best_ms ?? null,
@@ -78,6 +82,14 @@ async function handleRaceReset(event, currentTrack = {}) {
       console.error('[competition] Scoring error for race', race.id, err.message);
     }
   }
+
+  return closedRaces;
+}
+
+async function handleRaceReset(event, currentTrack = {}) {
+  const pool = getPool();
+
+  const closedRaces = await closeOpenRaces(event.session_id, event.race_id, event.timestamp_utc);
 
   await pool.query(`
     INSERT INTO races (id, session_id, ordinal, started_at, env, track)
@@ -204,6 +216,7 @@ async function ensureRaceExists(event) {
 module.exports = {
   handleSessionStarted,
   handleRaceReset,
+  closeOpenRaces,
   handleLapRecorded,
   handleRaceEnd,
   handleTrackCatalog,

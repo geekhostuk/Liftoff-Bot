@@ -500,6 +500,8 @@ async function handlePluginEvent(jsonLine, botId) {
       case E.RACE_RESET:
         if (state.isBotTransitioning(botId)) {
           console.warn(`[plugin-ws] Rejecting race_reset from bot "${botId}" — still transitioning to new track`);
+          // Still close old races so podium + scoring fire during track rotation
+          closedRaces = await db.closeOpenRaces(event.session_id, event.race_id, event.timestamp_utc);
           break;
         }
         closedRaces = await db.handleRaceReset(event, state.getCurrentTrack()); idleKick.resetAllTimers();
