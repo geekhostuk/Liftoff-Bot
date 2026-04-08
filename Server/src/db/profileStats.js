@@ -13,6 +13,7 @@ async function getPilotSummary(nick) {
     FROM laps l
     JOIN races r ON r.id = l.race_id
     WHERE l.nick = $1
+      AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
   `, [nick]);
   return row;
 }
@@ -27,6 +28,7 @@ async function getPilotPersonalRecords(nick) {
     FROM laps l
     JOIN races r ON r.id = l.race_id
     WHERE l.nick = $1 AND r.env IS NOT NULL AND r.track IS NOT NULL
+      AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
     GROUP BY r.env, r.track
     ORDER BY best_lap_ms ASC
   `, [nick]);
@@ -41,6 +43,7 @@ async function getGlobalTrackRecords() {
     FROM laps l
     JOIN races r ON r.id = l.race_id
     WHERE r.env IS NOT NULL AND r.track IS NOT NULL
+      AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
     GROUP BY r.env, r.track
   `);
   const map = {};
@@ -56,6 +59,7 @@ async function getPilotWeeklyTrend(nick) {
       SELECT r.env, r.track, MIN(l.lap_ms) AS global_best
       FROM laps l JOIN races r ON r.id = l.race_id
       WHERE r.env IS NOT NULL AND r.track IS NOT NULL
+        AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
       GROUP BY r.env, r.track
     )
     SELECT
@@ -102,12 +106,14 @@ async function computePilotRating(nick) {
       SELECT r.env, r.track, MIN(l.lap_ms) AS global_best
       FROM laps l JOIN races r ON r.id = l.race_id
       WHERE r.env IS NOT NULL AND r.track IS NOT NULL
+        AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
       GROUP BY r.env, r.track
     ),
     pilot_track_bests AS (
       SELECT l.nick, r.env, r.track, MIN(l.lap_ms) AS best_ms
       FROM laps l JOIN races r ON r.id = l.race_id
       WHERE r.env IS NOT NULL AND r.track IS NOT NULL
+        AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
       GROUP BY l.nick, r.env, r.track
     ),
     pilot_avg_pct AS (
@@ -135,6 +141,7 @@ async function computePilotRating(nick) {
   const { rows: [cvRow] } = await pool.query(`
     WITH recent_race_ids AS (
       SELECT DISTINCT race_id FROM laps WHERE nick = $1
+        AND nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
       ORDER BY race_id DESC LIMIT 50
     ),
     per_track_cv AS (
@@ -178,6 +185,7 @@ async function computePilotRating(nick) {
     SELECT COUNT(DISTINCT recorded_at::date)::int AS days
     FROM laps
     WHERE nick = $1 AND recorded_at >= NOW() - INTERVAL '30 days'
+      AND nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
   `, [nick]);
   const activityScore = Math.min(100, (actRow?.days ?? 0) / 30 * 100);
 
@@ -226,6 +234,7 @@ async function getPilotTrackTrend(nick, env, track) {
     FROM laps l
     JOIN races r ON r.id = l.race_id
     WHERE l.nick = $1 AND r.env = $2 AND r.track = $3
+      AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
     GROUP BY l.recorded_at::date
     ORDER BY session_date ASC
   `, [nick, env, track]);
@@ -244,6 +253,7 @@ async function streamLapsCsv(nick, res) {
       FROM laps l
       JOIN races r ON r.id = l.race_id
       WHERE l.nick = $1
+        AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
       ORDER BY l.recorded_at DESC
       LIMIT $2 OFFSET $3
     `, [nick, batchSize, offset]);

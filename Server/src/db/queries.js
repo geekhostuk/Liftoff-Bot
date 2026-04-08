@@ -13,7 +13,11 @@ async function getRaceById(id) {
   const pool = getPool();
   const { rows: [race] } = await pool.query('SELECT * FROM races WHERE id = $1', [id]);
   if (!race) return null;
-  const { rows: laps } = await pool.query('SELECT * FROM laps WHERE race_id = $1 ORDER BY lap_number', [id]);
+  const { rows: laps } = await pool.query(`
+    SELECT * FROM laps WHERE race_id = $1
+      AND nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
+    ORDER BY lap_number
+  `, [id]);
   race.laps = laps;
   return race;
 }
@@ -28,6 +32,7 @@ async function getBestLaps({ limit = 100 } = {}) {
       MIN(lap_ms)  AS best_lap_ms,
       COUNT(*)     AS total_laps
     FROM laps
+    WHERE nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
     GROUP BY COALESCE(steam_id, pilot_guid, nick), nick, pilot_guid, steam_id
     ORDER BY best_lap_ms ASC
     LIMIT $1
@@ -45,14 +50,15 @@ async function getLatestRaceWithLaps(since) {
     LIMIT 1
   `);
   if (!race) return null;
+  const regFilter = 'AND nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)';
   if (since) {
     const { rows } = await pool.query(`
-      SELECT * FROM laps WHERE race_id = $1 AND recorded_at >= $2 ORDER BY recorded_at ASC
+      SELECT * FROM laps WHERE race_id = $1 AND recorded_at >= $2 ${regFilter} ORDER BY recorded_at ASC
     `, [race.id, since]);
     race.laps = rows;
   } else {
     const { rows } = await pool.query(`
-      SELECT * FROM laps WHERE race_id = $1 ORDER BY recorded_at ASC
+      SELECT * FROM laps WHERE race_id = $1 ${regFilter} ORDER BY recorded_at ASC
     `, [race.id]);
     race.laps = rows;
   }
@@ -69,6 +75,7 @@ async function getBestLapsByTrack(env, track, { limit = 100 } = {}) {
     FROM laps l
     JOIN races r ON l.race_id = r.id
     WHERE r.env = $1 AND r.track = $2
+      AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
     GROUP BY COALESCE(l.steam_id, l.pilot_guid, l.nick)
     ORDER BY best_lap_ms ASC
     LIMIT $3
@@ -85,6 +92,7 @@ async function getPlayerStats({ limit = 200 } = {}) {
       COUNT(*)               AS total_laps,
       COUNT(DISTINCT race_id) AS races_entered
     FROM laps
+    WHERE nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
     GROUP BY COALESCE(steam_id, pilot_guid, nick), nick, pilot_guid, steam_id
     ORDER BY total_laps DESC
     LIMIT $1
@@ -109,6 +117,7 @@ async function getPilotActivity() {
       COUNT(DISTINCT CASE WHEN recorded_at >= NOW() - INTERVAL '1 month'
         THEN COALESCE(steam_id, pilot_guid, nick) END) AS last_30d
     FROM laps
+    WHERE nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
   `);
   return row;
 }
@@ -128,6 +137,7 @@ async function getAllTimeStatsByNick(nicks) {
       COUNT(DISTINCT race_id) AS races_entered
     FROM laps
     WHERE nick IN (${placeholders})
+      AND nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
     GROUP BY nick
   `, nicks);
   const map = {};
@@ -140,7 +150,9 @@ async function getAllTimeStatsByNick(nicks) {
  */
 async function browseLaps({ env, track, nick, dateFrom, dateTo, limit = 50, offset = 0 } = {}) {
   const pool = getPool();
-  const conditions = [];
+  const conditions = [
+    'l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)',
+  ];
   const params = [];
   let n = 1;
 
@@ -150,7 +162,7 @@ async function browseLaps({ env, track, nick, dateFrom, dateTo, limit = 50, offs
   if (dateFrom) { conditions.push(`l.recorded_at >= $${n++}`); params.push(dateFrom); }
   if (dateTo) { conditions.push(`l.recorded_at <= $${n++}`); params.push(dateTo); }
 
-  const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+  const where = 'WHERE ' + conditions.join(' AND ');
 
   const { rows: [{ cnt }] } = await pool.query(`
     SELECT COUNT(*) AS cnt
@@ -190,6 +202,7 @@ async function getFilterOptions() {
   const { rows: pilots } = await pool.query(`
     SELECT nick, COUNT(*) AS total_laps
     FROM laps
+    WHERE nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
     GROUP BY nick
     ORDER BY total_laps DESC
   `);
@@ -206,6 +219,7 @@ async function getOverallStats() {
       COUNT(DISTINCT nick)   AS total_pilots,
       COUNT(DISTINCT race_id) AS total_races
     FROM laps
+    WHERE nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
   `);
   return row;
 }
@@ -242,6 +256,7 @@ async function getActiveRacesLaps(since) {
     FROM laps l
     JOIN races r ON r.id = l.race_id
     WHERE r.started_at >= $1
+      AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
     ORDER BY l.recorded_at ASC
   `, [since]);
   return rows;

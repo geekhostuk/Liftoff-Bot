@@ -45,6 +45,7 @@ async function getBrowseTracks({ search, sort = 'name', limit = 50, offset = 0 }
       SELECT r.env, r.track, COUNT(*) AS total_laps
       FROM laps l
       JOIN races r ON l.race_id = r.id
+      WHERE l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
       GROUP BY r.env, r.track
     ) lc ON lc.env = t.env AND lc.track = t.track
     ${whereClause}
@@ -91,6 +92,7 @@ async function getTrackDetailByEnvTrack(env, track) {
       SELECT r.env, r.track, COUNT(*) AS total_laps
       FROM laps l
       JOIN races r ON l.race_id = r.id
+      WHERE l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
       GROUP BY r.env, r.track
     ) lc ON lc.env = t.env AND lc.track = t.track
     LEFT JOIN (
@@ -100,6 +102,7 @@ async function getTrackDetailByEnvTrack(env, track) {
         (ARRAY_AGG(l.nick ORDER BY l.lap_ms ASC))[1] AS best_lap_nick
       FROM laps l
       JOIN races r ON l.race_id = r.id
+      WHERE l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
       GROUP BY r.env, r.track
     ) bl ON bl.env = t.env AND bl.track = t.track
     LEFT JOIN track_tags tt ON tt.track_id = t.id
