@@ -1,11 +1,17 @@
 const { getPool } = require('./connection');
-const idleKick = require('../idleKick');
 
 // Lazy-loaded to avoid circular dependency (scoring → database → ingest → scoring)
 let _processRaceClose = null;
 function getProcessRaceClose() {
   if (!_processRaceClose) _processRaceClose = require('../competitionScoring').processRaceClose;
   return _processRaceClose;
+}
+
+// Lazy-loaded to avoid circular dependency (idleKick → db → ingest → idleKick)
+let _idleKick = null;
+function getIdleKick() {
+  if (!_idleKick) _idleKick = require('../idleKick');
+  return _idleKick;
 }
 
 async function handleSessionStarted(event) {
@@ -97,7 +103,7 @@ async function handleLapRecorded(event, currentTrack = {}) {
       UPDATE races SET env = $1, track = $2 WHERE id = $3 AND env IS NULL
     `, [currentTrack.env, currentTrack.track, event.race_id]);
   }
-  const isRegistered = idleKick.isNickVerified(event.nick || '');
+  const isRegistered = getIdleKick().isNickVerified(event.nick || '');
   await pool.query(`
     INSERT INTO laps (race_id, session_id, actor, nick, pilot_guid, steam_id, lap_number, lap_ms, recorded_at, registered)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
