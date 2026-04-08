@@ -508,6 +508,10 @@ async function _applyTrack(trackInfo, source) {
     sendCommandAwaitToBot(botId, { ...trackCmd }, 60_000)
       .then(result => {
         const elapsed = Date.now() - dispatchTime;
+        if (result.status === 'timeout') {
+          console.warn(`[timing] set_track TIMEOUT for bot="${botId}" after ${elapsed}ms — staying transitioning (will auto-expire)`);
+          return;
+        }
         globalState.setBotConfirmed(botId, targetTrack);
         const diagSuffix = result.diagnostics ? ` diag=[${result.diagnostics}]` : '';
         console.log(`[timing] set_track ACK from bot="${botId}" after ${elapsed}ms (status=${result.status}) [confirmed] plugin=${result.timing_total_ms ?? '?'}ms queue=${result.timing_queue_ms ?? '?'}ms phases=[${result.timing_phases || ''}]${diagSuffix}`);

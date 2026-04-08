@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
-const { sendCommand, sendCommandAwait, getPluginSocket, setCurrentTrack, fireTemplates } = require('../pluginSocket');
+const { sendCommand, sendCommandAwait, sendCommandAwaitToBot, getPluginSocket, getConnectedBotIds, setCurrentTrack, fireTemplates } = require('../pluginSocket');
+const state = require('../state');
 const broadcast = require('../broadcast');
 const db = require('../database');
 const trackOverseer = require('../trackOverseer');
@@ -140,13 +141,25 @@ router.post('/track/set', strictLimiter, (req, res) => {
   if (!env && !track && !workshop_id) {
     return res.status(400).json({ error: 'Provide at least env+track or workshop_id' });
   }
-  setCurrentTrack({ env, track, race });
-  const sent = sendCommand({ cmd: 'set_track', env, track, race, workshop_id });
-  if (sent) {
-    broadcast.broadcastAll({ event_type: 'track_changed', env, track, race });
-    fireTemplates('track_change', { env, track, race });
+
+  const targetTrack = { env, track, race };
+  const botIds = getConnectedBotIds();
+
+  // Mark all bots as transitioning BEFORE updating global track
+  for (const botId of botIds) {
+    state.setBotTransitioning(botId, targetTrack);
+    sendCommandAwaitToBot(botId, { cmd: 'set_track', env, track, race, workshop_id }, 60_000)
+      .then(result => {
+        if (result.status === 'timeout') return;
+        state.setBotConfirmed(botId, targetTrack);
+      })
+      .catch(() => {});
   }
-  pluginStatus(res, sent);
+
+  setCurrentTrack({ env, track, race });
+  broadcast.broadcastAll({ event_type: 'track_changed', env, track, race });
+  fireTemplates('track_change', { env, track, race });
+  pluginStatus(res, botIds.length > 0);
 });
 
 /**
