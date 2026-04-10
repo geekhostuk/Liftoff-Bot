@@ -1,12 +1,12 @@
 const { getPool } = require('./connection');
 
 async function getAllBots() {
-  const { rows } = await getPool().query('SELECT id, api_key, label, bot_nick, created_at FROM bots ORDER BY created_at');
+  const { rows } = await getPool().query('SELECT id, api_key, label, bot_nick, room_id, created_at FROM bots ORDER BY created_at');
   return rows;
 }
 
 async function getBotByApiKey(apiKey) {
-  const { rows } = await getPool().query('SELECT id, label, bot_nick FROM bots WHERE api_key = $1', [apiKey]);
+  const { rows } = await getPool().query('SELECT id, label, bot_nick, room_id FROM bots WHERE api_key = $1', [apiKey]);
   return rows[0] || null;
 }
 

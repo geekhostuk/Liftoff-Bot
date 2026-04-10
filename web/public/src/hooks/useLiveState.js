@@ -36,6 +36,7 @@ const initial = {
 
   pilotActivity: null,
   statsOverview: null,
+  rooms: [],
 };
 
 let _feedId = 0;
@@ -111,7 +112,8 @@ function reducer(state, action) {
       const playlist = e.overseer || e.playlist || state.playlist;
       const connectedBots = e.connected_bots || state.connectedBots;
       const botNicks = e.bot_nicks || state.botNicks;
-      return { ...state, currentTrack, trackSince, players, pilots, raceId, raceStatus, raceResult: null, playlist, connectedBots, botNicks };
+      const rooms = e.rooms || state.rooms;
+      return { ...state, currentTrack, trackSince, players, pilots, raceId, raceStatus, raceResult: null, playlist, connectedBots, botNicks, rooms };
     }
 
     case 'player_entered': {

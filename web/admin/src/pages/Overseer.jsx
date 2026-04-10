@@ -53,6 +53,8 @@ function modeBadge(state) {
 export default function Overseer() {
   const { apiFetch, apiCall } = useApi();
 
+  const [rooms, setRooms] = useState([]);
+  const [selectedRoom, setSelectedRoom] = useState('default');
   const [os, setOs] = useState(null);
   const [queue, setQueue] = useState([]);
   const [history, setHistory] = useState([]);
@@ -71,15 +73,25 @@ export default function Overseer() {
   const [pqShuffle, setPqShuffle] = useState(false);
   const [pqStartAfter, setPqStartAfter] = useState('track');
 
+  // Room-aware API path helpers
+  const osBase = selectedRoom === 'default'
+    ? '/api/admin/overseer'
+    : `/api/admin/rooms/${selectedRoom}/overseer`;
+
   const fetchAll = useCallback(async () => {
     try {
-      const [osData, queueData, historyData, playlistData, tagData] = await Promise.all([
-        apiFetch('GET', '/api/admin/overseer/state'),
+      const osPath = selectedRoom === 'default'
+        ? '/api/admin/overseer/state'
+        : `/api/admin/rooms/${selectedRoom}/overseer/state`;
+      const [roomsData, osData, queueData, historyData, playlistData, tagData] = await Promise.all([
+        apiFetch('GET', '/api/admin/rooms'),
+        apiFetch('GET', osPath),
         apiFetch('GET', '/api/admin/queue'),
         apiFetch('GET', '/api/admin/tracks/history?limit=20'),
         apiFetch('GET', '/api/admin/playlists'),
         apiFetch('GET', '/api/admin/tags'),
       ]);
+      setRooms(roomsData);
       setOs(osData);
       setQueue(queueData);
       setHistory(historyData);
@@ -87,12 +99,18 @@ export default function Overseer() {
       setTags(tagData);
       if (!selectedPlaylist && playlistData.length > 0) setSelectedPlaylist(String(playlistData[0].id));
     } catch {}
-  }, [apiFetch]);
+  }, [apiFetch, selectedRoom]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Live updates
-  useWsEvent('overseer_state', setOs);
+  // Live updates — only apply if matching the selected room
+  useWsEvent('overseer_state', (data) => {
+    const eventRoom = data.room_id || 'default';
+    if (eventRoom === selectedRoom) setOs(data);
+  });
+
+  // Re-fetch when room changes
+  useEffect(() => { fetchAll(); }, [selectedRoom]);
 
   // Countdown timer
   const [, setTick] = useState(0);
@@ -101,10 +119,10 @@ export default function Overseer() {
     return () => clearInterval(id);
   }, []);
 
-  // Actions
+  // Actions (room-scoped)
   const startPlaylist = () => {
     if (!selectedPlaylist) return;
-    apiCall('POST', '/api/admin/overseer/start-playlist', {
+    apiCall('POST', `${osBase}/start-playlist`, {
       playlist_id: Number(selectedPlaylist),
       interval_ms: intervalMin * 60 * 1000,
     }, 'Playlist started').then(fetchAll);
@@ -112,7 +130,7 @@ export default function Overseer() {
 
   const startTags = () => {
     if (selectedTags.length === 0) return;
-    apiCall('POST', '/api/admin/overseer/start-tags', {
+    apiCall('POST', `${osBase}/start-tags`, {
       tag_names: selectedTags,
       interval_ms: tagIntervalMin * 60 * 1000,
     }, 'Tag mode started').then(fetchAll);
@@ -131,14 +149,14 @@ export default function Overseer() {
   const movePlaylistInQueue = (id, dir) => apiCall('POST', `/api/admin/overseer/playlist-queue/${id}/move`, { direction: dir }).then(fetchAll);
   const clearPlaylistQueue = () => apiCall('DELETE', '/api/admin/overseer/playlist-queue', {}, 'Playlist queue cleared').then(fetchAll);
 
-  const stop = () => apiCall('POST', '/api/admin/overseer/stop', {}, 'Stopped').then(fetchAll);
-  const skip = () => apiCall('POST', '/api/admin/overseer/skip', {}, 'Skipped').then(fetchAll);
-  const extend = () => apiCall('POST', '/api/admin/overseer/extend', { ms: 300000 }, 'Extended +5m').then(fetchAll);
+  const stop = () => apiCall('POST', `${osBase}/stop`, {}, 'Stopped').then(fetchAll);
+  const skip = () => apiCall('POST', `${osBase}/skip`, {}, 'Skipped').then(fetchAll);
+  const extend = () => apiCall('POST', `${osBase}/extend`, { ms: 300000 }, 'Extended +5m').then(fetchAll);
 
-  const toggleSkipVote = () => apiCall('POST', '/api/admin/overseer/skip-vote-enabled',
+  const toggleSkipVote = () => apiCall('POST', `${osBase}/skip-vote-enabled`,
     { enabled: !(os?.skip_vote_enabled ?? true) },
     os?.skip_vote_enabled !== false ? 'Skip vote disabled' : 'Skip vote enabled');
-  const toggleExtendVote = () => apiCall('POST', '/api/admin/overseer/extend-vote-enabled',
+  const toggleExtendVote = () => apiCall('POST', `${osBase}/extend-vote-enabled`,
     { enabled: !(os?.extend_vote_enabled ?? true) },
     os?.extend_vote_enabled !== false ? 'Extend vote disabled' : 'Extend vote enabled');
 
@@ -152,8 +170,20 @@ export default function Overseer() {
 
   return (
     <div style={styles.page}>
+      {/* Room selector */}
+      {rooms.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Room:</span>
+          <select style={styles.select} value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)}>
+            {rooms.map(r => (
+              <option key={r.room_id} value={r.room_id}>{r.label || r.room_id}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Status + Runner bar */}
-      {os && <RunnerBar state={os} label={os.mode === 'tag' ? 'Tag Mode' : 'Track Overseer'} />}
+      {os && <RunnerBar state={os} label={os.mode === 'tag' ? 'Tag Mode' : `Track Overseer${rooms.length > 1 ? ` (${selectedRoom})` : ''}`} />}
 
       {/* Status card */}
       <div style={styles.panel}>

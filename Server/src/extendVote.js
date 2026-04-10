@@ -1,133 +1,26 @@
 /**
- * Extend-vote module.
+ * Extend-vote — backward-compatible facade.
  *
- * Manages the in-game /extend chat command that lets players collectively
- * vote to add 5 minutes to the current track timer. Uses the same vote
- * threshold as /next.
- *
- * Dependencies are injected via init() so this module stays decoupled
- * from the WebSocket transport layer.
+ * All methods delegate to the default room's ExtendVoteInstance via
+ * RoomManager. Code that already does require('./extendVote') continues
+ * to work unchanged.
  */
 
-const state = require('./state');
+let _default = null;
 
-const EXTEND_VOTE_TIMEOUT_MS = 180_000; // votes expire after 3 minutes
-const EXTEND_AMOUNT_MS = 5 * 60 * 1000; // 5 minutes
-
-const extendVote = {
-  active: false,
-  voters: new Set(), // voter keys (user_id or nick) who have voted
-  timer: null,
-};
-
-let _sendCommand = null;
-
-/**
- * Initialise the module with a sendCommand function (from pluginSocket).
- */
-function init(sendCommandFn) {
-  _sendCommand = sendCommandFn;
+function setDefaultExtendVote(instance) {
+  _default = instance;
 }
 
-function cancelExtendVote() {
-  extendVote.active = false;
-  extendVote.voters.clear();
-  if (extendVote.timer) {
-    clearTimeout(extendVote.timer);
-    extendVote.timer = null;
-  }
-}
-
-function getExtendVoteInfo() {
-  const total = state.getOnlinePlayerCount();
-  const { getConnectedBotCount } = require('./pluginSocket');
-  const botCount = getConnectedBotCount() || 1;
-  const realPlayers = Math.max(total - botCount, 0); // exclude all bot host players
-  const needed = realPlayers <= 1 ? 1 : Math.max(Math.floor(realPlayers / 2), 2);
-  return { realPlayers, needed };
-}
-
-function _getActiveRunner() {
-  const overseer = require('./trackOverseer');
-  if (overseer.getState().running) return overseer;
-  return null;
-}
-
-function handleExtendVoteCommand(voterId) {
-  const overseer = require('./trackOverseer');
-  if (!overseer.getState().extend_vote_enabled) {
-    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>EXTEND</color> <color=#FFFF00>Extend voting is disabled.</color>' });
-    return;
-  }
-  const runner = _getActiveRunner();
-  if (!runner) {
-    _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>EXTEND</color> <color=#FFFF00>No track rotation is running — nothing to extend.</color>' });
-    return;
-  }
-
-  if (extendVote.active) {
-    if (extendVote.voters.has(voterId)) {
-      _sendCommand({ cmd: 'send_chat', message: '<color=#FFFF00>You have already voted.</color>' });
-      return;
-    }
-    extendVote.voters.add(voterId);
-    const { needed } = getExtendVoteInfo();
-    const have = extendVote.voters.size;
-    _sendCommand({ cmd: 'send_chat', message: `<color=#00BFFF>EXTEND VOTE</color> <color=#00FF00>${have}/${needed}</color>` });
-    checkExtendVoteThreshold();
-    return;
-  }
-
-  // Start a new vote
-  extendVote.active = true;
-  extendVote.voters.clear();
-  extendVote.voters.add(voterId); // the initiator counts as a vote
-
-  const { realPlayers, needed } = getExtendVoteInfo();
-  _sendCommand({ cmd: 'send_chat', message: `<color=#00FF00>EXTEND VOTE</color> <color=#FFFF00>Need</color> <color=#00BFFF>${needed}/${realPlayers}</color> <color=#FFFF00>— Type /extend</color> <color=#FF0000>(3m)</color>` });
-
-  // Check immediately in case threshold already met
-  checkExtendVoteThreshold();
-
-  extendVote.timer = setTimeout(() => {
-    if (extendVote.active) {
-      cancelExtendVote();
-      _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>EXTEND VOTE</color> <color=#FFFF00>Extend vote expired.</color>' });
-    }
-  }, EXTEND_VOTE_TIMEOUT_MS);
-}
-
-function checkExtendVoteThreshold() {
-  const { realPlayers, needed } = getExtendVoteInfo();
-  if (realPlayers === 0) return;
-  if (extendVote.voters.size >= needed) {
-    cancelExtendVote();
-    const runner = _getActiveRunner();
-    if (!runner) {
-      _sendCommand({ cmd: 'send_chat', message: '<color=#FF0000>EXTEND</color> <color=#FFFF00>Vote passed but nothing is running.</color>' });
-      return;
-    }
-    _sendCommand({ cmd: 'send_chat', message: '<color=#00FF00>VOTE PASSED</color> <color=#FFFF00>Adding 5 minutes to the current track.</color>' });
-    runner.extendTimer(EXTEND_AMOUNT_MS);
-    const trackToExtend = state.getCurrentTrack();
-    if (trackToExtend) {
-      const db = require('./database');
-      db.incrementExtendCount(trackToExtend.env, trackToExtend.track)
-        .catch(err => console.error('[extendVote] persist extend count failed:', err));
-    }
-  }
-}
-
-/**
- * Whether an extend vote is currently active.
- */
-function isActive() {
-  return extendVote.active;
-}
+function init() {}
+function isActive()                          { return _default ? _default.isActive() : false; }
+function cancelExtendVote()                  { if (_default) _default.cancelExtendVote(); }
+function handleExtendVoteCommand(voterId)    { if (_default) _default.handleExtendVoteCommand(voterId); }
 
 module.exports = {
   init,
   isActive,
   cancelExtendVote,
   handleExtendVoteCommand,
+  setDefaultExtendVote,
 };

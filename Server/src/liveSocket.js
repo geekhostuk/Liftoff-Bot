@@ -87,6 +87,21 @@ function createLiveSocketServer(httpServer) {
       const players = getOnlinePlayers().map(({ actor, nick, botId }) => ({ actor, nick, botId }));
       const botCount = getConnectedBotCount() || 1;
       const botNicks = getConnectedBotIds().map(id => getBotNick(id));
+
+      // Include room snapshots if RoomManager is available
+      let rooms;
+      try {
+        const roomManager = require('./RoomManager');
+        rooms = roomManager.getRoomsSnapshot().map(r => ({
+          room_id: r.room_id,
+          label: r.label,
+          current_track: r.current_track,
+          track_since: r.track_since,
+          online_players: (r.online_players || []).map(p => ({ nick: p.nick, botId: p.botId })),
+          overseer: r.overseer,
+        }));
+      } catch {}
+
       ws.send(JSON.stringify({
         event_type: 'state_snapshot',
         race: stripSensitiveFromRace(race),
@@ -97,6 +112,7 @@ function createLiveSocketServer(httpServer) {
         overseer: trackOverseer.getState(),
         connected_bots: botCount,
         bot_nicks: botNicks,
+        rooms: rooms || [],
       }));
     } catch (err) {
       console.error('[live] Failed to send state snapshot:', err.message);
@@ -113,6 +129,14 @@ function createLiveSocketServer(httpServer) {
 
     try {
       const race = await db.getLatestRaceWithLaps();
+
+      // Include room snapshots
+      let rooms;
+      try {
+        const roomManager = require('./RoomManager');
+        rooms = roomManager.getRoomsSnapshot();
+      } catch {}
+
       ws.send(JSON.stringify({
         event_type: 'state_snapshot',
         race,
@@ -120,6 +144,7 @@ function createLiveSocketServer(httpServer) {
         track_since: getCurrentTrackSince(),
         online_players: getOnlinePlayers(),
         bot_track_states: getAllBotTrackStates(),
+        rooms: rooms || [],
       }));
     } catch (err) {
       console.error('[admin-ws] Failed to send state snapshot:', err.message);
