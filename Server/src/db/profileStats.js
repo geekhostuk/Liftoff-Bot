@@ -279,10 +279,63 @@ async function streamRacesCsv(nick, res) {
              rr.best_lap_ms, rr.avg_lap_ms, rr.total_laps
       FROM race_results rr
       JOIN races r ON r.id = rr.race_id
-      WHERE rr.pilot_key = $1
+      WHERE rr.display_name = $1
       ORDER BY r.started_at DESC
       LIMIT $2 OFFSET $3
     `, [nick, batchSize, offset]);
+    if (rows.length === 0) break;
+    for (const r of rows) {
+      const date = r.started_at ? new Date(r.started_at).toISOString() : '';
+      res.write(`${date},"${csvEscape(r.env)}","${csvEscape(r.track)}",${r.position},${r.participants},${r.best_lap_ms},${fmtMsCsv(r.best_lap_ms)},${r.avg_lap_ms || ''},${r.total_laps}\n`);
+    }
+    offset += batchSize;
+    if (rows.length < batchSize) break;
+  }
+  res.end();
+}
+
+async function streamLapsCsvFiltered(nick, from, to, res) {
+  res.write('Date,Environment,Track,Lap Number,Lap Time (ms),Lap Time,Race ID\n');
+  const batchSize = 1000;
+  let offset = 0;
+  while (true) {
+    const { rows } = await getPool().query(`
+      SELECT l.recorded_at, r.env, r.track, l.lap_number, l.lap_ms, l.race_id
+      FROM laps l
+      JOIN races r ON r.id = l.race_id
+      WHERE l.nick = $1
+        AND l.recorded_at >= $2 AND l.recorded_at <= $3
+        AND l.nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
+      ORDER BY l.recorded_at DESC
+      LIMIT $4 OFFSET $5
+    `, [nick, from, to, batchSize, offset]);
+    if (rows.length === 0) break;
+    for (const r of rows) {
+      const time = fmtMsCsv(r.lap_ms);
+      const date = r.recorded_at ? new Date(r.recorded_at).toISOString() : '';
+      res.write(`${date},"${csvEscape(r.env)}","${csvEscape(r.track)}",${r.lap_number},${r.lap_ms},${time},${r.race_id}\n`);
+    }
+    offset += batchSize;
+    if (rows.length < batchSize) break;
+  }
+  res.end();
+}
+
+async function streamRacesCsvFiltered(nick, from, to, res) {
+  res.write('Date,Environment,Track,Position,Participants,Best Lap (ms),Best Lap,Avg Lap (ms),Total Laps\n');
+  const batchSize = 500;
+  let offset = 0;
+  while (true) {
+    const { rows } = await getPool().query(`
+      SELECT r.started_at, r.env, r.track, rr.position, r.participants,
+             rr.best_lap_ms, rr.avg_lap_ms, rr.total_laps
+      FROM race_results rr
+      JOIN races r ON r.id = rr.race_id
+      WHERE rr.display_name = $1
+        AND r.started_at >= $2 AND r.started_at <= $3
+      ORDER BY r.started_at DESC
+      LIMIT $4 OFFSET $5
+    `, [nick, from, to, batchSize, offset]);
     if (rows.length === 0) break;
     for (const r of rows) {
       const date = r.started_at ? new Date(r.started_at).toISOString() : '';
@@ -316,4 +369,6 @@ module.exports = {
   computePilotRating,
   streamLapsCsv,
   streamRacesCsv,
+  streamLapsCsvFiltered,
+  streamRacesCsvFiltered,
 };

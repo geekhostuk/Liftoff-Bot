@@ -1065,4 +1065,35 @@ router.delete('/bots/:id', requirePermission('tracks'), strictLimiter, async (re
   res.json(result);
 });
 
+// ── Per-user data export (CSV) ────────────────────────────────────────────
+
+router.get('/site-users/:id/export/:type', requirePermission('users'), async (req, res) => {
+  const { type } = req.params;
+  if (type !== 'laps' && type !== 'races') {
+    return res.status(400).json({ error: 'Type must be "laps" or "races"' });
+  }
+  const { from, to } = req.query;
+  if (!from || !to) {
+    return res.status(400).json({ error: '"from" and "to" query params required (YYYY-MM-DD)' });
+  }
+  const fromDate = new Date(`${from}T00:00:00.000Z`);
+  const toDate = new Date(`${to}T23:59:59.999Z`);
+  if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+    return res.status(400).json({ error: 'Invalid date format — use YYYY-MM-DD' });
+  }
+  const user = await db.getSiteUserById(Number(req.params.id));
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!user.nickname) return res.status(400).json({ error: 'User has no nickname — no data to export' });
+
+  const safeName = user.nickname.replace(/[^a-zA-Z0-9_-]/g, '_');
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}-${type}-${from}-to-${to}.csv"`);
+
+  if (type === 'laps') {
+    await db.streamLapsCsvFiltered(user.nickname, fromDate.toISOString(), toDate.toISOString(), res);
+  } else {
+    await db.streamRacesCsvFiltered(user.nickname, fromDate.toISOString(), toDate.toISOString(), res);
+  }
+});
+
 module.exports = router;

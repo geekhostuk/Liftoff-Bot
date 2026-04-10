@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import './UserManagement.css';
 
@@ -47,6 +47,12 @@ export default function UserManagement() {
   const [editingRole, setEditingRole] = useState(null);
   const [editRoleName, setEditRoleName] = useState('');
   const [editRolePerms, setEditRolePerms] = useState([]);
+
+  // Export popover state
+  const [exportUserId, setExportUserId] = useState(null);
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const exportRef = useRef(null);
 
   const isSuperadmin = currentUser?.role === 'superadmin' || currentUser?.userId === 0;
 
@@ -231,6 +237,42 @@ export default function UserManagement() {
     setEditRolePerms(prev =>
       prev.includes(mod) ? prev.filter(m => m !== mod) : [...prev, mod]
     );
+  }
+
+  // ── Export helpers ───────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (exportUserId == null) return;
+    function handleClick(e) {
+      if (exportRef.current && !exportRef.current.contains(e.target)) {
+        setExportUserId(null);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [exportUserId]);
+
+  function fmtDate(d) {
+    return d.toISOString().slice(0, 10);
+  }
+
+  function downloadExport(userId, type, from, to) {
+    const params = new URLSearchParams({ from, to });
+    window.open(`/api/admin/site-users/${userId}/export/${type}?${params}`, '_blank');
+  }
+
+  function openExport(userId) {
+    const today = new Date();
+    setCustomFrom(fmtDate(new Date(today.getTime() - 7 * 86400000)));
+    setCustomTo(fmtDate(today));
+    setExportUserId(exportUserId === userId ? null : userId);
+  }
+
+  function presetDownload(userId, type, days) {
+    const today = new Date();
+    const from = fmtDate(new Date(today.getTime() - days * 86400000));
+    const to = fmtDate(today);
+    downloadExport(userId, type, from, to);
   }
 
   async function assignSiteUserRole(userId, roleId) {
@@ -447,6 +489,45 @@ export default function UserManagement() {
                       <button className="btn btn-ghost btn-xs" onClick={() => verifyNick(u.id)}>
                         Verify Nick
                       </button>
+                    )}
+                    {u.nickname && (
+                      <span className="export-anchor" ref={exportUserId === u.id ? exportRef : undefined}>
+                        <button className="btn btn-ghost btn-xs" onClick={() => openExport(u.id)}>
+                          Export
+                        </button>
+                        {exportUserId === u.id && (
+                          <div className="export-popover">
+                            <div className="export-row">
+                              <span className="export-row-label">Last 7 days</span>
+                              <span className="export-row-actions">
+                                <button className="btn-export" onClick={() => presetDownload(u.id, 'laps', 7)}>Laps</button>
+                                <button className="btn-export" onClick={() => presetDownload(u.id, 'races', 7)}>Races</button>
+                              </span>
+                            </div>
+                            <div className="export-row">
+                              <span className="export-row-label">Last 30 days</span>
+                              <span className="export-row-actions">
+                                <button className="btn-export" onClick={() => presetDownload(u.id, 'laps', 30)}>Laps</button>
+                                <button className="btn-export" onClick={() => presetDownload(u.id, 'races', 30)}>Races</button>
+                              </span>
+                            </div>
+                            <hr className="export-divider" />
+                            <div className="export-custom-label">Custom range</div>
+                            <div className="export-date-inputs">
+                              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+                              <span style={{ color: 'var(--text-muted, #888)', fontSize: '0.75rem' }}>to</span>
+                              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} />
+                            </div>
+                            <div className="export-row">
+                              <span />
+                              <span className="export-row-actions">
+                                <button className="btn-export" disabled={!customFrom || !customTo} onClick={() => downloadExport(u.id, 'laps', customFrom, customTo)}>Laps</button>
+                                <button className="btn-export" disabled={!customFrom || !customTo} onClick={() => downloadExport(u.id, 'races', customFrom, customTo)}>Races</button>
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </span>
                     )}
                     <button className="btn btn-danger btn-xs" onClick={() => deleteSiteUser(u.id)}>Delete</button>
                   </td>
