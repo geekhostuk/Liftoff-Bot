@@ -375,7 +375,7 @@ async function getRaceLapsGrouped(raceId) {
       COUNT(*) AS total_laps,
       AVG(lap_ms) AS avg_lap_ms
     FROM laps
-    WHERE race_id = $1
+    WHERE race_id = $1 AND registered = TRUE
     GROUP BY COALESCE(steam_id, pilot_guid, nick), nick
     HAVING COUNT(*) >= 2
     ORDER BY best_lap_ms ASC
@@ -386,7 +386,7 @@ async function getRaceLapsGrouped(raceId) {
 async function getRaceLapsDetailed(raceId, pilotKey) {
   const { rows } = await getPool().query(`
     SELECT lap_ms FROM laps
-    WHERE race_id = $1 AND COALESCE(steam_id, pilot_guid, nick) = $2
+    WHERE race_id = $1 AND COALESCE(steam_id, pilot_guid, nick) = $2 AND registered = TRUE
     ORDER BY lap_number
   `, [raceId, pilotKey]);
   return rows.map(r => r.lap_ms);
@@ -400,6 +400,7 @@ async function getPilotBaselineBests(pilotKey, beforeDate) {
     WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = $1
       AND l.recorded_at < $2
       AND r.env IS NOT NULL AND r.track IS NOT NULL
+      AND l.registered = TRUE
     GROUP BY r.env, r.track
   `, [pilotKey, beforeDate]);
   return rows;
@@ -413,6 +414,7 @@ async function getPilotWeekBests(pilotKey, startsAt, endsAt) {
     WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = $1
       AND l.recorded_at >= $2 AND l.recorded_at <= $3
       AND r.env IS NOT NULL AND r.track IS NOT NULL
+      AND l.registered = TRUE
     GROUP BY r.env, r.track
   `, [pilotKey, startsAt, endsAt]);
   return rows;
@@ -426,6 +428,7 @@ async function getWeekPilots(weekId) {
     FROM laps l
     JOIN races r ON r.id = l.race_id
     WHERE l.recorded_at >= $1 AND l.recorded_at <= $2
+      AND l.registered = TRUE
   `, [week.starts_at, week.ends_at]);
   return rows;
 }
@@ -436,6 +439,7 @@ async function getPilotActiveDays(pilotKey, startsAt, endsAt) {
     FROM laps l
     WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = $1
       AND l.recorded_at >= $2 AND l.recorded_at <= $3
+      AND l.registered = TRUE
   `, [pilotKey, startsAt, endsAt]);
   return parseInt(day_count, 10);
 }
@@ -448,6 +452,7 @@ async function getPilotDistinctTracks(pilotKey, startsAt, endsAt) {
     WHERE COALESCE(l.steam_id, l.pilot_guid, l.nick) = $1
       AND l.recorded_at >= $2 AND l.recorded_at <= $3
       AND r.env IS NOT NULL AND r.track IS NOT NULL
+      AND l.registered = TRUE
   `, [pilotKey, startsAt, endsAt]);
   return parseInt(track_count, 10);
 }
@@ -559,7 +564,7 @@ async function getCombinedRacePodium(raceIds) {
       MIN(lap_ms) AS best_lap_ms,
       COUNT(*)    AS total_laps
     FROM laps
-    WHERE race_id = ANY($1)
+    WHERE race_id = ANY($1) AND registered = TRUE
     GROUP BY COALESCE(steam_id, pilot_guid, nick), nick
     HAVING COUNT(*) >= 2
     ORDER BY best_lap_ms ASC

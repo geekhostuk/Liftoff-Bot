@@ -7,6 +7,13 @@ function getProcessRaceClose() {
   return _processRaceClose;
 }
 
+// Lazy-loaded to avoid circular dependency (idleKick → db → ingest → idleKick)
+let _idleKick = null;
+function getIdleKick() {
+  if (!_idleKick) _idleKick = require('../idleKick');
+  return _idleKick;
+}
+
 async function handleSessionStarted(event) {
   await getPool().query(`
     INSERT INTO sessions (id, started_at, plugin_ver, bot_id)
@@ -15,19 +22,23 @@ async function handleSessionStarted(event) {
   `, [event.session_id, event.timestamp_utc, event.version || null, event.bot_id || 'default']);
 }
 
-async function handleRaceReset(event, currentTrack = {}) {
+/**
+ * Close any open races for this session (except the given race_id).
+ * Populates results from laps and triggers competition scoring.
+ * Returns an array of { race_id, winner_nick, winner_total_ms }.
+ */
+async function closeOpenRaces(sessionId, excludeRaceId, timestamp) {
   const pool = getPool();
   const closedRaces = [];
 
-  // Close any open races for this session and populate results from laps
   const { rows: openRaces } = await pool.query(`
     SELECT id FROM races
     WHERE session_id = $1 AND ended_at IS NULL AND id != $2
-  `, [event.session_id, event.race_id]);
+  `, [sessionId, excludeRaceId]);
 
   for (const race of openRaces) {
     const { rows: [{ cnt }] } = await pool.query(`
-      SELECT COUNT(DISTINCT actor) AS cnt FROM laps WHERE race_id = $1
+      SELECT COUNT(DISTINCT actor) AS cnt FROM laps WHERE race_id = $1 AND registered = TRUE
     `, [race.id]);
     const participants = parseInt(cnt, 10) || 0;
 
@@ -35,7 +46,7 @@ async function handleRaceReset(event, currentTrack = {}) {
     if (participants > 0) {
       const { rows: [w] } = await pool.query(`
         SELECT actor, nick, MIN(lap_ms) AS best_ms
-        FROM laps WHERE race_id = $1
+        FROM laps WHERE race_id = $1 AND registered = TRUE
         GROUP BY actor, nick ORDER BY best_ms ASC LIMIT 1
       `, [race.id]);
       winner = w;
@@ -51,7 +62,7 @@ async function handleRaceReset(event, currentTrack = {}) {
           completed       = CASE WHEN completed > 0 THEN completed ELSE $6 END
       WHERE id = $7
     `, [
-      event.timestamp_utc,
+      timestamp,
       winner?.actor ?? null,
       winner?.nick ?? null,
       winner?.best_ms ?? null,
@@ -71,6 +82,14 @@ async function handleRaceReset(event, currentTrack = {}) {
       console.error('[competition] Scoring error for race', race.id, err.message);
     }
   }
+
+  return closedRaces;
+}
+
+async function handleRaceReset(event, currentTrack = {}) {
+  const pool = getPool();
+
+  const closedRaces = await closeOpenRaces(event.session_id, event.race_id, event.timestamp_utc);
 
   await pool.query(`
     INSERT INTO races (id, session_id, ordinal, started_at, env, track)
@@ -96,9 +115,10 @@ async function handleLapRecorded(event, currentTrack = {}) {
       UPDATE races SET env = $1, track = $2 WHERE id = $3 AND env IS NULL
     `, [currentTrack.env, currentTrack.track, event.race_id]);
   }
+  const isRegistered = getIdleKick().isNickVerified(event.nick || '');
   await pool.query(`
-    INSERT INTO laps (race_id, session_id, actor, nick, pilot_guid, steam_id, lap_number, lap_ms, recorded_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    INSERT INTO laps (race_id, session_id, actor, nick, pilot_guid, steam_id, lap_number, lap_ms, recorded_at, registered)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
   `, [
     event.race_id,
     event.session_id,
@@ -109,6 +129,7 @@ async function handleLapRecorded(event, currentTrack = {}) {
     event.lap_number,
     event.lap_ms,
     event.timestamp_utc,
+    isRegistered,
   ]);
 }
 
@@ -116,16 +137,22 @@ async function handleRaceEnd(event) {
   const pool = getPool();
   await ensureRaceExists(event);
 
-  // Determine winner by fastest lap time (not plugin-reported finish position)
+  // Determine winner by fastest lap time from registered pilots only
   const { rows: [fastestLap] } = await pool.query(`
     SELECT actor, nick, MIN(lap_ms) AS best_ms
-    FROM laps WHERE race_id = $1
+    FROM laps WHERE race_id = $1 AND registered = TRUE
     GROUP BY actor, nick ORDER BY best_ms ASC LIMIT 1
   `, [event.race_id]);
 
   const winnerActor = fastestLap?.actor ?? event.winner_actor ?? null;
   const winnerNick  = fastestLap?.nick  ?? event.winner_nick  ?? null;
   const winnerMs    = fastestLap?.best_ms ?? event.winner_total_ms ?? null;
+
+  // Derive participant count from registered laps only
+  const { rows: [{ cnt: regCount }] } = await pool.query(`
+    SELECT COUNT(DISTINCT actor) AS cnt FROM laps WHERE race_id = $1 AND registered = TRUE
+  `, [event.race_id]);
+  const registeredParticipants = parseInt(regCount, 10) || 0;
 
   await pool.query(`
     UPDATE races
@@ -141,8 +168,8 @@ async function handleRaceEnd(event) {
     winnerActor,
     winnerNick,
     winnerMs,
-    event.participants || 0,
-    event.completed || 0,
+    registeredParticipants,
+    registeredParticipants,
     event.race_id,
   ]);
 
@@ -189,6 +216,7 @@ async function ensureRaceExists(event) {
 module.exports = {
   handleSessionStarted,
   handleRaceReset,
+  closeOpenRaces,
   handleLapRecorded,
   handleRaceEnd,
   handleTrackCatalog,
