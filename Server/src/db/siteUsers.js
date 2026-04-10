@@ -158,8 +158,14 @@ async function updateSiteUserPassword(userId, newPasswordHash) {
   );
 }
 
+async function getSiteUserById(id) {
+  const { rows: [row] } = await getPool().query('SELECT * FROM site_users WHERE id = $1', [id]);
+  return row || undefined;
+}
+
 module.exports = {
   createSiteUser,
+  getSiteUserById,
   getSiteUserByEmail,
   getSiteUserByNickname,
   verifyEmail,
