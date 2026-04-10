@@ -324,6 +324,7 @@ class TrackOverseerInstance {
         const t = this._getPlaylistTrack(idx);
         if (t) {
           this._deps.roomState.setCurrentTrack({ env: t.env, track: t.track, race: t.race });
+          this._deps.globalState.setCurrentTrack({ env: t.env, track: t.track, race: t.race });
           this.state.currentTrack = { env: t.env, track: t.track, race: t.race, workshop_id: t.workshop_id || '' };
         }
 
@@ -348,6 +349,7 @@ class TrackOverseerInstance {
 
         if (saved.currentTrack) {
           this._deps.roomState.setCurrentTrack({ env: saved.currentTrack.env, track: saved.currentTrack.track, race: saved.currentTrack.race });
+          this._deps.globalState.setCurrentTrack({ env: saved.currentTrack.env, track: saved.currentTrack.track, race: saved.currentTrack.race });
           this.state.currentTrack = saved.currentTrack;
         } else {
           const picked = await this._pickTagTrack();
@@ -496,14 +498,16 @@ class TrackOverseerInstance {
         });
     }
 
-    // Update room-scoped current track
+    // Update room-scoped current track + apply chat cooldown to suppress replayed commands
     this._deps.roomState.setCurrentTrack({ env, track, race });
+    this._deps.roomState.applyChatCooldown();
+    // Also update global state so legacy consumers (live socket snapshot, etc.) stay in sync
+    this._deps.globalState.setCurrentTrack({ env, track, race });
+    this._deps.globalState.applyChatCooldown();
 
     broadcast.broadcastAll({ event_type: 'track_changed', env, track, race, room_id: this.roomId });
     this._deps.fireTemplates('track_change', { env, track, race });
 
-    this.state.currentTrack = { env: track.env || env, track: track.track || track, race, workshop_id: workshop_id || '' };
-    // Fix: trackInfo fields are plain strings, not nested objects
     this.state.currentTrack = { env, track, race, workshop_id: workshop_id || '' };
     this.state.skipCount = 0;
     this.state.extendCount = 0;
