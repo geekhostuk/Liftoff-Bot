@@ -279,7 +279,7 @@ async function streamRacesCsv(nick, res) {
              rr.best_lap_ms, rr.avg_lap_ms, rr.total_laps
       FROM race_results rr
       JOIN races r ON r.id = rr.race_id
-      WHERE rr.pilot_key = $1
+      WHERE rr.display_name = $1
       ORDER BY r.started_at DESC
       LIMIT $2 OFFSET $3
     `, [nick, batchSize, offset]);
@@ -331,7 +331,7 @@ async function streamRacesCsvFiltered(nick, from, to, res) {
              rr.best_lap_ms, rr.avg_lap_ms, rr.total_laps
       FROM race_results rr
       JOIN races r ON r.id = rr.race_id
-      WHERE rr.pilot_key = $1
+      WHERE rr.display_name = $1
         AND r.started_at >= $2 AND r.started_at <= $3
       ORDER BY r.started_at DESC
       LIMIT $4 OFFSET $5
