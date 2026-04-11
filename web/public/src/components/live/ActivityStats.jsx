@@ -13,6 +13,7 @@ export default function ActivityStats({ pilotActivity, statsOverview }) {
         <StatCard label="Total Laps" value={fmtNumber(statsOverview?.total_laps)} accent />
         <StatCard label="Total Pilots" value={fmtNumber(statsOverview?.total_pilots)} />
         <StatCard label="Total Races" value={fmtNumber(statsOverview?.total_races)} />
+        <StatCard label="Registered" value={fmtNumber(statsOverview?.registered_pilots)} accent />
       </div>
     </div>
   );

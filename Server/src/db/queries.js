@@ -117,7 +117,6 @@ async function getPilotActivity() {
       COUNT(DISTINCT CASE WHEN recorded_at >= NOW() - INTERVAL '1 month'
         THEN COALESCE(steam_id, pilot_guid, nick) END) AS last_30d
     FROM laps
-    WHERE nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
   `);
   return row;
 }
@@ -217,9 +216,9 @@ async function getOverallStats() {
     SELECT
       COUNT(*)                AS total_laps,
       COUNT(DISTINCT nick)   AS total_pilots,
-      COUNT(DISTINCT race_id) AS total_races
+      COUNT(DISTINCT race_id) AS total_races,
+      (SELECT COUNT(*) FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL) AS registered_pilots
     FROM laps
-    WHERE nick IN (SELECT nickname FROM site_users WHERE nick_verified = TRUE AND nickname IS NOT NULL)
   `);
   return row;
 }
