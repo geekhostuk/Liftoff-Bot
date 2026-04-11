@@ -8,10 +8,11 @@
  *
  * Upserts on (env, track) — only overwrites local_id / steam_id / dependency
  * when the existing value is empty and the new value is non-empty.
+ * Use --force to overwrite existing values.
  * Tags, steam metadata, and all other data are preserved.
  *
  * Usage:
- *   node src/cli/importTracks.js <path-to-csv> [--dry-run]
+ *   node src/cli/importTracks.js <path-to-csv> [--dry-run] [--force]
  */
 
 require('dotenv').config();
@@ -22,11 +23,13 @@ const { initDatabase, getPool } = require('../db/connection');
 const BATCH_SIZE = 500;
 const COLS = 5; // env, track, local_id, steam_id, dependency
 
-const [,, csvPath, flag] = process.argv;
-const dryRun = flag === '--dry-run';
+const [,, csvPath, ...flags] = process.argv;
+const flagSet = new Set(flags);
+const dryRun = flagSet.has('--dry-run');
+const force = flagSet.has('--force');
 
 if (!csvPath) {
-  console.error('Usage: node src/cli/importTracks.js <path-to-csv> [--dry-run]');
+  console.error('Usage: node src/cli/importTracks.js <path-to-csv> [--dry-run] [--force]');
   process.exit(1);
 }
 
@@ -50,7 +53,11 @@ function parseCSV(content) {
     }
     fields.push(current);
 
-    return Object.fromEntries(headers.map((h, i) => [h, (fields[i] ?? '').trim()]));
+    const keepWhitespace = new Set(['env', 'track']);
+    return Object.fromEntries(headers.map((h, i) => {
+      const val = fields[i] ?? '';
+      return [h, keepWhitespace.has(h) ? val : val.trim()];
+    }));
   });
 }
 
@@ -107,13 +114,20 @@ async function main() {
         );
       });
 
+      const onConflict = force
+        ? `ON CONFLICT (env, track) DO UPDATE SET
+          local_id   = CASE WHEN EXCLUDED.local_id   <> '' THEN EXCLUDED.local_id   ELSE tracks.local_id   END,
+          steam_id   = CASE WHEN EXCLUDED.steam_id   <> '' THEN EXCLUDED.steam_id   ELSE tracks.steam_id   END,
+          dependency = CASE WHEN EXCLUDED.dependency <> '' THEN EXCLUDED.dependency ELSE tracks.dependency END`
+        : `ON CONFLICT (env, track) DO UPDATE SET
+          local_id   = CASE WHEN tracks.local_id   = '' AND EXCLUDED.local_id   <> '' THEN EXCLUDED.local_id   ELSE tracks.local_id   END,
+          steam_id   = CASE WHEN tracks.steam_id   = '' AND EXCLUDED.steam_id   <> '' THEN EXCLUDED.steam_id   ELSE tracks.steam_id   END,
+          dependency = CASE WHEN tracks.dependency = '' AND EXCLUDED.dependency <> '' THEN EXCLUDED.dependency ELSE tracks.dependency END`;
+
       await client.query(`
         INSERT INTO tracks (env, track, local_id, steam_id, dependency)
         VALUES ${values.join(',')}
-        ON CONFLICT (env, track) DO UPDATE SET
-          local_id   = CASE WHEN tracks.local_id   = '' AND EXCLUDED.local_id   <> '' THEN EXCLUDED.local_id   ELSE tracks.local_id   END,
-          steam_id   = CASE WHEN tracks.steam_id   = '' AND EXCLUDED.steam_id   <> '' THEN EXCLUDED.steam_id   ELSE tracks.steam_id   END,
-          dependency = CASE WHEN tracks.dependency = '' AND EXCLUDED.dependency <> '' THEN EXCLUDED.dependency ELSE tracks.dependency END
+        ${onConflict}
       `, params);
 
       const from = b * BATCH_SIZE + 1;
@@ -140,6 +154,7 @@ async function main() {
   console.log(`  Skipped:   ${skipped}`);
   console.log(`  Batches:   ${totalBatches}`);
   if (dryRun) console.log('  (dry run — no changes written)');
+  if (force) console.log('  (force — existing values overwritten)');
 
   await pool.end();
 }
