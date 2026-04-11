@@ -209,6 +209,10 @@ async function previewTemplate(template) {
   return post('/internal/chat/template-preview', { template });
 }
 
+async function refreshIntervalScheduler() {
+  return post('/internal/chat/interval-refresh', {});
+}
+
 // ── State ───────────────────────────────────────────────────────────────────
 
 async function getState() {
@@ -356,6 +360,7 @@ module.exports = {
   broadcast,
   getTracksInfo,
   previewTemplate,
+  refreshIntervalScheduler,
   getState,
   // Rooms
   getRooms,

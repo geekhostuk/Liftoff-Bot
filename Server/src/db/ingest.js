@@ -86,14 +86,14 @@ async function closeOpenRaces(sessionId, excludeRaceId, timestamp) {
   return closedRaces;
 }
 
-async function handleRaceReset(event, currentTrack = {}) {
+async function handleRaceReset(event, currentTrack = {}, roomId = 'default') {
   const pool = getPool();
 
   const closedRaces = await closeOpenRaces(event.session_id, event.race_id, event.timestamp_utc);
 
   await pool.query(`
-    INSERT INTO races (id, session_id, ordinal, started_at, env, track)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO races (id, session_id, ordinal, started_at, env, track, room_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (id) DO NOTHING
   `, [
     event.race_id,
@@ -102,14 +102,15 @@ async function handleRaceReset(event, currentTrack = {}) {
     event.timestamp_utc,
     currentTrack.env || null,
     currentTrack.track || null,
+    roomId,
   ]);
 
   return closedRaces;
 }
 
-async function handleLapRecorded(event, currentTrack = {}) {
+async function handleLapRecorded(event, currentTrack = {}, roomId = 'default') {
   const pool = getPool();
-  await ensureRaceExists(event);
+  await ensureRaceExists(event, roomId);
   if (currentTrack.env && currentTrack.track) {
     await pool.query(`
       UPDATE races SET env = $1, track = $2 WHERE id = $3 AND env IS NULL
@@ -133,9 +134,9 @@ async function handleLapRecorded(event, currentTrack = {}) {
   ]);
 }
 
-async function handleRaceEnd(event) {
+async function handleRaceEnd(event, roomId = 'default') {
   const pool = getPool();
-  await ensureRaceExists(event);
+  await ensureRaceExists(event, roomId);
 
   // Determine winner by fastest lap time from registered pilots only
   const { rows: [fastestLap] } = await pool.query(`
@@ -198,7 +199,7 @@ async function handleTrackCatalog(event) {
   }
 }
 
-async function ensureRaceExists(event) {
+async function ensureRaceExists(event, roomId = 'default') {
   const pool = getPool();
   await pool.query(`
     INSERT INTO sessions (id, started_at, plugin_ver, bot_id)
@@ -207,10 +208,10 @@ async function ensureRaceExists(event) {
   `, [event.session_id, event.timestamp_utc, event.version || null, event.bot_id || 'default']);
 
   await pool.query(`
-    INSERT INTO races (id, session_id, ordinal, started_at)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO races (id, session_id, ordinal, started_at, room_id)
+    VALUES ($1, $2, $3, $4, $5)
     ON CONFLICT (id) DO NOTHING
-  `, [event.race_id, event.session_id, event.race_ordinal || 0, event.timestamp_utc]);
+  `, [event.race_id, event.session_id, event.race_ordinal || 0, event.timestamp_utc, roomId]);
 }
 
 module.exports = {

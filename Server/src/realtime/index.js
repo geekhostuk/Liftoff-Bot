@@ -29,6 +29,9 @@ const tagVote = require('../tagVote');
 const db = require('../database');
 const scoring = require('../competitionScoring');
 const roomManager = require('../RoomManager');
+const IntervalScheduler = require('../intervalMessages');
+
+let intervalScheduler = null;
 
 async function checkWeekTransition() {
   // Finalise any expired week with full batch scoring + broadcast
@@ -94,6 +97,10 @@ async function main() {
 
   // Legacy init call (no-op, kept for safety)
   trackOverseer.init(broadcast.broadcastAll);
+
+  // Interval message scheduler — fires repeating templates per-room
+  intervalScheduler = new IntervalScheduler(roomManager, state, fireTemplates);
+  await intervalScheduler.init();
 
   // Scoring tick: auto-finalise expired weeks (with batch scoring) and ensure current period exists
   setInterval(async () => {
@@ -576,6 +583,16 @@ async function main() {
     }
     resolved = resolved.trim();
     res.json({ resolved, length: resolved.length });
+  });
+
+  // ── Interval scheduler refresh ──────────────────────────────────────────
+  internal.post('/internal/chat/interval-refresh', async (req, res) => {
+    try {
+      if (intervalScheduler) await intervalScheduler.refresh();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ── State ─────────────────────────────────────────────────────────────────

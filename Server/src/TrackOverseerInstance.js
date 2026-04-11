@@ -506,7 +506,10 @@ class TrackOverseerInstance {
     this._deps.globalState.applyChatCooldown();
 
     broadcast.broadcastAll({ event_type: 'track_changed', env, track, race, room_id: this.roomId });
-    this._deps.fireTemplates('track_change', { env, track, race });
+    // Pass a connected bot from this room so variables resolve for the correct room
+    const roomBotIds = this._deps.getConnectedBotIdsForRoom();
+    const representativeBotId = roomBotIds.length > 0 ? roomBotIds[0] : null;
+    this._deps.fireTemplates('track_change', { env, track, race }, representativeBotId, this.roomId);
 
     this.state.currentTrack = { env, track, race, workshop_id: workshop_id || '' };
     this.state.skipCount = 0;
