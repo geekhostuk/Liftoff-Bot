@@ -387,15 +387,45 @@ function fmtMs(ms) {
   return m > 0 ? `${m}:${s}` : `${s}s`;
 }
 
-async function buildTemplateVars(baseVars = {}) {
+async function buildTemplateVars(baseVars = {}, roomId = null) {
   const enriched = { ...baseVars };
+
+  // Resolve playlist from the room's overseer (falls back to default room facade)
+  let roomManager;
+  try { roomManager = require('./RoomManager'); } catch {}
+  if (roomId && roomManager) {
+    try {
+      const room = roomManager.getRoom(roomId);
+      if (room?.overseer) {
+        const os = room.overseer.getState();
+        enriched.playlist ??= os.playlistName || os.playlist_name || '';
+      }
+    } catch {}
+    enriched.players ??= String(state.getOnlinePlayerCountForRoom(
+      roomManager.getRoom(roomId)?.botIds || new Set()
+    ));
+  } else {
+    try {
+      const os = require('./trackOverseer').getState();
+      enriched.playlist ??= os.playlist_name || '';
+    } catch {}
+    enriched.players ??= String(state.getOnlinePlayerCount());
+  }
+
+  // Resolve standings — prefer room's competition if it has one, else global
   try {
-    const os = require('./trackOverseer').getState();
-    enriched.playlist ??= os.playlist_name || '';
-  } catch {}
-  enriched.players ??= String(state.getOnlinePlayerCount());
-  try {
-    const week = await db.getActiveWeek() || await db.getOrCreateCurrentWeek();
+    let week = null;
+    if (roomId && roomManager && typeof db.getActiveCompetitionForRoom === 'function') {
+      // Try to find a competition specific to this room first
+      const roomComp = await db.getActiveCompetitionForRoom(roomId);
+      if (roomComp && typeof db.getActiveWeekForCompetition === 'function') {
+        week = await db.getActiveWeekForCompetition(roomComp.id);
+      }
+    }
+    // Fall back to global active week
+    if (!week) {
+      week = await db.getActiveWeek() || await db.getOrCreateCurrentWeek();
+    }
     if (week) {
       const standings = await db.getWeeklyStandings(week.id);
       enriched['1st'] ??= standings[0]?.display_name ?? '';
@@ -419,8 +449,9 @@ async function buildTemplateVars(baseVars = {}) {
  * @param {string} trigger - template trigger name
  * @param {object} vars - template variables
  * @param {string|null} botId - if provided, send only to that bot; otherwise broadcast
+ * @param {string|null} roomId - explicit room for variable resolution (derived from botId if omitted)
  */
-async function fireTemplates(trigger, vars = {}, botId = null) {
+async function fireTemplates(trigger, vars = {}, botId = null, roomId = null) {
   let templates;
   try {
     templates = await db.getChatTemplatesByTrigger(trigger);
@@ -430,7 +461,16 @@ async function fireTemplates(trigger, vars = {}, botId = null) {
   }
   if (templates.length === 0) return;
   console.log(`[templates] Firing ${templates.length} template(s) for "${trigger}"`);
-  const enriched = await buildTemplateVars(vars);
+
+  // Derive roomId from botId when not explicitly provided
+  if (!roomId && botId) {
+    try {
+      const rm = require('./RoomManager');
+      roomId = rm.getRoomForBot(botId)?.id || null;
+    } catch {}
+  }
+
+  const enriched = await buildTemplateVars(vars, roomId);
   for (const tmpl of templates) {
     if (tmpl.delay_ms < 0) continue; // negative = pre-scheduled by playlist runner
     let message = tmpl.template;
@@ -503,6 +543,14 @@ async function handlePluginEvent(jsonLine, botId) {
   const eventType = event.event_type;
   validateEvent(event);
 
+  // Derive room context for this bot
+  let _roomManager;
+  try { _roomManager = require('./RoomManager'); } catch {}
+  const roomCtx = _roomManager?.getRoomForBot(botId);
+  const roomId = roomCtx?.id || 'default';
+  // Use room-scoped current track when available, fall back to global
+  const currentTrack = roomCtx?.roomState?.getCurrentTrack() || state.getCurrentTrack();
+
   // Persist to database
   let closedRaces;
   try {
@@ -515,16 +563,16 @@ async function handlePluginEvent(jsonLine, botId) {
           closedRaces = await db.closeOpenRaces(event.session_id, event.race_id, event.timestamp_utc);
           break;
         }
-        closedRaces = await db.handleRaceReset(event, state.getCurrentTrack()); idleKick.resetAllTimers();
+        closedRaces = await db.handleRaceReset(event, currentTrack, roomId); idleKick.resetAllTimers();
         break;
       case E.LAP_RECORDED:
         if (state.isBotTransitioning(botId)) {
           console.warn(`[plugin-ws] Rejecting lap from bot "${botId}" — still transitioning to new track`);
           break;
         }
-        await db.handleLapRecorded(event, state.getCurrentTrack());
+        await db.handleLapRecorded(event, currentTrack, roomId);
         break;
-      case E.RACE_END:         await db.handleRaceEnd(event);         break;
+      case E.RACE_END:         await db.handleRaceEnd(event, roomId);  break;
       case E.TRACK_CATALOG:
         await db.handleTrackCatalog(event);
         require('./trackOverseer').setCatalogCache(event);

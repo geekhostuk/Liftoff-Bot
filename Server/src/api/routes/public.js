@@ -114,7 +114,22 @@ router.get('/stats/overview', async (req, res) => {
 // ── Competition (public) ────────────────────────────────────────────────────
 
 router.get('/competition/current', async (req, res) => {
-  // Try existing active competition first, then auto season
+  const { room_id } = req.query;
+
+  // Room-specific competition lookup
+  if (room_id && typeof db.getActiveCompetitionForRoom === 'function') {
+    const roomComp = await db.getActiveCompetitionForRoom(room_id);
+    if (roomComp) {
+      const weeks = await db.getWeeks(roomComp.id);
+      const currentWeek = weeks.find(w => w.status === 'active') || null;
+      const nextWeek = weeks.find(w => w.status === 'scheduled') || null;
+      return res.json({ competition: roomComp, current_week: currentWeek, next_week: nextWeek });
+    }
+    // Room has no competition — return null
+    return res.json({ competition: null, current_week: null, next_week: null });
+  }
+
+  // Global (default) — try existing active competition first, then auto season
   const comp = await db.getActiveCompetition();
   if (comp) {
     const weeks = await db.getWeeks(comp.id);
@@ -128,10 +143,21 @@ router.get('/competition/current', async (req, res) => {
 });
 
 router.get('/competition/standings', async (req, res) => {
-  // Try existing active competition week first
+  const { room_id } = req.query;
+
+  // Room-specific standings
+  if (room_id && typeof db.getActiveCompetitionForRoom === 'function') {
+    const roomComp = await db.getActiveCompetitionForRoom(room_id);
+    if (roomComp && typeof db.getActiveWeekForCompetition === 'function') {
+      const week = await db.getActiveWeekForCompetition(roomComp.id);
+      if (week) return res.json(await db.getWeeklyStandings(week.id));
+    }
+    return res.json([]);
+  }
+
+  // Global standings
   const activeWeek = await db.getActiveWeek();
   if (activeWeek) return res.json(await db.getWeeklyStandings(activeWeek.id));
-  // Fall back to auto season
   const week = await db.getOrCreateCurrentWeek();
   if (!week) return res.json([]);
   res.json(await db.getWeeklyStandings(week.id));
@@ -142,13 +168,35 @@ router.get('/competition/standings/:weekId', async (req, res) => {
 });
 
 router.get('/competition/season', async (req, res) => {
-  // Use existing active competition, fall back to auto season
+  const { room_id, competition_id } = req.query;
+
+  // Direct competition_id lookup
+  if (competition_id) {
+    return res.json(await db.getSeasonStandings(Number(competition_id)));
+  }
+
+  // Room-specific season standings
+  if (room_id && typeof db.getActiveCompetitionForRoom === 'function') {
+    const roomComp = await db.getActiveCompetitionForRoom(room_id);
+    if (roomComp) return res.json(await db.getSeasonStandings(roomComp.id));
+    return res.json([]);
+  }
+
+  // Global season
   const comp = await db.getActiveCompetition();
   const compId = comp ? comp.id : 0;
   res.json(await db.getSeasonStandings(compId));
 });
 
 router.get('/competition/weeks', async (req, res) => {
+  const { room_id } = req.query;
+
+  if (room_id && typeof db.getActiveCompetitionForRoom === 'function') {
+    const roomComp = await db.getActiveCompetitionForRoom(room_id);
+    if (roomComp) return res.json(await db.getWeeks(roomComp.id));
+    return res.json([]);
+  }
+
   const comp = await db.getActiveCompetition();
   const compId = comp ? comp.id : 0;
   res.json(await db.getWeeks(compId));

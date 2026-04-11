@@ -9,7 +9,7 @@ const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
 const rt = require('../realtimeClient');
 const db = require('../../database');
-const { recalculateWeek } = require('../../competitionScoring');
+const { recalculateWeek, SCORING_PRESETS, DEFAULT_SCORING_CONFIG } = require('../../competitionScoring');
 const { fetchWorkshopItem, resolveAuthorName } = require('../../steamWorkshop');
 const { getOrCreateCurrentWeek } = require('../../db/trackOverseer');
 const { hashPassword, verifyPassword, createSession, getSession, destroySession, destroyUserSessions } = require('../../auth');
@@ -435,21 +435,28 @@ router.get('/chat/templates', requirePermission('auto_messages'), async (req, re
 });
 
 router.post('/chat/templates', requirePermission('auto_messages'), async (req, res) => {
-  const { trigger, template, enabled = true, delay_ms = 0 } = req.body;
+  const { trigger, template, enabled = true, delay_ms = 0, interval_ms = null } = req.body;
   if (!trigger || !template) return res.status(400).json({ error: 'trigger and template are required' });
-  res.status(201).json(await db.createChatTemplate({ trigger, template, enabled, delay_ms }));
+  const row = await db.createChatTemplate({ trigger, template, enabled, delay_ms, interval_ms });
+  // Refresh interval scheduler if this is an interval template
+  if (trigger === 'interval') rt.refreshIntervalScheduler().catch(() => {});
+  res.status(201).json(row);
 });
 
 router.put('/chat/templates/:id', requirePermission('auto_messages'), async (req, res) => {
-  const { trigger, template, enabled = true, delay_ms = 0 } = req.body;
+  const { trigger, template, enabled = true, delay_ms = 0, interval_ms = null } = req.body;
   if (!trigger || !template) return res.status(400).json({ error: 'trigger and template are required' });
-  const row = await db.updateChatTemplate(Number(req.params.id), { trigger, template, enabled, delay_ms });
+  const row = await db.updateChatTemplate(Number(req.params.id), { trigger, template, enabled, delay_ms, interval_ms });
   if (!row) return res.status(404).json({ error: 'Template not found' });
+  // Refresh interval scheduler on any template update (may have changed trigger type)
+  rt.refreshIntervalScheduler().catch(() => {});
   res.json(row);
 });
 
 router.delete('/chat/templates/:id', requirePermission('auto_messages'), async (req, res) => {
   await db.deleteChatTemplate(Number(req.params.id));
+  // Refresh interval scheduler in case an interval template was deleted
+  rt.refreshIntervalScheduler().catch(() => {});
   res.json({ ok: true });
 });
 
@@ -479,11 +486,11 @@ const TEMPLATE_VARIABLES = [
   { key: '7th_time', description: '7th place finish time', triggers: ['race_podium'] },
   { key: '8th', description: '8th place pilot (race)', triggers: ['race_podium'] },
   { key: '8th_time', description: '8th place finish time', triggers: ['race_podium'] },
-  { key: '1st', description: '1st place pilot (weekly standings)', triggers: ['*'] },
-  { key: '2nd', description: '2nd place pilot (weekly standings)', triggers: ['*'] },
-  { key: '3rd', description: '3rd place pilot (weekly standings)', triggers: ['*'] },
-  { key: 'playlist', description: 'Current playlist name', triggers: ['*'] },
-  { key: 'players', description: 'Number of players online', triggers: ['*'] },
+  { key: '1st', description: '1st place pilot (weekly standings, room-aware)', triggers: ['*'] },
+  { key: '2nd', description: '2nd place pilot (weekly standings, room-aware)', triggers: ['*'] },
+  { key: '3rd', description: '3rd place pilot (weekly standings, room-aware)', triggers: ['*'] },
+  { key: 'playlist', description: 'Current playlist name (room-aware)', triggers: ['*'] },
+  { key: 'players', description: 'Number of players online (room-aware)', triggers: ['*'] },
   { key: 'player_points', description: "Player's weekly competition points", triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered'] },
   { key: 'player_position', description: "Player's weekly competition rank (or 'unranked')", triggers: ['player_joined', 'player_new', 'player_returned', 'player_unregistered'] },
   { key: 'count', description: 'Current player count', triggers: ['lobby_full'] },
@@ -738,13 +745,24 @@ router.get('/scoring/current-week', requirePermission('scoring'), async (req, re
 // ── Competitions (direct DB) ────────────────────────────────────────────────
 
 router.post('/competition', requirePermission('competitions'), async (req, res) => {
-  const { name = '' } = req.body;
+  const { name = '', room_id = null, scoring_config = null } = req.body;
   if (!name.trim()) return res.status(400).json({ error: 'name is required' });
-  res.status(201).json(await db.createCompetition(name.trim()));
+  res.status(201).json(await db.createCompetition(name.trim(), room_id, scoring_config));
 });
 
 router.get('/competitions', requirePermission('competitions'), async (req, res) => {
   res.json(await db.getCompetitions());
+});
+
+router.put('/competition/:id', requirePermission('competitions'), async (req, res) => {
+  const { name, room_id, scoring_config } = req.body;
+  const fields = {};
+  if (name !== undefined) fields.name = name;
+  if (room_id !== undefined) fields.room_id = room_id;
+  if (scoring_config !== undefined) fields.scoring_config = scoring_config;
+  const row = await db.updateCompetition(Number(req.params.id), fields);
+  if (!row) return res.status(404).json({ error: 'Competition not found' });
+  res.json(row);
 });
 
 router.post('/competition/:id/archive', requirePermission('competitions'), async (req, res) => {
@@ -773,6 +791,13 @@ router.post('/competition/:id/weeks', requirePermission('competitions'), async (
 
 router.get('/competition/:id/weeks', requirePermission('competitions'), async (req, res) => {
   res.json(await db.getWeeks(Number(req.params.id)));
+});
+
+router.post('/competition/:id/period', requirePermission('competitions'), async (req, res) => {
+  const { label, starts_at, ends_at } = req.body;
+  if (!starts_at || !ends_at) return res.status(400).json({ error: 'starts_at and ends_at are required' });
+  const period = await db.createCustomPeriod(Number(req.params.id), label || null, starts_at, ends_at);
+  res.status(201).json(period);
 });
 
 router.put('/competition/week/:id', requirePermission('competitions'), async (req, res) => {
@@ -811,6 +836,10 @@ router.get('/competition/week/:id/standings', requirePermission('competitions'),
 router.get('/competition/:id/season-standings', requirePermission('competitions'), async (req, res) => {
   const standings = await db.getSeasonStandings(Number(req.params.id));
   res.json(standings);
+});
+
+router.get('/scoring/presets', requirePermission('competitions'), (req, res) => {
+  res.json({ default: DEFAULT_SCORING_CONFIG, presets: SCORING_PRESETS });
 });
 
 // ── Tags (direct DB) ────────────────────────────────────────────────────────

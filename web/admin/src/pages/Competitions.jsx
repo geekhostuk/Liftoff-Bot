@@ -4,7 +4,7 @@ import { useWsEvent } from '../context/WebSocketContext.jsx';
 import ConfirmButton from '../components/form/ConfirmButton.jsx';
 import {
   Trophy, Plus, Archive, RotateCcw, ChevronDown, ChevronRight,
-  Pencil, Trash2, RefreshCw, BarChart3, Check, X, Play,
+  Pencil, Trash2, RefreshCw, BarChart3, Check, X, Play, Settings, Calendar,
 } from 'lucide-react';
 
 const styles = {
@@ -64,7 +64,22 @@ export default function Competitions() {
   const [createName, setCreateName] = useState('');
   const [createStartDate, setCreateStartDate] = useState('');
   const [createWeekCount, setCreateWeekCount] = useState(4);
+  const [createRoomId, setCreateRoomId] = useState('');
+  const [createPreset, setCreatePreset] = useState('f1_standard');
   const [loading, setLoading] = useState(true);
+
+  // Rooms + scoring presets
+  const [rooms, setRooms] = useState([]);
+  const [scoringPresets, setScoringPresets] = useState({});
+
+  // Custom period form
+  const [showAddPeriod, setShowAddPeriod] = useState(false);
+  const [periodLabel, setPeriodLabel] = useState('');
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+
+  // Scoring config editor
+  const [showScoringConfig, setShowScoringConfig] = useState(false);
 
   // Weeks
   const [weeks, setWeeks] = useState([]);
@@ -119,6 +134,11 @@ export default function Competitions() {
   useEffect(() => { fetchCompetitions(); }, [fetchCompetitions]);
 
   useEffect(() => {
+    apiFetch('GET', '/api/admin/rooms').then(setRooms).catch(() => {});
+    apiFetch('GET', '/api/admin/scoring/presets').then(data => setScoringPresets(data.presets || {})).catch(() => {});
+  }, [apiFetch]);
+
+  useEffect(() => {
     if (selectedCompId) {
       fetchWeeks(selectedCompId);
       setExpandedWeekId(null);
@@ -146,7 +166,12 @@ export default function Competitions() {
 
   const handleCreate = async () => {
     if (!createName.trim()) return;
-    const comp = await apiCall('POST', '/api/admin/competition', { name: createName.trim() }, 'Competition created');
+    const body = { name: createName.trim() };
+    if (createRoomId) body.room_id = createRoomId;
+    if (createPreset && scoringPresets[createPreset]) {
+      body.scoring_config = scoringPresets[createPreset];
+    }
+    const comp = await apiCall('POST', '/api/admin/competition', body, 'Competition created');
     if (!comp) return;
     if (createStartDate && createWeekCount > 0) {
       await apiCall('POST', `/api/admin/competition/${comp.id}/weeks`, { count: createWeekCount, start_date: createStartDate }, `${createWeekCount} weeks generated`);
@@ -154,6 +179,8 @@ export default function Competitions() {
     setCreateName('');
     setCreateStartDate('');
     setCreateWeekCount(4);
+    setCreateRoomId('');
+    setCreatePreset('f1_standard');
     setShowCreateForm(false);
     await fetchCompetitions();
     setSelectedCompId(comp.id);
@@ -214,6 +241,20 @@ export default function Competitions() {
     fetchWeeks(selectedCompId);
   };
 
+  const handleAddPeriod = async () => {
+    if (!periodStart || !periodEnd) return;
+    await apiCall('POST', `/api/admin/competition/${selectedCompId}/period`, {
+      label: periodLabel || null,
+      starts_at: new Date(periodStart + 'T00:00:00Z').toISOString(),
+      ends_at: new Date(periodEnd + 'T23:59:59Z').toISOString(),
+    }, 'Custom period added');
+    setShowAddPeriod(false);
+    setPeriodLabel('');
+    setPeriodStart('');
+    setPeriodEnd('');
+    fetchWeeks(selectedCompId);
+  };
+
   const toggleStandings = (weekId) => {
     if (expandedWeekId === weekId) {
       setExpandedWeekId(null);
@@ -259,12 +300,29 @@ export default function Competitions() {
                 <input className="form-input" style={{ width: 200 }} value={createName} onChange={e => setCreateName(e.target.value)} placeholder="Season 1" />
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.formLabel}>Start Date</label>
+                <label style={styles.formLabel}>Room</label>
+                <select className="form-input" value={createRoomId} onChange={e => setCreateRoomId(e.target.value)}>
+                  <option value="">Global (all rooms)</option>
+                  {rooms.map(r => <option key={r.id} value={r.id}>{r.label || r.id}</option>)}
+                </select>
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>Scoring Preset</label>
+                <select className="form-input" value={createPreset} onChange={e => setCreatePreset(e.target.value)}>
+                  {Object.keys(scoringPresets).map(k => (
+                    <option key={k} value={k}>{k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ ...styles.formRow, marginTop: 'var(--space-sm)' }}>
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>Start Date (optional)</label>
                 <input className="form-input" type="date" value={createStartDate} onChange={e => setCreateStartDate(e.target.value)} />
               </div>
               <div style={styles.formGroup}>
                 <label style={styles.formLabel}>Weeks</label>
-                <input className="form-input" type="number" style={{ width: 70 }} min={1} max={52} value={createWeekCount} onChange={e => setCreateWeekCount(Number(e.target.value))} />
+                <input className="form-input" type="number" style={{ width: 70 }} min={0} max={52} value={createWeekCount} onChange={e => setCreateWeekCount(Number(e.target.value))} />
               </div>
               <button className="btn btn-primary btn-sm" onClick={handleCreate} disabled={!createName.trim()}>Create</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateForm(false)}>Cancel</button>
@@ -283,9 +341,17 @@ export default function Competitions() {
             >
               {selectedCompId === comp.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               <div style={styles.compInfo}>
-                <div style={styles.compName}>{comp.name}</div>
+                <div style={styles.compName}>
+                  {comp.name}
+                  {comp.room_id && (
+                    <span style={{ ...styles.badge, background: 'rgba(139,92,246,0.15)', color: '#a78bfa', marginLeft: 8, fontSize: '0.7rem' }}>
+                      {comp.room_label || comp.room_id}
+                    </span>
+                  )}
+                </div>
                 <div style={styles.compMeta}>
                   Created {fmtDate(comp.created_at)} &middot; ID: {comp.id}
+                  {comp.scoring_config && ' \u00b7 Custom scoring'}
                 </div>
               </div>
               <StatusBadge status={comp.status} />
@@ -322,7 +388,15 @@ export default function Competitions() {
             </div>
             <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
               <button className="btn btn-outline btn-sm" onClick={toggleSeason}>
-                <BarChart3 size={14} /> {showSeason ? 'Hide' : 'Show'} Season Standings
+                <BarChart3 size={14} /> {showSeason ? 'Hide' : 'Show'} Season
+              </button>
+              {selectedComp.scoring_config && (
+                <button className="btn btn-outline btn-sm" onClick={() => setShowScoringConfig(!showScoringConfig)}>
+                  <Settings size={14} /> Scoring
+                </button>
+              )}
+              <button className="btn btn-outline btn-sm" onClick={() => setShowAddPeriod(!showAddPeriod)}>
+                <Calendar size={14} /> Custom Period
               </button>
               <button className="btn btn-primary btn-sm" onClick={() => setShowAddWeeks(!showAddWeeks)}>
                 <Plus size={14} /> Add Weeks
@@ -347,13 +421,61 @@ export default function Competitions() {
             </div>
           )}
 
+          {showAddPeriod && (
+            <div style={{ ...styles.subPanel, marginBottom: 'var(--space-md)' }}>
+              <div style={{ ...styles.panelTitle, fontSize: '0.85rem', marginBottom: 'var(--space-sm)' }}>
+                <Calendar size={14} /> Add Custom Period
+              </div>
+              <div style={styles.formRow}>
+                <div style={styles.formGroup}>
+                  <label style={styles.formLabel}>Label</label>
+                  <input className="form-input" style={{ width: 180 }} value={periodLabel} onChange={e => setPeriodLabel(e.target.value)} placeholder="Weekend Challenge" />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.formLabel}>Start Date</label>
+                  <input className="form-input" type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.formLabel}>End Date</label>
+                  <input className="form-input" type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} />
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={handleAddPeriod} disabled={!periodStart || !periodEnd}>Add</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowAddPeriod(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {showScoringConfig && selectedComp.scoring_config && (
+            <div style={{ ...styles.subPanel, marginBottom: 'var(--space-md)' }}>
+              <div style={{ ...styles.panelTitle, fontSize: '0.85rem', marginBottom: 'var(--space-sm)' }}>
+                <Settings size={14} /> Scoring Config
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-sm)', fontSize: '0.8rem' }}>
+                <div>
+                  <strong style={{ color: 'var(--text-muted)' }}>Position Points</strong>
+                  <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                    {(selectedComp.scoring_config.position_points || []).join(', ')}
+                  </div>
+                </div>
+                {selectedComp.scoring_config.categories && Object.entries(selectedComp.scoring_config.categories).map(([cat, enabled]) => (
+                  <div key={cat}>
+                    <span style={{ color: enabled ? '#22c55e' : '#9ca3af' }}>
+                      {enabled ? '\u2713' : '\u2717'}
+                    </span>{' '}
+                    <span style={{ color: 'var(--text-secondary)' }}>{cat.replace(/_/g, ' ')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {weeks.length === 0 ? (
-            <p style={styles.empty}>No weeks yet. Add weeks to schedule this competition.</p>
+            <p style={styles.empty}>No weeks/periods yet. Add weeks or a custom period to schedule this competition.</p>
           ) : (
             <table style={styles.table}>
               <thead>
                 <tr>
-                  <th style={styles.th}>Week</th>
+                  <th style={styles.th}>Period</th>
                   <th style={styles.th}>Start</th>
                   <th style={styles.th}>End</th>
                   <th style={styles.th}>Status</th>
@@ -425,7 +547,7 @@ function WeekRow({
           </>
         ) : (
           <>
-            <td style={{ ...styles.td, fontWeight: 600 }}>{w.week_number}</td>
+            <td style={{ ...styles.td, fontWeight: 600 }}>{w.period_label || `Week ${w.week_number}`}</td>
             <td style={styles.td}>{fmtDate(w.starts_at)}</td>
             <td style={styles.td}>{fmtDate(w.ends_at)}</td>
             <td style={styles.td}><StatusBadge status={w.status} /></td>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BotMessageSquare, Plus, Trash2, Pencil, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { BotMessageSquare, Plus, Trash2, Pencil, Eye, ChevronDown, ChevronUp, Timer } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { useApi } from '../hooks/useApi.js';
 import { useToast } from '../components/feedback/Toast.jsx';
@@ -8,7 +8,7 @@ import Badge from '../components/feedback/Badge.jsx';
 import EmptyState from '../components/data/EmptyState.jsx';
 import ConfirmButton from '../components/form/ConfirmButton.jsx';
 
-const TRIGGER_OPTIONS = ['track_change', 'race_start', 'race_end', 'race_podium', 'player_joined', 'player_new', 'player_returned', 'player_unregistered', 'lobby_full'];
+const TRIGGER_OPTIONS = ['track_change', 'race_start', 'race_end', 'race_podium', 'player_joined', 'player_new', 'player_returned', 'player_unregistered', 'lobby_full', 'interval'];
 const CHAR_LIMIT = 255;
 
 const columnHelper = createColumnHelper();
@@ -20,6 +20,13 @@ function fmtDelay(ms) {
   if (abs < 1000) return `${prefix}${abs}ms`;
   if (abs < 60000) return `${prefix}${(abs / 1000).toFixed(1)}s`;
   return `${prefix}${(abs / 60000).toFixed(1)}m`;
+}
+
+function fmtInterval(ms) {
+  if (!ms || ms <= 0) return '';
+  if (ms < 60000) return `${(ms / 1000).toFixed(0)}s`;
+  if (ms < 3600000) return `${(ms / 60000).toFixed(0)}m`;
+  return `${(ms / 3600000).toFixed(1)}h`;
 }
 
 export default function AutoMessages() {
@@ -35,6 +42,7 @@ export default function AutoMessages() {
     trigger: 'track_change',
     template: '',
     delay_ms: 0,
+    interval_ms: 30,  // stored as minutes in the form, converted to ms on save
     enabled: true,
   });
   const templateRef = useRef(null);
@@ -98,6 +106,7 @@ export default function AutoMessages() {
       trigger: row.trigger,
       template: row.template,
       delay_ms: row.delay_ms,
+      interval_ms: row.interval_ms ? row.interval_ms / 60000 : 30,
       enabled: row.enabled,
     });
   };
@@ -113,7 +122,7 @@ export default function AutoMessages() {
 
   const resetForm = () => {
     setEditingId(null);
-    setForm({ trigger: 'track_change', template: '', delay_ms: 0, enabled: true });
+    setForm({ trigger: 'track_change', template: '', delay_ms: 0, interval_ms: 30, enabled: true });
     setPreview(null);
   };
 
@@ -122,11 +131,13 @@ export default function AutoMessages() {
       toast('Message is required', 'warning');
       return;
     }
+    const isInterval = form.trigger === 'interval';
     const payload = {
       trigger: form.trigger,
       template: form.template.trim(),
       enabled: form.enabled,
       delay_ms: Number(form.delay_ms) || 0,
+      interval_ms: isInterval ? Math.max(10000, Math.round((Number(form.interval_ms) || 30) * 60000)) : null,
     };
     try {
       if (editingId) {
@@ -170,7 +181,18 @@ export default function AutoMessages() {
   const columns = [
     columnHelper.accessor('trigger', {
       header: 'Trigger',
-      cell: (info) => <Badge variant="accent">{info.getValue()}</Badge>,
+      cell: (info) => {
+        const row = info.row.original;
+        if (info.getValue() === 'interval') {
+          return (
+            <Badge variant="warning" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Timer size={12} />
+              Every {fmtInterval(row.interval_ms)}
+            </Badge>
+          );
+        }
+        return <Badge variant="accent">{info.getValue()}</Badge>;
+      },
     }),
     columnHelper.accessor('template', {
       header: 'Message',
@@ -272,19 +294,36 @@ export default function AutoMessages() {
             </select>
           </div>
 
-          <div style={styles.formRow}>
-            <label style={styles.label}>Delay</label>
-            <div style={styles.delayRow}>
-              <input
-                type="number"
-                value={form.delay_ms}
-                onChange={(e) => setForm((p) => ({ ...p, delay_ms: e.target.value }))}
-                style={{ ...styles.input, width: 120, flex: 'none' }}
-                step={500}
-              />
-              <span style={styles.delayHint}>{fmtDelay(Number(form.delay_ms) || 0)}</span>
+          {form.trigger === 'interval' ? (
+            <div style={styles.formRow}>
+              <label style={styles.label}>Repeat Every</label>
+              <div style={styles.delayRow}>
+                <input
+                  type="number"
+                  value={form.interval_ms}
+                  onChange={(e) => setForm((p) => ({ ...p, interval_ms: e.target.value }))}
+                  style={{ ...styles.input, width: 120, flex: 'none' }}
+                  min={1}
+                  step={5}
+                />
+                <span style={styles.delayHint}>minutes (only when players online)</span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={styles.formRow}>
+              <label style={styles.label}>Delay</label>
+              <div style={styles.delayRow}>
+                <input
+                  type="number"
+                  value={form.delay_ms}
+                  onChange={(e) => setForm((p) => ({ ...p, delay_ms: e.target.value }))}
+                  style={{ ...styles.input, width: 120, flex: 'none' }}
+                  step={500}
+                />
+                <span style={styles.delayHint}>{fmtDelay(Number(form.delay_ms) || 0)}</span>
+              </div>
+            </div>
+          )}
 
           <div style={styles.formRow}>
             <label style={styles.label}>Enabled</label>

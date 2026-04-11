@@ -2,22 +2,89 @@ const { getPool } = require('./connection');
 
 // ── Competitions ────────────────────────────────────────────────────────────
 
-async function createCompetition(name) {
+async function createCompetition(name, roomId = null, scoringConfig = null) {
   const { rows: [row] } = await getPool().query(`
-    INSERT INTO competitions (name, created_at) VALUES ($1, NOW())
+    INSERT INTO competitions (name, room_id, scoring_config, created_at)
+    VALUES ($1, $2, $3, NOW())
     RETURNING *
-  `, [name]);
+  `, [name, roomId || null, scoringConfig ? JSON.stringify(scoringConfig) : null]);
   return row;
 }
 
 async function getCompetitions() {
-  const { rows } = await getPool().query('SELECT * FROM competitions ORDER BY id DESC');
+  const { rows } = await getPool().query(`
+    SELECT c.*, r.label AS room_label
+    FROM competitions c
+    LEFT JOIN rooms r ON r.id = c.room_id
+    ORDER BY c.id DESC
+  `);
   return rows;
+}
+
+async function getCompetitionById(id) {
+  const { rows: [row] } = await getPool().query('SELECT * FROM competitions WHERE id = $1', [id]);
+  return row || null;
 }
 
 async function getActiveCompetition() {
   const { rows: [row] } = await getPool().query("SELECT * FROM competitions WHERE status = 'active' ORDER BY id DESC LIMIT 1");
   return row || null;
+}
+
+async function getActiveCompetitionForRoom(roomId) {
+  const { rows: [row] } = await getPool().query(
+    "SELECT * FROM competitions WHERE room_id = $1 AND status = 'active' ORDER BY id DESC LIMIT 1",
+    [roomId]
+  );
+  return row || null;
+}
+
+async function getActiveWeekForCompetition(competitionId) {
+  const { rows: [row] } = await getPool().query(`
+    SELECT cw.*, c.name AS competition_name
+    FROM competition_weeks cw
+    JOIN competitions c ON c.id = cw.competition_id
+    WHERE cw.competition_id = $1 AND cw.status = 'active'
+    ORDER BY cw.id DESC LIMIT 1
+  `, [competitionId]);
+  return row || null;
+}
+
+async function getActiveWeekForGlobalComp() {
+  const { rows: [row] } = await getPool().query(`
+    SELECT cw.*, c.name AS competition_name
+    FROM competition_weeks cw
+    JOIN competitions c ON c.id = cw.competition_id
+    WHERE c.room_id IS NULL AND cw.status = 'active' AND c.status = 'active'
+    ORDER BY cw.id DESC LIMIT 1
+  `);
+  return row || null;
+}
+
+async function updateCompetition(id, fields) {
+  const sets = [];
+  const values = [];
+  let n = 1;
+  if (fields.name !== undefined) { sets.push(`name = $${n++}`); values.push(fields.name); }
+  if (fields.room_id !== undefined) { sets.push(`room_id = $${n++}`); values.push(fields.room_id || null); }
+  if (fields.scoring_config !== undefined) {
+    sets.push(`scoring_config = $${n++}`);
+    values.push(fields.scoring_config ? JSON.stringify(fields.scoring_config) : null);
+  }
+  if (sets.length === 0) return null;
+  values.push(id);
+  const { rows: [row] } = await getPool().query(
+    `UPDATE competitions SET ${sets.join(', ')} WHERE id = $${n} RETURNING *`,
+    values
+  );
+  return row || null;
+}
+
+async function getRoomScoringMode(roomId) {
+  const { rows: [row] } = await getPool().query(
+    'SELECT scoring_mode FROM rooms WHERE id = $1', [roomId]
+  );
+  return row ? row.scoring_mode : 'global';
 }
 
 async function archiveCompetition(id) {
@@ -175,7 +242,7 @@ async function insertRaceResult(raceId, pilotKey, displayName, position, bestLap
   await getPool().query(`
     INSERT INTO race_results (race_id, pilot_key, display_name, position, best_lap_ms, total_laps, avg_lap_ms, week_id)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    ON CONFLICT (race_id, pilot_key) DO UPDATE SET
+    ON CONFLICT (race_id, pilot_key, week_id) DO UPDATE SET
       display_name = EXCLUDED.display_name,
       position = EXCLUDED.position,
       best_lap_ms = EXCLUDED.best_lap_ms,
@@ -464,6 +531,31 @@ async function hasRaceResults(raceId) {
   return parseInt(n, 10) > 0;
 }
 
+async function hasRaceResultsForWeek(raceId, weekId) {
+  const { rows: [{ n }] } = await getPool().query(
+    'SELECT COUNT(*) AS n FROM race_results WHERE race_id = $1 AND week_id = $2', [raceId, weekId]
+  );
+  return parseInt(n, 10) > 0;
+}
+
+// ── Custom Periods ────────────────────────────────────────────────────────
+
+async function createCustomPeriod(competitionId, periodLabel, startsAt, endsAt) {
+  // Determine next week_number for this competition
+  const { rows: [{ max_wn }] } = await getPool().query(
+    'SELECT COALESCE(MAX(week_number), 0) AS max_wn FROM competition_weeks WHERE competition_id = $1',
+    [competitionId]
+  );
+  const weekNumber = (parseInt(max_wn, 10) || 0) + 1;
+
+  const { rows: [row] } = await getPool().query(`
+    INSERT INTO competition_weeks (competition_id, week_number, starts_at, ends_at, period_label)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING *
+  `, [competitionId, weekNumber, startsAt, endsAt, periodLabel || null]);
+  return row;
+}
+
 // ── Runner State Persistence ────────────────────────────────────────────────
 
 async function saveRunnerState(state) {
@@ -576,7 +668,13 @@ module.exports = {
   // Competitions
   createCompetition,
   getCompetitions,
+  getCompetitionById,
   getActiveCompetition,
+  getActiveCompetitionForRoom,
+  getActiveWeekForCompetition,
+  getActiveWeekForGlobalComp,
+  updateCompetition,
+  getRoomScoringMode,
   archiveCompetition,
   activateCompetition,
   deleteCompetition,
@@ -592,6 +690,7 @@ module.exports = {
   updateWeek,
   deleteWeek,
   getCurrentWeekInfo,
+  createCustomPeriod,
   // Race results
   insertRaceResult,
   getRaceResults,
@@ -614,6 +713,7 @@ module.exports = {
   getPilotActiveDays,
   getPilotDistinctTracks,
   hasRaceResults,
+  hasRaceResultsForWeek,
   // Runner state
   saveRunnerState,
   loadRunnerState,
