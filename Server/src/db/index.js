@@ -17,4 +17,5 @@ module.exports = {
   ...require('./profileStats'),
   ...require('./customRoles'),
   ...require('./bots'),
+  ...require('./rooms'),
 };

@@ -19,6 +19,7 @@ import UserManagement from './pages/UserManagement.jsx';
 import IdleKick from './pages/IdleKick.jsx';
 import BotRemote from './pages/BotRemote.jsx';
 import Bot2Remote from './pages/Bot2Remote.jsx';
+import Rooms from './pages/Rooms.jsx';
 
 function AuthGate({ children }) {
   const { user, checking } = useAuth();
@@ -42,6 +43,7 @@ export default function App() {
                   <Route path="/admin/chat" element={<Chat />} />
                   <Route path="/admin/playlists" element={<Playlists />} />
                   <Route path="/admin/tags" element={<Tags />} />
+                  <Route path="/admin/rooms" element={<Rooms />} />
                   <Route path="/admin/overseer" element={<Overseer />} />
                   <Route path="/admin/auto-messages" element={<AutoMessages />} />
                   <Route path="/admin/track-manager" element={<TrackManager />} />

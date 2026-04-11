@@ -591,4 +591,31 @@ router.get('/auth/my-races/csv', requireSiteAuth, csvDownloadLimiter, async (req
   await db.streamRacesCsv(user.nickname, res);
 });
 
+// ── Rooms ──────────────────────────────────────────────────────────────────
+
+router.get('/rooms', async (req, res) => {
+  try {
+    const rooms = await rt.getRooms();
+    // Strip sensitive info for public view
+    const publicRooms = rooms.map(r => ({
+      room_id: r.room_id,
+      label: r.label,
+      scoring_mode: r.scoring_mode,
+      current_track: r.current_track,
+      track_since: r.track_since,
+      online_players: (r.online_players || []).map(p => ({ nick: p.nick, botId: p.botId })),
+      overseer: r.overseer ? {
+        mode: r.overseer.mode,
+        running: r.overseer.running,
+        playlist_name: r.overseer.playlist_name,
+        current_track: r.overseer.current_track,
+        next_change_at: r.overseer.next_change_at,
+      } : null,
+    }));
+    res.json(publicRooms);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load rooms' });
+  }
+});
+
 module.exports = router;

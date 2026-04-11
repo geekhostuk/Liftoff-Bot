@@ -2,21 +2,27 @@ const { getPool } = require('./connection');
 
 const KV_PREFIX = 'overseer_';
 
+function _kvPrefix(roomId) {
+  if (!roomId || roomId === 'default') return KV_PREFIX;
+  return `overseer_${roomId}_`;
+}
+
 // ── Overseer State Persistence (kv_store) ───────────────────────────────────
 
-async function saveOverseerState(state) {
+async function saveOverseerState(state, roomId = 'default') {
   const pool = getPool();
+  const prefix = _kvPrefix(roomId);
   const keys = [
-    `${KV_PREFIX}mode`,
-    `${KV_PREFIX}playlist_id`,
-    `${KV_PREFIX}current_index`,
-    `${KV_PREFIX}interval_ms`,
-    `${KV_PREFIX}next_change_at`,
-    `${KV_PREFIX}tag_names`,
-    `${KV_PREFIX}default_interval_ms`,
-    `${KV_PREFIX}current_track`,
-    `${KV_PREFIX}skip_vote_enabled`,
-    `${KV_PREFIX}extend_vote_enabled`,
+    `${prefix}mode`,
+    `${prefix}playlist_id`,
+    `${prefix}current_index`,
+    `${prefix}interval_ms`,
+    `${prefix}next_change_at`,
+    `${prefix}tag_names`,
+    `${prefix}default_interval_ms`,
+    `${prefix}current_track`,
+    `${prefix}skip_vote_enabled`,
+    `${prefix}extend_vote_enabled`,
   ];
   const values = [
     state.mode || 'idle',
@@ -37,11 +43,19 @@ async function saveOverseerState(state) {
   `, [keys, values]);
 }
 
-async function loadOverseerState() {
+async function loadOverseerState(roomId = 'default') {
   const pool = getPool();
+  const prefix = _kvPrefix(roomId);
   const get = async (key) => {
-    const { rows: [row] } = await pool.query('SELECT value FROM kv_store WHERE key = $1', [`${KV_PREFIX}${key}`]);
-    return row ? row.value : null;
+    // Try room-scoped key first, fall back to legacy key for default room migration
+    const { rows: [row] } = await pool.query('SELECT value FROM kv_store WHERE key = $1', [`${prefix}${key}`]);
+    if (row) return row.value;
+    // Fallback: legacy un-prefixed key (only for default room during migration)
+    if (roomId === 'default' && prefix !== KV_PREFIX) {
+      const { rows: [legacy] } = await pool.query('SELECT value FROM kv_store WHERE key = $1', [`${KV_PREFIX}${key}`]);
+      return legacy ? legacy.value : null;
+    }
+    return null;
   };
   const mode = (await get('mode')) || 'idle';
   const playlistId = await get('playlist_id');
@@ -61,48 +75,54 @@ async function loadOverseerState() {
   };
 }
 
-async function clearOverseerState() {
-  await getPool().query(`DELETE FROM kv_store WHERE key LIKE $1`, [`${KV_PREFIX}%`]);
+async function clearOverseerState(roomId = 'default') {
+  const prefix = _kvPrefix(roomId);
+  await getPool().query(`DELETE FROM kv_store WHERE key LIKE $1`, [`${prefix}%`]);
 }
 
 // ── Track Queue ─────────────────────────────────────────────────────────────
 
-async function getQueue() {
-  const { rows } = await getPool().query('SELECT * FROM track_queue ORDER BY position');
+async function getQueue(roomId = 'default') {
+  const { rows } = await getPool().query(
+    'SELECT * FROM track_queue WHERE room_id = $1 ORDER BY position', [roomId]
+  );
   return rows;
 }
 
-async function addToQueue({ env = '', track = '', race = '', workshop_id = '' }) {
+async function addToQueue({ env = '', track = '', race = '', workshop_id = '' }, roomId = 'default') {
   const pool = getPool();
   const { rows: [{ m }] } = await pool.query(
-    'SELECT COALESCE(MAX(position), -1) AS m FROM track_queue'
+    'SELECT COALESCE(MAX(position), -1) AS m FROM track_queue WHERE room_id = $1', [roomId]
   );
   const { rows: [row] } = await pool.query(`
-    INSERT INTO track_queue (position, env, track, race, workshop_id)
-    VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO track_queue (position, env, track, race, workshop_id, room_id)
+    VALUES ($1, $2, $3, $4, $5, $6)
     RETURNING *
-  `, [parseInt(m, 10) + 1, env, track, race, workshop_id]);
+  `, [parseInt(m, 10) + 1, env, track, race, workshop_id, roomId]);
   return row;
 }
 
 async function removeFromQueue(id) {
   const pool = getPool();
-  await pool.query('DELETE FROM track_queue WHERE id = $1', [id]);
+  const { rows: [deleted] } = await pool.query('DELETE FROM track_queue WHERE id = $1 RETURNING room_id', [id]);
+  const rId = deleted?.room_id || 'default';
   await pool.query(`
     WITH ranked AS (
       SELECT id, ROW_NUMBER() OVER (ORDER BY position) - 1 AS new_pos
-      FROM track_queue
+      FROM track_queue WHERE room_id = $1
     )
     UPDATE track_queue SET position = ranked.new_pos
     FROM ranked WHERE track_queue.id = ranked.id
-  `);
+  `, [rId]);
 }
 
 async function reorderQueue(id, direction) {
   const pool = getPool();
   const { rows: [row] } = await pool.query('SELECT * FROM track_queue WHERE id = $1', [id]);
   if (!row) return;
-  const { rows: items } = await pool.query('SELECT * FROM track_queue ORDER BY position');
+  const { rows: items } = await pool.query(
+    'SELECT * FROM track_queue WHERE room_id = $1 ORDER BY position', [row.room_id]
+  );
   const idx = items.findIndex(r => r.id === id);
   const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
   if (swapIdx < 0 || swapIdx >= items.length) return;
@@ -111,26 +131,26 @@ async function reorderQueue(id, direction) {
   await pool.query('UPDATE track_queue SET position = $1 WHERE id = $2', [a.position, b.id]);
 }
 
-async function popQueue() {
+async function popQueue(roomId = 'default') {
   const pool = getPool();
   const { rows: [row] } = await pool.query(
-    'SELECT * FROM track_queue ORDER BY position LIMIT 1'
+    'SELECT * FROM track_queue WHERE room_id = $1 ORDER BY position LIMIT 1', [roomId]
   );
   if (!row) return null;
   await pool.query('DELETE FROM track_queue WHERE id = $1', [row.id]);
   await pool.query(`
     WITH ranked AS (
       SELECT id, ROW_NUMBER() OVER (ORDER BY position) - 1 AS new_pos
-      FROM track_queue
+      FROM track_queue WHERE room_id = $1
     )
     UPDATE track_queue SET position = ranked.new_pos
     FROM ranked WHERE track_queue.id = ranked.id
-  `);
+  `, [roomId]);
   return row;
 }
 
-async function clearQueue() {
-  await getPool().query('DELETE FROM track_queue');
+async function clearQueue(roomId = 'default') {
+  await getPool().query('DELETE FROM track_queue WHERE room_id = $1', [roomId]);
 }
 
 // ── Playlist Queue ─────────────────────────────────────────────────────────
@@ -213,12 +233,12 @@ async function clearPlaylistQueue() {
 
 // ── Track History ───────────────────────────────────────────────────────────
 
-async function recordTrackStart(env, track, race, source = 'playlist') {
+async function recordTrackStart(env, track, race, source = 'playlist', roomId = 'default') {
   const { rows: [row] } = await getPool().query(`
-    INSERT INTO track_history (env, track, race, source, started_at)
-    VALUES ($1, $2, $3, $4, NOW())
+    INSERT INTO track_history (env, track, race, source, started_at, room_id)
+    VALUES ($1, $2, $3, $4, NOW(), $5)
     RETURNING id
-  `, [env, track, race, source]);
+  `, [env, track, race, source, roomId]);
   return row.id;
 }
 

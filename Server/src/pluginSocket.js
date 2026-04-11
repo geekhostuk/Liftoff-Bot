@@ -163,17 +163,28 @@ function _trackRecentlySent(botId, message) {
   recentlySent.set(key, setTimeout(() => recentlySent.delete(key), 10_000));
 }
 
-function setCurrentTrack(info) {
+function setCurrentTrack(info, roomId) {
   clearPendingTemplates();
   _lastRaceEndAnnounced = null;
   _lastRaceStartAt = 0;
+
+  // Room-aware: update room state if RoomManager is available, otherwise fall back to global
+  let roomManager;
+  try { roomManager = require('./RoomManager'); } catch {}
+  if (roomManager && roomId) {
+    const room = roomManager.getRoom(roomId);
+    if (room) {
+      room.roomState.setCurrentTrack(info);
+      room.roomState.applyChatCooldown();
+      if (room.skipVote.isActive()) room.skipVote.cancelSkipVote();
+      if (room.extendVote.isActive()) room.extendVote.cancelExtendVote();
+      return;
+    }
+  }
+
+  // Fallback: global state (backward compat during init)
   state.setCurrentTrack(info);
-  // Block chat commands for a window after each track change.
-  // Liftoff replays the entire chat history when the scene reloads, which causes
-  // a burst of chat_message events with fresh timestamps — including old /next and
-  // /next messages that would otherwise re-trigger the vote system.
   state.applyChatCooldown();
-  // Cancel any active votes — they no longer apply to the new track
   if (skipVote.isActive()) {
     skipVote.cancelSkipVote();
   }
@@ -564,11 +575,27 @@ async function handlePluginEvent(jsonLine, botId) {
     // Ignore echoes of messages the server itself sent to this bot
     const recentlySent = _getRecentlySent(botId);
     if (recentlySent.has(msg)) return;
+
+    // Room-aware: use room state for cooldown and route commands to room's services
+    let roomManager;
+    try { roomManager = require('./RoomManager'); } catch {}
+    const room = roomManager ? roomManager.getRoomForBot(botId) : null;
+
     // Ignore all commands during the post-track-change cooldown window.
-    if (!state.areChatCommandsAllowed(botId)) return;
+    if (room) {
+      if (!room.roomState.areChatCommandsAllowed(botId)) return;
+    } else {
+      if (!state.areChatCommandsAllowed(botId)) return;
+    }
+
+    // Use room-specific vote instances when available, fall back to singletons
+    const _skipVote = room ? room.skipVote : skipVote;
+    const _extendVote = room ? room.extendVote : extendVote;
+    const _tagVote = room ? room.tagVote : tagVote;
+    const _overseer = room ? room.overseer : require('./trackOverseer');
+
     if (msg === '/info') {
-      const overseer = require('./trackOverseer');
-      const os = overseer.getState();
+      const os = _overseer.getState();
       let timeLeft = 'N/A';
       if (os.next_change_at) {
         const remainMs = new Date(os.next_change_at).getTime() - Date.now();
@@ -580,14 +607,14 @@ async function handlePluginEvent(jsonLine, botId) {
           timeLeft = '0m 0s';
         }
       }
-      const upcoming = overseer.getUpcoming(1);
+      const upcoming = _overseer.getUpcoming(1);
       const nextTrack = upcoming.length > 0 ? upcoming[0].track : '';
       const nextStr = nextTrack ? ` | <color=#00BFFF>Next:</color> ${nextTrack}` : '';
       sendCommandToBot(botId, { cmd: 'send_chat', message: `<color=#00BFFF>Cmds:</color> <color=#00FF00>/next</color> skip <color=#00FF00>/extend</color> +5m | <color=#00BFFF>Time:</color> <color=#FFFF00>${timeLeft}</color>${nextStr}` });
     } else if (msg === '/next') {
-      skipVote.handleSkipVoteCommand(event.user_id || event.nick);
+      _skipVote.handleSkipVoteCommand(event.user_id || event.nick);
     } else if (msg === '/extend') {
-      extendVote.handleExtendVoteCommand(event.user_id || event.nick);
+      _extendVote.handleExtendVoteCommand(event.user_id || event.nick);
     } else if (msg.startsWith('/verify ')) {
       const code = msg.slice(8).trim().toUpperCase();
       if (code.length === 6) {
@@ -610,12 +637,12 @@ async function handlePluginEvent(jsonLine, botId) {
         }
       }
     } else if (msg === '/tagvote') {
-      tagVote.handleTagVoteCommand(event.user_id || event.nick);
+      _tagVote.handleTagVoteCommand(event.user_id || event.nick);
     } else if (msg === '/tags') {
-      tagVote.handleTagsInfoCommand();
+      _tagVote.handleTagsInfoCommand();
     } else if (/^\/[1-4]$/.test(msg)) {
       const optionIndex = parseInt(msg[1]) - 1;
-      tagVote.handleNumberedVote(optionIndex, event.user_id || event.nick);
+      _tagVote.handleNumberedVote(optionIndex, event.user_id || event.nick);
     }
   }
 
@@ -649,8 +676,16 @@ async function handlePluginEvent(jsonLine, botId) {
     if (event.race_id) _collectForPodium([event.race_id]);
   }
 
+  // Inject room_id so browser clients know which room the event belongs to
+  let roomManager2;
+  try { roomManager2 = require('./RoomManager'); } catch {}
+  if (roomManager2) {
+    const r = roomManager2.getRoomForBot(botId);
+    if (r) event.room_id = r.id;
+  }
+
   // Broadcast to browser clients — admin gets everything, public gets whitelist only
-  // Re-serialize since we injected bot_id
+  // Re-serialize since we injected bot_id and room_id
   const enrichedJson = JSON.stringify(event);
   broadcast.broadcastAdmin(enrichedJson);
   if (PUBLIC_EVENT_TYPES.has(eventType)) {

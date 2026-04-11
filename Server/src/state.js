@@ -81,6 +81,34 @@ function getOnlinePlayerCountForBot(botId) {
   return count;
 }
 
+/**
+ * Get online players for a set of bot IDs (i.e., all bots in a room).
+ * @param {Set<string>|string[]} botIds
+ * @returns {object[]}
+ */
+function getOnlinePlayersForRoom(botIds) {
+  const ids = botIds instanceof Set ? botIds : new Set(botIds);
+  const result = [];
+  for (const player of onlinePlayers.values()) {
+    if (ids.has(player.botId)) result.push(player);
+  }
+  return result;
+}
+
+/**
+ * Get online player count for a set of bot IDs (all bots in a room).
+ * @param {Set<string>|string[]} botIds
+ * @returns {number}
+ */
+function getOnlinePlayerCountForRoom(botIds) {
+  const ids = botIds instanceof Set ? botIds : new Set(botIds);
+  let count = 0;
+  for (const player of onlinePlayers.values()) {
+    if (ids.has(player.botId)) count++;
+  }
+  return count;
+}
+
 // ── Chat cooldown helpers ────────────────────────────────────────────────────
 
 function areChatCommandsAllowed(botId) {
@@ -175,6 +203,8 @@ module.exports = {
   clearOnlinePlayersForBot,
   getOnlinePlayerCount,
   getOnlinePlayerCountForBot,
+  getOnlinePlayersForRoom,
+  getOnlinePlayerCountForRoom,
   areChatCommandsAllowed,
   applyChatCooldown,
   applyChatCooldownForBot,

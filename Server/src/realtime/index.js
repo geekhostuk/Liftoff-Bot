@@ -28,6 +28,7 @@ const idleKick = require('../idleKick');
 const tagVote = require('../tagVote');
 const db = require('../database');
 const scoring = require('../competitionScoring');
+const roomManager = require('../RoomManager');
 
 async function checkWeekTransition() {
   // Finalise any expired week with full batch scoring + broadcast
@@ -79,11 +80,20 @@ async function main() {
   broadcast.init(broadcastPublic, broadcastAdmin);
   await createPluginSocketServer(wsServer);
 
-  // Initialise track overseer
-  trackOverseer.init(broadcast.broadcastAll);
+  // Wire RoomManager with pluginSocket deps, then initialise rooms
+  roomManager.wirePluginSocket({
+    sendCommand,
+    sendCommandToBot,
+    sendCommandAwait,
+    sendCommandAwaitToBot,
+    getConnectedBotIds,
+    getConnectedBotCount,
+    fireTemplates,
+  });
+  await roomManager.init();
 
-  // Try resuming overseer from persisted state
-  await trackOverseer.tryResume();
+  // Legacy init call (no-op, kept for safety)
+  trackOverseer.init(broadcast.broadcastAll);
 
   // Scoring tick: auto-finalise expired weeks (with batch scoring) and ensure current period exists
   setInterval(async () => {
@@ -159,11 +169,13 @@ async function main() {
   });
 
   internal.post('/internal/bots', async (req, res) => {
-    const { id, api_key, label, bot_nick } = req.body;
+    const { id, api_key, label, bot_nick, room_id } = req.body;
     if (!id || !api_key) return res.status(400).json({ error: 'id and api_key are required' });
     try {
       await db.addBot(id, api_key, label, bot_nick);
+      if (room_id) await db.assignBotToRoom(id, room_id);
       await refreshBotRegistry();
+      roomManager.registerBot(id, room_id || 'default');
       res.json({ ok: true });
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -172,8 +184,156 @@ async function main() {
 
   internal.delete('/internal/bots/:id', async (req, res) => {
     const removed = await db.removeBot(req.params.id);
-    if (removed) await refreshBotRegistry();
+    if (removed) {
+      await refreshBotRegistry();
+      roomManager.unregisterBot(req.params.id);
+    }
     res.json({ ok: removed });
+  });
+
+  // ── Room management ──────────────────────────────────────────────────────
+  internal.get('/internal/rooms', (req, res) => {
+    res.json(roomManager.getRoomsSnapshot());
+  });
+
+  internal.post('/internal/rooms', async (req, res) => {
+    const { id, label, scoring_mode } = req.body;
+    if (!id) return res.status(400).json({ error: 'id is required' });
+    try {
+      await roomManager.addRoom(id, label, scoring_mode);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.put('/internal/rooms/:id', async (req, res) => {
+    try {
+      await roomManager.updateRoom(req.params.id, req.body);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.delete('/internal/rooms/:id', async (req, res) => {
+    try {
+      await roomManager.removeRoom(req.params.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.post('/internal/rooms/:id/assign-bot', async (req, res) => {
+    const { bot_id } = req.body;
+    if (!bot_id) return res.status(400).json({ error: 'bot_id is required' });
+    try {
+      await roomManager.assignBotToRoom(bot_id, req.params.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ── Room-scoped overseer ────────────────────────────────────────────────
+  internal.get('/internal/rooms/:id/overseer/state', (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    res.json(room.overseer.getState());
+  });
+
+  internal.post('/internal/rooms/:id/overseer/start-playlist', async (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    try {
+      const { playlist_id, interval_ms, start_index = 0 } = req.body;
+      await room.overseer.startPlaylist(playlist_id, interval_ms, start_index);
+      res.json(room.overseer.getState());
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.post('/internal/rooms/:id/overseer/start-tags', async (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    try {
+      const { tag_names, interval_ms } = req.body;
+      await room.overseer.startTagMode(tag_names, interval_ms);
+      res.json(room.overseer.getState());
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.post('/internal/rooms/:id/overseer/stop', (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    room.overseer.stop();
+    res.json({ ok: true });
+  });
+
+  internal.post('/internal/rooms/:id/overseer/skip', async (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    await room.overseer.skipToNext();
+    res.json(room.overseer.getState());
+  });
+
+  internal.post('/internal/rooms/:id/overseer/extend', async (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    const { ms } = req.body;
+    await room.overseer.extendTimer(ms || 300000);
+    res.json(room.overseer.getState());
+  });
+
+  internal.post('/internal/rooms/:id/overseer/skip-to-index', (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    room.overseer.skipToIndex(req.body.index);
+    res.json(room.overseer.getState());
+  });
+
+  internal.post('/internal/rooms/:id/overseer/skip-vote-enabled', (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    room.overseer.setSkipVoteEnabled(req.body.enabled);
+    res.json({ ok: true, skip_vote_enabled: room.overseer.getState().skip_vote_enabled });
+  });
+
+  internal.post('/internal/rooms/:id/overseer/extend-vote-enabled', (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    room.overseer.setExtendVoteEnabled(req.body.enabled);
+    res.json({ ok: true, extend_vote_enabled: room.overseer.getState().extend_vote_enabled });
+  });
+
+  // ── Room-scoped tag vote ──────────────────────────────────────────────────
+  internal.post('/internal/rooms/:id/tag-vote/start', (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    try {
+      const { tag_options, duration_ms } = req.body;
+      room.tagVote.startVote(tag_options, duration_ms, 'admin');
+      res.json(room.tagVote.getState());
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  internal.post('/internal/rooms/:id/tag-vote/cancel', (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    room.tagVote.cancelVote();
+    res.json({ ok: true });
+  });
+
+  internal.get('/internal/rooms/:id/tag-vote/state', (req, res) => {
+    const room = roomManager.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    res.json(room.tagVote.getState());
   });
 
   // ── Track ─────────────────────────────────────────────────────────────────
@@ -421,11 +581,14 @@ async function main() {
   // ── State ─────────────────────────────────────────────────────────────────
   internal.get('/internal/state', (req, res) => {
     res.json({
+      // Legacy global fields (default room, backward compat)
       current_track: state.getCurrentTrack(),
       track_since: state.getCurrentTrackSince(),
       online_players: state.getOnlinePlayers(),
       overseer: trackOverseer.getState(),
       tag_vote: tagVote.getState(),
+      // Room-aware snapshot
+      rooms: roomManager.getRoomsSnapshot(),
     });
   });
 

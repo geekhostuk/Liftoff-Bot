@@ -1065,6 +1065,88 @@ router.delete('/bots/:id', requirePermission('tracks'), strictLimiter, async (re
   res.json(result);
 });
 
+// ── Room management ─────────────────────────────────────────────────────────
+
+router.get('/rooms', requirePermission('tracks'), async (req, res) => {
+  res.json(await rt.getRooms());
+});
+
+router.post('/rooms', requirePermission('tracks'), strictLimiter, async (req, res) => {
+  const { id, label, scoring_mode } = req.body;
+  if (!id) return res.status(400).json({ error: 'id is required' });
+  try {
+    res.json(await rt.addRoom(id, label, scoring_mode));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put('/rooms/:id', requirePermission('tracks'), strictLimiter, async (req, res) => {
+  try {
+    res.json(await rt.updateRoom(req.params.id, req.body));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/rooms/:id', requirePermission('tracks'), strictLimiter, async (req, res) => {
+  try {
+    res.json(await rt.removeRoom(req.params.id));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/rooms/:id/assign-bot', requirePermission('tracks'), strictLimiter, async (req, res) => {
+  const { bot_id } = req.body;
+  if (!bot_id) return res.status(400).json({ error: 'bot_id is required' });
+  try {
+    res.json(await rt.assignBotToRoom(req.params.id, bot_id));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ── Room-scoped overseer ──────────────────────────────────────────────────
+
+router.get('/rooms/:id/overseer/state', requirePermission('overseer'), async (req, res) => {
+  res.json(await rt.getRoomOverseerState(req.params.id));
+});
+
+router.post('/rooms/:id/overseer/start-playlist', requirePermission('overseer'), async (req, res) => {
+  const { playlist_id, interval_ms, start_index = 0 } = req.body;
+  res.json(await rt.startRoomOverseerPlaylist(req.params.id, playlist_id, interval_ms, start_index));
+});
+
+router.post('/rooms/:id/overseer/start-tags', requirePermission('overseer'), async (req, res) => {
+  const { tag_names, interval_ms } = req.body;
+  res.json(await rt.startRoomOverseerTags(req.params.id, tag_names, interval_ms));
+});
+
+router.post('/rooms/:id/overseer/stop', requirePermission('overseer'), async (req, res) => {
+  res.json(await rt.stopRoomOverseer(req.params.id));
+});
+
+router.post('/rooms/:id/overseer/skip', requirePermission('overseer'), async (req, res) => {
+  res.json(await rt.skipRoomOverseer(req.params.id));
+});
+
+router.post('/rooms/:id/overseer/extend', requirePermission('overseer'), async (req, res) => {
+  const { ms } = req.body;
+  res.json(await rt.extendRoomOverseer(req.params.id, ms || 300000));
+});
+
+// ── Room-scoped tag vote ──────────────────────────────────────────────────
+
+router.post('/rooms/:id/tag-vote/start', requirePermission('overseer'), async (req, res) => {
+  const { tag_options, duration_ms } = req.body;
+  res.json(await rt.startRoomTagVote(req.params.id, tag_options, duration_ms));
+});
+
+router.post('/rooms/:id/tag-vote/cancel', requirePermission('overseer'), async (req, res) => {
+  res.json(await rt.cancelRoomTagVote(req.params.id));
+});
+
 // ── Per-user data export (CSV) ────────────────────────────────────────────
 
 router.get('/site-users/:id/export/:type', requirePermission('users'), async (req, res) => {

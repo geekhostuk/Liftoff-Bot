@@ -229,6 +229,83 @@ async function removeBot(id) {
   return del(`/internal/bots/${id}`);
 }
 
+// ── Room management ───────────────────────────────────────────────────────
+
+async function getRooms() {
+  return get('/internal/rooms');
+}
+
+async function addRoom(id, label, scoringMode) {
+  return post('/internal/rooms', { id, label, scoring_mode: scoringMode });
+}
+
+async function updateRoom(id, fields) {
+  const res = await fetch(`${REALTIME_URL}/internal/rooms/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return res.json();
+}
+
+async function removeRoom(id) {
+  return del(`/internal/rooms/${id}`);
+}
+
+async function assignBotToRoom(roomId, botId) {
+  return post(`/internal/rooms/${roomId}/assign-bot`, { bot_id: botId });
+}
+
+// Room-scoped overseer
+async function getRoomOverseerState(roomId) {
+  return get(`/internal/rooms/${roomId}/overseer/state`);
+}
+
+async function startRoomOverseerPlaylist(roomId, playlistId, intervalMs, startIndex = 0) {
+  return post(`/internal/rooms/${roomId}/overseer/start-playlist`, { playlist_id: playlistId, interval_ms: intervalMs, start_index: startIndex });
+}
+
+async function startRoomOverseerTags(roomId, tagNames, intervalMs) {
+  return post(`/internal/rooms/${roomId}/overseer/start-tags`, { tag_names: tagNames, interval_ms: intervalMs });
+}
+
+async function stopRoomOverseer(roomId) {
+  return post(`/internal/rooms/${roomId}/overseer/stop`);
+}
+
+async function skipRoomOverseer(roomId) {
+  return post(`/internal/rooms/${roomId}/overseer/skip`);
+}
+
+async function extendRoomOverseer(roomId, ms) {
+  return post(`/internal/rooms/${roomId}/overseer/extend`, { ms });
+}
+
+async function skipRoomToIndex(roomId, index) {
+  return post(`/internal/rooms/${roomId}/overseer/skip-to-index`, { index });
+}
+
+async function setRoomSkipVoteEnabled(roomId, enabled) {
+  return post(`/internal/rooms/${roomId}/overseer/skip-vote-enabled`, { enabled });
+}
+
+async function setRoomExtendVoteEnabled(roomId, enabled) {
+  return post(`/internal/rooms/${roomId}/overseer/extend-vote-enabled`, { enabled });
+}
+
+// Room-scoped tag vote
+async function startRoomTagVote(roomId, tagOptions, durationMs) {
+  return post(`/internal/rooms/${roomId}/tag-vote/start`, { tag_options: tagOptions, duration_ms: durationMs });
+}
+
+async function cancelRoomTagVote(roomId) {
+  return post(`/internal/rooms/${roomId}/tag-vote/cancel`);
+}
+
+async function getRoomTagVoteState(roomId) {
+  return get(`/internal/rooms/${roomId}/tag-vote/state`);
+}
+
 module.exports = {
   sendCommand,
   sendCommandAwait,
@@ -280,4 +357,22 @@ module.exports = {
   getTracksInfo,
   previewTemplate,
   getState,
+  // Rooms
+  getRooms,
+  addRoom,
+  updateRoom,
+  removeRoom,
+  assignBotToRoom,
+  getRoomOverseerState,
+  startRoomOverseerPlaylist,
+  startRoomOverseerTags,
+  stopRoomOverseer,
+  skipRoomOverseer,
+  extendRoomOverseer,
+  skipRoomToIndex,
+  setRoomSkipVoteEnabled,
+  setRoomExtendVoteEnabled,
+  startRoomTagVote,
+  cancelRoomTagVote,
+  getRoomTagVoteState,
 };
