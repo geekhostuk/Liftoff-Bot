@@ -56,16 +56,16 @@ async function getTrackByEnvTrack(env, track) {
   return row || null;
 }
 
-async function upsertTrack(env, track, local_id = '') {
+async function upsertTrack(env, track, local_id = '', steam_id = '', dependency = '') {
   const { rows: [row] } = await getPool().query(`
-    INSERT INTO tracks (env, track, local_id)
-    VALUES ($1, $2, $3)
-    ON CONFLICT (env, track) DO UPDATE SET local_id = CASE
-      WHEN tracks.local_id = '' AND EXCLUDED.local_id <> '' THEN EXCLUDED.local_id
-      ELSE tracks.local_id
-    END
+    INSERT INTO tracks (env, track, local_id, steam_id, dependency)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (env, track) DO UPDATE SET
+      local_id   = CASE WHEN tracks.local_id   = '' AND EXCLUDED.local_id   <> '' THEN EXCLUDED.local_id   ELSE tracks.local_id   END,
+      steam_id   = CASE WHEN tracks.steam_id   = '' AND EXCLUDED.steam_id   <> '' THEN EXCLUDED.steam_id   ELSE tracks.steam_id   END,
+      dependency = CASE WHEN tracks.dependency = '' AND EXCLUDED.dependency <> '' THEN EXCLUDED.dependency ELSE tracks.dependency END
     RETURNING *
-  `, [env, track, local_id]);
+  `, [env, track, local_id, steam_id, dependency]);
   return row;
 }
 
