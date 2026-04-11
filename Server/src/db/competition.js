@@ -242,7 +242,7 @@ async function insertRaceResult(raceId, pilotKey, displayName, position, bestLap
   await getPool().query(`
     INSERT INTO race_results (race_id, pilot_key, display_name, position, best_lap_ms, total_laps, avg_lap_ms, week_id)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    ON CONFLICT (race_id, pilot_key) DO UPDATE SET
+    ON CONFLICT (race_id, pilot_key, week_id) DO UPDATE SET
       display_name = EXCLUDED.display_name,
       position = EXCLUDED.position,
       best_lap_ms = EXCLUDED.best_lap_ms,
