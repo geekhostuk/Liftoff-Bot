@@ -567,6 +567,21 @@ router.post('/playlists/tracks/:tid/move', requirePermission('playlists'), async
   res.json({ ok: true });
 });
 
+router.get('/playlists/:id/export', requirePermission('playlists'), async (req, res) => {
+  const rows = await db.getPlaylistTrackWorkshopIds(Number(req.params.id));
+  const ids = new Set();
+  for (const { steam_id, dependency } of rows) {
+    if (steam_id) ids.add(Number(steam_id));
+    if (dependency) ids.add(Number(dependency));
+  }
+  res.json({
+    appid: 410340,
+    steamid: '76561198059526280',
+    subscriptions: [...ids],
+    timestamp: new Date().toISOString(),
+  });
+});
+
 router.post('/playlists/:id/start', requirePermission('playlists'), strictLimiter, async (req, res) => {
   const intervalMs = Math.max(5000, Number(req.body.interval_ms) || 15 * 60 * 1000);
   const startIndex = Math.max(0, parseInt(req.body.start_index) || 0);

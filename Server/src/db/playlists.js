@@ -86,6 +86,17 @@ async function movePlaylistTrack(trackId, direction) {
   await pool.query('UPDATE playlist_tracks SET position = $1 WHERE id = $2', [a.position, b.id]);
 }
 
+async function getPlaylistTrackWorkshopIds(playlistId) {
+  const { rows } = await getPool().query(`
+    SELECT t.steam_id, t.dependency
+    FROM playlist_tracks pt
+    JOIN tracks t ON t.env = pt.env AND t.track = pt.track
+    WHERE pt.playlist_id = $1
+    ORDER BY pt.position
+  `, [playlistId]);
+  return rows;
+}
+
 module.exports = {
   getPlaylists,
   getPlaylistById,
@@ -93,6 +104,7 @@ module.exports = {
   renamePlaylist,
   deletePlaylist,
   getPlaylistTracks,
+  getPlaylistTrackWorkshopIds,
   addPlaylistTrack,
   removePlaylistTrack,
   movePlaylistTrack,
