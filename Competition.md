@@ -16,6 +16,18 @@ On the competition page, weeks are shown with status dots:
 | **Active** | Currently running (green dot). |
 | **Finalised** | Week has ended and results are locked (grey dot). |
 
+### Room-Scoped Competitions
+
+Rooms can have their own competitions via the `scoring_mode` setting:
+
+| Mode | Behaviour |
+|---|---|
+| `global` | Races in this room feed into the global competition only |
+| `room` | Races feed into a room-specific competition only |
+| `both` | Races are scored into both the global and a room-specific competition |
+
+Each competition can override default scoring values via a `scoring_config` JSONB column. Competition weeks can carry custom `period_label` values (e.g. "Weekend Challenge", "Day 1") instead of the default "Week N" naming.
+
 ### Track Rotation
 Track rotation is managed independently by the Track Overseer service and is not tied to the scoring system. Any race that occurs during an active scoring week contributes to that week's points regardless of how the track was selected.
 

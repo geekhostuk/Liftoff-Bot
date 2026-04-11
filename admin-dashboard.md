@@ -17,7 +17,7 @@ Admin users are created either via `ADMIN_USER`/`ADMIN_PASS` environment variabl
 
 ## Dashboard Sections
 
-The dashboard is divided into eight main sections, each controlling a different aspect of the lobby.
+The dashboard provides the following core sections (described below), plus dedicated pages for Tags, Tracks, Track Manager, Scoring, Competitions, User Management, Idle Kick, Bot Remote, and Rooms.
 
 ### 1. Players Online
 
@@ -123,6 +123,7 @@ Templates are pre-configured messages that fire automatically when specific even
   - `player_joined` — when any player enters the lobby
   - `player_new` — when a first-time player enters (no race history)
   - `player_returned` — when a returning player enters (has race history)
+  - `interval` — fires on a repeating timer (every `interval_ms` milliseconds, minimum 10 seconds), only when players are online
 - **Template text** — the message body, which can include variables
 - **Delay** — milliseconds after the event to send the message
   - Positive values: fire after the event (e.g., `5000` = 5 seconds after)
@@ -242,7 +243,20 @@ A table showing recently played tracks (`GET /api/admin/tracks/history`):
 - **Skip to Index** — jump to a specific position in the upcoming tracks list (`POST /api/admin/overseer/skip-to-index`)
 - **Stop** — halt automatic rotation (`POST /api/admin/overseer/stop`)
 
-### 6. Status & Monitoring
+### 6. Rooms
+
+Manage logical rooms that group bots together with independent services.
+
+- **Create room** — name a new room and configure its scoring mode
+- **Scoring mode** — controls how races in the room feed into competitions:
+  - `global` — room feeds into the global competition only
+  - `room` — room has its own isolated competition
+  - `both` — room scores into both global and room-specific competitions
+- **Bot assignment** — assign bots to rooms; each bot belongs to exactly one room
+- **Room selector** — the Overseer and other controls use a room dropdown to scope operations to a specific room
+- **Default room** — a default room is auto-created on first start for backward compatibility; all existing bots are assigned to it
+
+### 7. Status & Monitoring
 
 The dashboard header displays persistent status indicators:
 
@@ -372,15 +386,20 @@ All admin endpoints are prefixed with `/api/admin/` and require authentication.
 | File | Purpose |
 |------|---------|
 | `web/admin/src/pages/Dashboard.jsx` | Admin dashboard home page |
-| `web/admin/src/pages/Chat.jsx` | Original chat page |
-| `web/admin/src/pages/ChatBeta.jsx` | Redesigned chat page (Beta) |
-| `web/admin/src/pages/AutoMessages.jsx` | Dedicated auto messages page (Beta) |
-| `web/admin/src/pages/Overseer.jsx` | Track Overseer management page |
-| `Server/src/api/routes/admin.js` | Admin REST API endpoint handlers |
+| `web/admin/src/pages/Chat.jsx` | Chat page with filterable log, character counter, variable chips |
+| `web/admin/src/pages/AutoMessages.jsx` | Automated message template management |
+| `web/admin/src/pages/Overseer.jsx` | Track Overseer management page (room-aware) |
+| `web/admin/src/pages/Rooms.jsx` | Room management — create, configure, assign bots |
+| `Server/src/api/routes/admin.js` | Admin REST API endpoint handlers (~1,210 lines) |
+| `Server/src/RoomManager.js` | Room lifecycle, bot-to-room assignment, per-room contexts |
+| `Server/src/RoomState.js` | Per-room in-memory state container |
 | `Server/src/pluginSocket.js` | Plugin WebSocket server, template firing, variable enrichment |
-| `Server/src/trackOverseer.js` | Track rotation state machine (playlist, tag, and queue modes) |
+| `Server/src/trackOverseer.js` | Backward-compatible facade → default room's TrackOverseerInstance |
+| `Server/src/TrackOverseerInstance.js` | Per-room track rotation (playlist, tag, queue modes) |
+| `Server/src/intervalMessages.js` | Per-room interval-based auto chat templates |
 | `Server/src/db/trackOverseer.js` | Track Overseer database queries |
-| `Server/src/competitionScoring.js` | Points engine (real-time + batch) |
+| `Server/src/db/rooms.js` | Room CRUD and bot-to-room assignment |
+| `Server/src/competitionScoring.js` | Points engine (real-time + batch, room-aware) |
 | `Server/src/idleKick.js` | Idle detection, warnings, and auto-kick |
 | `Server/src/broadcast.js` | Event dispatch to WebSocket clients |
 | `Server/src/liveSocket.js` | WebSocket server setup (admin + public) |

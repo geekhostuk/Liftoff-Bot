@@ -124,6 +124,13 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
 - Combined `race_podium` event aggregating results across lobbies
 - Dynamic lobby capacity shown per bot on the live view
 
+### Rooms
+
+- Group bots into logical rooms that share an overseer, voting, and optionally scoring
+- Room-scoped competitions with configurable scoring modes: room-only, global, or both
+- Per-room track queue, track history, and auto messages
+- Default room for backward compatibility — existing bots land in the default room automatically
+
 ### Player Commands
 
 - `/info` — shows available player commands, current mode, and time remaining
@@ -217,6 +224,7 @@ Liftoff Competition transforms a standard Liftoff multiplayer session into a str
   - `player_new` — first-time player (never raced before)
   - `player_returned` — returning player with race history
   - `race_podium` — combined race results across all connected lobbies
+  - `interval` — fires on a repeating timer (configured per-template via `interval_ms`)
 - Template variables:
   - **Trigger-specific:** `{env}`, `{track}`, `{race}`, `{mins}`, `{winner}`, `{time}`, `{race_id}`, `{nick}`, `{players}`
   - **Universal:** `{1st}` through `{8th}` (weekly competition standings), `{playlist}` (source playlist name), `{player_points}`, `{player_position}` (player's weekly rank/points)
@@ -298,10 +306,10 @@ Liftoff/
 │   │
 │   └── admin/                          # Admin frontend (React 19 + Vite)
 │       ├── src/
-│       │   ├── pages/                  # 16 pages: Dashboard, Players, Tracks, TrackManager,
+│       │   ├── pages/                  # 17 pages: Dashboard, Players, Tracks, TrackManager,
 │       │   │                           #   TrackManagerBeta, Chat, AutoMessages, Tags, Playlists,
 │       │   │                           #   Overseer, Scoring, Competitions, UserManagement,
-│       │   │                           #   IdleKick, BotRemote, Bot2Remote
+│       │   │                           #   IdleKick, BotRemote, Bot2Remote, Rooms
 │       │   ├── components/             # layout, data (DataTable), feedback (Toast, Badge), form
 │       │   ├── context/                # AuthContext, WebSocketContext
 │       │   ├── hooks/                  # useApi, useSearch (fuse.js)
@@ -324,18 +332,25 @@ Liftoff/
 │   │   ├── realtime/                   # Realtime server
 │   │   │   └── index.js               # Entry point — WebSockets + domain services + internal API
 │   │   │
+│   │   ├── RoomManager.js              # Room lifecycle, bot-to-room assignment, per-room contexts
+│   │   ├── RoomState.js                # Per-room in-memory state container
 │   │   ├── pluginSocket.js             # Plugin WebSocket server (multi-bot aware)
 │   │   ├── liveSocket.js               # Live & admin WebSocket servers
 │   │   ├── broadcast.js                # Event broadcast dispatcher
-│   │   ├── trackOverseer.js            # Track rotation (playlist & tag modes) + queue
-│   │   ├── competitionScoring.js       # Points engine (real-time + batch)
+│   │   ├── trackOverseer.js            # Backward-compatible facade → default room's TrackOverseerInstance
+│   │   ├── TrackOverseerInstance.js    # Per-room track rotation (playlist & tag modes) + queue
+│   │   ├── competitionScoring.js       # Points engine (real-time + batch, room-aware)
 │   │   ├── state.js                    # In-memory state (per-bot player maps, track state)
 │   │   ├── auth.js                     # Password hashing & session store
 │   │   ├── email.js                    # Email sending (nodemailer — verification, password reset)
-│   │   ├── tagVote.js                  # Chat-based tag category voting
+│   │   ├── tagVote.js                  # Facade → default room's TagVoteInstance
+│   │   ├── TagVoteInstance.js          # Per-room tag category voting
 │   │   ├── idleKick.js                 # Auto-kick idle pilots (per-bot tracking)
-│   │   ├── skipVote.js                 # Vote-to-skip logic
-│   │   ├── extendVote.js               # Vote-to-extend logic
+│   │   ├── skipVote.js                 # Facade → default room's SkipVoteInstance
+│   │   ├── SkipVoteInstance.js         # Per-room vote-to-skip logic
+│   │   ├── extendVote.js               # Facade → default room's ExtendVoteInstance
+│   │   ├── ExtendVoteInstance.js       # Per-room vote-to-extend logic
+│   │   ├── intervalMessages.js         # Per-room interval-based auto chat templates
 │   │   ├── steamWorkshop.js            # Steam Workshop API queries & caching
 │   │   ├── eventTypes.js               # Event type constants
 │   │   ├── contracts.js                # Event validation (AJV, dev-only)
@@ -345,11 +360,13 @@ Liftoff/
 │   │   │   └── public.js
 │   │   ├── cli/
 │   │   │   ├── createUser.js           # CLI admin user creation
-│   │   │   └── importTrackSteamIds.js  # Import Steam Workshop track IDs
+│   │   │   ├── importTracks.js         # Bulk CSV track import with upsert
+│   │   │   ├── importTrackSteamIds.js  # Import Steam Workshop track IDs
+│   │   │   └── cleanupTransitionLaps.js # Diagnose/clean mis-attributed transition laps
 │   │   └── db/                         # Database layer (PostgreSQL via pg pool)
 │   │       ├── connection.js           # PostgreSQL connection pool + migration runner
 │   │       ├── index.js                # DB module barrel export
-│   │       ├── migrations/             # 17 numbered SQL migration files (001–017)
+│   │       ├── migrations/             # 21 numbered SQL migration files (001–021)
 │   │       │   ├── 001_initial.sql     # Base schema: players, races, laps, chat, tracks
 │   │       │   ├── 002_competition.sql # Scoring tables: weeks, points, categories
 │   │       │   ├── 003_whitelist.sql   # Idle-kick whitelist
@@ -366,7 +383,11 @@ Liftoff/
 │   │       │   ├── 014_custom_roles.sql
 │   │       │   ├── 015_performance_indexes.sql
 │   │       │   ├── 016_missing_indexes.sql
-│   │       │   └── 017_multi_bot.sql   # Multi-bot lobby support
+│   │       │   ├── 017_multi_bot.sql   # Multi-bot lobby support
+│   │       │   ├── 018_lap_registered.sql  # Lap registration tracking
+│   │       │   ├── 019_rooms.sql       # Room system: rooms table, bot/race room assignment
+│   │       │   ├── 020_room_aware_systems.sql  # Interval auto messages, room-scoped competitions
+│   │       │   └── 021_track_dependency.sql    # Track dependency (Steam Workshop subscriptions)
 │   │       ├── competition.js          # Competition queries & scoring logic
 │   │       ├── ingest.js               # Event ingestion
 │   │       ├── queries.js              # Public data queries
@@ -381,6 +402,7 @@ Liftoff/
 │   │       ├── playlists.js            # Playlist CRUD
 │   │       ├── tags.js                 # Tag, track, and track-tag CRUD
 │   │       ├── bots.js                 # Multi-bot lobby records
+│   │       ├── rooms.js                # Room CRUD and bot-to-room assignment
 │   │       └── whitelist.js            # Idle-kick whitelist
 │   │
 │   ├── tests/                          # Vitest test files
