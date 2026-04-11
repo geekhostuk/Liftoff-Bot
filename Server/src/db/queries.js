@@ -252,7 +252,7 @@ async function getActiveRacesLaps(since) {
   if (!since) return [];
   const pool = getPool();
   const { rows } = await pool.query(`
-    SELECT l.actor, l.nick, l.lap_number, l.lap_ms, l.recorded_at, r.id AS race_id
+    SELECT l.actor, l.nick, l.lap_number, l.lap_ms, l.recorded_at, r.id AS race_id, r.room_id
     FROM laps l
     JOIN races r ON r.id = l.race_id
     WHERE r.started_at >= $1

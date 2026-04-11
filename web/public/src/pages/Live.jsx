@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import useLiveState from '../hooks/useLiveState';
 import ServerStatus from '../components/live/ServerStatus';
 import TrackPanel from '../components/live/TrackPanel';
@@ -15,6 +15,55 @@ export default function Live() {
   const [selectedRoom, setSelectedRoom] = useState(null); // null = all rooms (default view)
 
   const hasMultipleRooms = state.rooms && state.rooms.length > 1;
+
+  // Derive room-filtered view — when a room is selected, show only that room's data
+  const view = useMemo(() => {
+    if (!selectedRoom) {
+      return {
+        currentTrack: state.currentTrack,
+        trackSince: state.trackSince,
+        trackRecord: state.trackRecord,
+        playlist: state.playlist,
+        pilots: state.pilots,
+        raceStatus: state.raceStatus,
+        players: state.players,
+        connectedBots: state.connectedBots,
+        botNicks: state.botNicks,
+      };
+    }
+    const room = (state.rooms || []).find(r => r.room_id === selectedRoom);
+    if (!room) {
+      return {
+        currentTrack: state.currentTrack,
+        trackSince: state.trackSince,
+        trackRecord: state.trackRecord,
+        playlist: state.playlist,
+        pilots: state.pilots,
+        raceStatus: state.raceStatus,
+        players: state.players,
+        connectedBots: state.connectedBots,
+        botNicks: state.botNicks,
+      };
+    }
+    const roomPlayers = (room.online_players || []).map(p => ({
+      actor: p.actor ?? p.nick,
+      nick: p.nick,
+      botId: p.botId || 'default',
+      status: 'online',
+    }));
+    const roomPilots = state.pilots.filter(p => p.roomId === selectedRoom);
+    return {
+      currentTrack: room.current_track || null,
+      trackSince: room.track_since || null,
+      trackRecord: state.trackRecord,
+      playlist: room.overseer || null,
+      pilots: roomPilots,
+      raceStatus: roomPilots.length > 0 ? 'racing' : 'waiting',
+      players: roomPlayers,
+      connectedBots: room.bot_count || 1,
+      botNicks: [],
+    };
+  }, [selectedRoom, state]);
 
   return (
     <div className="live-page">
@@ -58,27 +107,27 @@ export default function Live() {
 
         <div className="live-area-track">
           <TrackPanel
-            currentTrack={state.currentTrack}
-            trackSince={state.trackSince}
-            trackRecord={state.trackRecord}
+            currentTrack={view.currentTrack}
+            trackSince={view.trackSince}
+            trackRecord={view.trackRecord}
           />
         </div>
 
         <div className="live-area-playlist">
-          <PlaylistBar playlist={state.playlist} />
+          <PlaylistBar playlist={view.playlist} />
         </div>
 
         <div className="live-area-race">
           <RacePanel
             raceId={state.raceId}
-            raceStatus={state.raceStatus}
-            pilots={state.pilots}
+            raceStatus={view.raceStatus}
+            pilots={view.pilots}
             raceResult={state.raceResult}
           />
         </div>
 
         <div className="live-area-players">
-          <PlayersPanel players={state.players} playerStats={state.playerStats} connectedBots={state.connectedBots} botNicks={state.botNicks} />
+          <PlayersPanel players={view.players} playerStats={state.playerStats} connectedBots={view.connectedBots} botNicks={view.botNicks} />
         </div>
 
         <div className="live-area-feed">

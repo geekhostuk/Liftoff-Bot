@@ -97,7 +97,8 @@ function createLiveSocketServer(httpServer) {
           label: r.label,
           current_track: r.current_track,
           track_since: r.track_since,
-          online_players: (r.online_players || []).map(p => ({ nick: p.nick, botId: p.botId })),
+          online_players: (r.online_players || []).map(p => ({ actor: p.actor, nick: p.nick, botId: p.botId })),
+          bot_count: r.bot_ids?.length || 1,
           overseer: r.overseer,
         }));
       } catch {}
