@@ -10,7 +10,7 @@ import SearchInput from '../components/data/SearchInput.jsx';
 import {
   ListMusic, Plus, Trash2, Play, Square, SkipForward,
   ChevronUp, ChevronDown, ChevronsUp, ChevronsDown,
-  Copy, Check, X, Pencil
+  Copy, Check, X, Pencil, Download
 } from 'lucide-react';
 
 /* ── Shared inline styles ─────────────────────────────────── */
@@ -258,6 +258,22 @@ export default function Playlists() {
   const skipTrack = async () => {
     await apiCall('POST', '/api/admin/playlist/skip', null, 'Skipped');
     loadRunnerState();
+  };
+
+  const exportPlaylist = async () => {
+    try {
+      const data = await apiFetch('GET', `/api/admin/playlists/${selectedId}/export`);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedPlaylist.name.replace(/[^a-z0-9_-]/gi, '_')}_subscriptions.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast('Playlist exported', 'success');
+    } catch {
+      toast('Export failed', 'error');
+    }
   };
 
   const moveTrack = async (trackId, direction) => {
@@ -573,6 +589,10 @@ export default function Playlists() {
                       </button>
                     </>
                   )}
+
+                  <button onClick={exportPlaylist} style={{ ...btnOutline, ...btnSmall }} title="Export Steam Workshop subscriptions">
+                    <Download size={14} /> Export
+                  </button>
                 </div>
               </div>
 
