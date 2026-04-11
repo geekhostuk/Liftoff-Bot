@@ -86,7 +86,7 @@ services:
     image: dpage/pgadmin4:latest
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@liftoff.local
+      PGADMIN_DEFAULT_EMAIL: admin@liftoff.dev
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "5050:80"
